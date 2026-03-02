@@ -102,14 +102,14 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white overflow-hidden">
       {/* Desktop: Three-panel layout */}
-      <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
+      <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden gap-4">
         {/* Left Sidebar */}
         <div className="w-64 flex-shrink-0 overflow-hidden border-r border-gray-200 dark:border-gray-700">
           <LeftSidebar />
         </div>
 
         {/* Center Canvas */}
-        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-3 pl-3 pr-3">
+        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-6 px-6">
           <CanvasRenderer showFPS={showFPS} />
         </div>
 
@@ -158,7 +158,7 @@ function App() {
         {/* Floating Left Arrow Button */}
         <button
           onClick={() => setLeftPanelVisible(!leftPanelVisible)}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-40 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all"
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-40 p-4 bg-blue-600 hover:bg-blue-700 text-white text-2xl rounded-full shadow-lg transition-all"
           title={leftPanelVisible ? 'Hide generators' : 'Show generators'}
         >
           {leftPanelVisible ? '←' : '→'}
@@ -167,7 +167,7 @@ function App() {
         {/* Floating Right Arrow Button */}
         <button
           onClick={() => setRightPanelVisible(!rightPanelVisible)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-40 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-40 p-4 bg-blue-600 hover:bg-blue-700 text-white text-2xl rounded-full shadow-lg transition-all"
           title={rightPanelVisible ? 'Hide controls' : 'Show controls'}
         >
           {rightPanelVisible ? '→' : '←'}

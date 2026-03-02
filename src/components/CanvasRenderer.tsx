@@ -359,7 +359,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full"
+      className="relative w-full h-full flex items-center justify-center"
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
