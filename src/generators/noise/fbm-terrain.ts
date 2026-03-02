@@ -269,15 +269,15 @@ export const fbmTerrain: Generator = {
 
         const colorIdx = Math.floor(value * (palette.colors.length - 1));
         const nextColorIdx = Math.min(colorIdx + 1, palette.colors.length - 1);
-        const t = value * (palette.colors.length - 1) - colorIdx;
+        const colorT = value * (palette.colors.length - 1) - colorIdx;
 
         const color1 = hexToColor(palette.colors[colorIdx]);
         const color2 = hexToColor(palette.colors[nextColorIdx]);
 
         const idx = (y * width + x) * 4;
-        data[idx] = Math.round(color1[0] * (1 - t) + color2[0] * t);
-        data[idx + 1] = Math.round(color1[1] * (1 - t) + color2[1] * t);
-        data[idx + 2] = Math.round(color1[2] * (1 - t) + color2[2] * t);
+        data[idx] = Math.round(color1[0] * (1 - colorT) + color2[0] * colorT);
+        data[idx + 1] = Math.round(color1[1] * (1 - colorT) + color2[1] * colorT);
+        data[idx + 2] = Math.round(color1[2] * (1 - colorT) + color2[2] * colorT);
         data[idx + 3] = 255;
       }
     }

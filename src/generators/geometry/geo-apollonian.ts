@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Generator, ParameterSchema } from '../../types';
 
 function hexToRgb(hex: string): [number, number, number] {

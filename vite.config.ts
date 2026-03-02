@@ -3,11 +3,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/algomodo/',
   build: {
     target: 'esnext',
     minify: 'terser',
     assetsInlineLimit: 4096,
+    outDir: 'docs',
     rollupOptions: {
       output: {
         manualChunks: {

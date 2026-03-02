@@ -23,7 +23,7 @@ import { chladni } from './geometry/chladni';
 import { geoRosettes } from './geometry/geo-rosettes';
 import { geoSuperformula } from './geometry/geo-superformula';
 import { geoMoire } from './geometry/geo-moire';
-import { geoApolloian } from './geometry/geo-apollonian';
+// import { geoApolloian } from './geometry/geo-apollonian'; // TODO: Fix incomplete generator
 import { geoIslamic } from './geometry/geo-islamic';
 import { stippling } from './plotter/stippling';
 import { hatching } from './plotter/hatching';
@@ -98,7 +98,7 @@ export function initializeGenerators() {
   registerGenerator(geoRosettes);
   registerGenerator(geoSuperformula);
   registerGenerator(geoMoire);
-  registerGenerator(geoApolloian);
+  // registerGenerator(geoApolloian); // TODO: Fix incomplete generator
   registerGenerator(geoIslamic);
   registerGenerator(hatching);
   registerGenerator(stippling);
@@ -154,7 +154,7 @@ export {
   fbmTerrain, domainWarpMarble,
   noisePerlin, noiseFbm, noiseTurbulence, noiseRidged, noiseDomainWarp,
   spirograph, lissajous, lsystem, mstWeb, chladni,
-  geoRosettes, geoSuperformula, geoMoire, geoApolloian, geoIslamic,
+  geoRosettes, geoSuperformula, geoMoire, geoIslamic,
   stippling, hatching, contourTopo, streamlines, tspArt, circlePacking, offsetPaths,
   guilloche, halftoneDots, phyllotaxis, meanderMaze, scribbleShading, bezierRibbonWeaves,
   gameOfLife, reactionDiffusion,

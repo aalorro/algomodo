@@ -129,10 +129,10 @@ export const domainWarpMarble: Generator = {
         const n = noise.fbm(finalX, finalY, octaves, 2.0, gain);
 
         // Marble sine bands
-        const t = Math.sin(n * Math.PI * bands) * 0.5 + 0.5;
+        const bandT = Math.sin(n * Math.PI * bands) * 0.5 + 0.5;
 
         // Palette interpolation
-        const ci = t * (palette.colors.length - 1);
+        const ci = bandT * (palette.colors.length - 1);
         const c0 = Math.floor(ci);
         const c1 = Math.min(c0 + 1, palette.colors.length - 1);
         const frac = ci - c0;

@@ -20,8 +20,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0 });
-  const animationRef = useRef<number>();
-  const overlayAnimRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
+  const overlayAnimRef = useRef<number | undefined>(undefined);
   const lastFrameTimeRef = useRef(0);
   const mouseRef = useRef({ x: 0.5, y: 0.5, inside: false });
   const ripplesRef = useRef<Ripple[]>([]);

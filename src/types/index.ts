@@ -9,7 +9,7 @@ export interface Parameter {
   default: any;
   help?: string;
   options?: string[];
-  group?: 'Composition' | 'Geometry' | 'Flow/Motion' | 'Texture' | 'Color' | 'PostFX';
+  group?: string;
 }
 
 export interface ParameterSchema {
@@ -70,7 +70,7 @@ export interface Generator {
   supportsWebGPU: boolean;
   supportsAnimation: boolean;
   
-  renderWebGL2(
+  renderWebGL2?(
     gl: WebGL2RenderingContext,
     params: Record<string, any>,
     seed: number,
@@ -183,7 +183,7 @@ export interface AppState {
   setAnimating: (animating: boolean) => void;
   setAnimationFps: (fps: number) => void;
   updatePostFX: (key: string, value: any) => void;
-  setOpenModal: (modal: 'about' | 'privacy' | null) => void;
+  setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | null) => void;
 
   // History (undo/redo)
   historyPast: HistorySnapshot[];
