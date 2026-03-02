@@ -35,6 +35,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     quality,
     isAnimating,
     animationFps,
+    setAnimating,
+    randomizeParams,
     postFX,
     sourceImage,
     setSourceImage,
@@ -399,6 +401,22 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           <p className="text-blue-300 font-semibold text-sm">Drop image or URL</p>
         </div>
       )}
+
+      {/* Bottom Canvas Buttons */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex gap-3">
+        <button
+          onClick={() => setAnimating(!isAnimating)}
+          className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+        >
+          {isAnimating ? '⏸ ANIMATE' : '▶ ANIMATE'}
+        </button>
+        <button
+          onClick={() => randomizeParams(getGenerator(selectedGeneratorId)?.parameterSchema || {})}
+          className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+        >
+          🎲 RANDOM
+        </button>
+      </div>
 
     </div>
   );
