@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { getAllFamilies, getGeneratorsByFamily } from '../core/registry';
+import logoImage from '../assets/algomodo-logo.png';
 
 export const LeftSidebar: React.FC = () => {
   const [expandedFamily, setExpandedFamily] = useState<string | null>('noise');
@@ -12,7 +13,7 @@ export const LeftSidebar: React.FC = () => {
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <img src="/algomodo-logo.png" alt="Algomodo" className="h-[126px] w-auto max-w-full object-contain" />
+        <img src={logoImage} alt="Algomodo" className="h-[126px] w-auto max-w-full object-contain" />
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Algorithmic Art Generator</p>
       </div>
 
