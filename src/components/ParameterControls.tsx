@@ -7,9 +7,10 @@ interface ParameterControlsProps {
 }
 
 export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator }) => {
-  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo } = useStore();
+  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating } = useStore();
   const canUndo = historyPast.length > 0;
   const canRedo = historyFuture.length > 0;
+  const supportsAnim = generator?.supportsAnimation ?? false;
 
   if (!generator) {
     return <div className="p-4 text-gray-400 dark:text-gray-500">Select a generator</div>;
@@ -46,11 +47,18 @@ export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator 
           ↪ Redo
         </button>
         <button
-          onClick={() => resetParams()}
-          title="Reset all parameters to defaults"
-          className="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
+          onClick={() => supportsAnim && setAnimating(!isAnimating)}
+          disabled={!supportsAnim}
+          title={supportsAnim ? (isAnimating ? 'Animation: on' : 'Animation: off') : 'This generator does not support animation'}
+          className={`flex-1 px-3 py-2 text-sm text-white rounded transition-colors ${
+            !supportsAnim
+              ? 'bg-gray-400 dark:bg-gray-600 opacity-40 cursor-not-allowed'
+              : isAnimating
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-gray-500 hover:bg-gray-600'
+          }`}
         >
-          Reset
+          Animate
         </button>
         <button
           onClick={() => randomizeParams(generator.parameterSchema)}
