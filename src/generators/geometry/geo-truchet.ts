@@ -92,7 +92,7 @@ export const geoTruchet: Generator = {
         // Determine orientation (0 or 1) per cell
         let orientation: number;
         if (anim === 'none' || time === 0) {
-          orientation = rng.nextInt(0, 1);
+          orientation = rng.integer(0, 1);
         } else if (anim === 'wave') {
           // Noise field advances with time → flipping wavefront sweeps through
           const v = noise.fbm(col * 0.18 + t * 0.15, row * 0.18 + t * 0.09, 2, 2, 0.5);
