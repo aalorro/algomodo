@@ -176,6 +176,22 @@ npm run preview
 
 ---
 
+## Deployment
+
+Algomodo is automatically deployed to GitHub Pages via GitHub Actions on every push to the `main` branch.
+
+**Workflow:**
+1. Make code changes in your local repository
+2. Commit and push to `main`: `git push origin main`
+3. GitHub Actions automatically builds the project and deploys to GitHub Pages
+4. Site is live at: **https://aalorro.github.io/algomodo**
+
+**No manual build or push required!** The CI/CD pipeline handles everything.
+
+For more details, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+---
+
 ## Adding a Generator
 
 1. Create `src/generators/<family>/<name>.ts` implementing the `Generator` interface from `src/types/index.ts`

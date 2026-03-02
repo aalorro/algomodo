@@ -21,7 +21,13 @@ npm run build
 npm run preview
 ```
 
-There are no automated tests in this project.
+**Deployment:** Automatic via GitHub Actions on push to `main`. See [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+**Build:**
+- Output: `dist/` folder (in .gitignore, never committed)
+- Base path: `/algomodo/` for GitHub Pages subpath routing
+- Build command runs TypeScript check, minification via Terser, and asset bundling
+- `.nojekyll` file disables Jekyll processing on GitHub Pages
 
 ## Architecture
 

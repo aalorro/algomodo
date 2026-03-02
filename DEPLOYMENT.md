@@ -1,201 +1,178 @@
-# GitHub Pages Deployment Guide
+# GitHub Pages Deployment
 
-## Method 1: Deploy from `dist/` folder
+Algomodo is deployed automatically via **GitHub Actions** to GitHub Pages.
 
-### Step 1: Build the Project
-```bash
-npm install
-npm run build
-```
+## ⚡ Easy Workflow
 
-This creates an optimized production build in the `dist/` folder.
+1. **Make code changes** in your local repository
+2. **Commit and push**: `git commit -m "your message" && git push origin main`
+3. **GitHub Actions automatically:**
+   - Installs dependencies
+   - Runs type checks and linting
+   - Builds the project (`npm run build`)
+   - Uploads artifacts to GitHub Pages
+4. **Site updates live** at: https://aalorro.github.io/algomodo
 
-### Step 2: GitHub Configuration
+No manual intervention needed! ✨
 
-Option A: Creating a **new** GitHub Pages with `dist/` folder:
-```bash
-# Create gh-pages branch
-git checkout --orphan gh-pages
-git rm -rf .
-git commit --allow-empty -m "Initial commit"
-git push -u origin gh-pages
+---
 
-# Go back to main branch
-git checkout main
+## How It Works
 
-# Copy dist contents to gh-pages branch
-git worktree add gh-pages-deploy gh-pages
-cp -r dist/* gh-pages-deploy/
-cd gh-pages-deploy
-git add .
-git commit -m "Deploy Algomodo"
-git push
-```
+### GitHub Actions Workflow (`.github/workflows/deploy.yml`)
 
-Option B: Using **GitHub Actions** (Recommended):
-1. Create `.github/workflows/deploy.yml`:
+The workflow triggers on every push to `main` or `master` branches:
+
 ```yaml
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      - run: npm install
-      - run: npm run build
-      - uses: actions/configure-pages@v3
-      - uses: actions/upload-pages-artifact@v1
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: 'dist'
-      - uses: actions/deploy-pages@v2
+          path: './dist'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 ```
 
-2. In GitHub repo settings:
-   - Go to Settings > Pages
-   - Set Source to "GitHub Actions"
+### Build Configuration
 
-### Step 3: Access Your Site
-```
-https://your-username.github.io/algomodo
-```
+**Vite Config** (`vite.config.ts`):
+- `base: '/algomodo/'` — sets the base path for GitHub Pages subpath
+- `outDir: 'dist'` — builds to `dist/` folder (not committed to git)
 
-## Method 2: Deploy from `docs/` folder
+**Git Configuration** (`.gitignore`):
+- `dist/` is ignored (only built artifacts go there)
+- `docs/` is ignored (legacy folder, no longer used)
+- Build artifacts are never committed
 
-### Step 1: Modify vite.config.ts
-```typescript
-build: {
-  outDir: 'docs',  // Change from 'dist' to 'docs'
-  // ...
-}
-```
-
-### Step 2: Build and Deploy
-```bash
-npm run build
-git add docs/
-git commit -m "Deploy Algomodo"
-git push
-```
-
-### Step 3: GitHub Configuration
-- Go to Settings > Pages
-- Set Source to "Deploy from a branch"
-- Select branch: `main`
-- Select folder: `/docs`
-
-## Method 3: Deploy to Netlify
-
-### Step 1: Connect Repository
-1. Go to [Netlify](https://netlify.com)
-2. Click "New site from Git"
-3. Connect GitHub repository
-
-### Step 2: Configure Build
-- Build command: `npm run build`
-- Publish directory: `dist`
-
-### Step 3: Deploy
-Netlify automatically deploys on every push to main.
-
-Access via: `https://your-site.netlify.app`
-
-## Method 4: Deploy to Vercel
-
-### Step 1: Connect Repository
-1. Go to [Vercel](https://vercel.com)
-2. Import GitHub project
-
-### Step 2: Vercel Auto-Detects
-- Framework: Vite
-- Build Command: `npm run build`
-- Output Directory: `dist`
-
-### Step 3: Deploy
-Click "Deploy" - automatic on every push.
-
-Access via: `https://algomodo.vercel.app`
-
-## Testing Deployed Site
-
-After deployment, verify:
-
-1. **Icons load**: Check favicon displays
-2. **Canvas renders**: Open DevTools (F12), check for console errors
-3. **Generators work**: Try clicking different styles, adjusting parameters
-4. **Export functions**: Try PNG/SVG/JSON export
-5. **Responsive**: Check on mobile and desktop
-
-## Troubleshooting
-
-### 404 on root path
-Add `_redirects` file to `public/`:
-```
-/* /index.html 200
-```
-
-Or use `vercel.json` for Vercel:
-```json
-{
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-}
-```
-
-### Assets not loading
-Ensure `base: './'` in `vite.config.ts`:
-```typescript
-export default defineConfig({
-  base: './',  // For GitHub Pages subfolders
-  // ...
-})
-```
-
-### Canvas black on mobile
-Check WebGL support. Most mobiles support WebGL2, but some Android devices may fall back to Canvas2D.
-
-### Large build size
-The `dist/` folder should be ~300-500KB gzipped.
-- Check for unused dependencies
-- Verify bundle splitting in vite.config.ts
-
-## Monitoring Example
-
-Add to your deployment to track usage:
-
-```html
-<!-- In index.html, before closing </head> -->
-<script defer data-domain="yourdomain.com" src="https://plausible.io/js/script.js"></script>
-```
-
-Or use Google Analytics:
-
-```html
-<script async src="https://www.googletagmanager.com/gtag/js?id=GA_ID"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'GA_ID');
-</script>
-```
-
-## Custom Domain
-
-### GitHub Pages
-1. Add `CNAME` file to `dist/` with your domain
-2. Update DNS records to point to GitHub
-3. Enable in repo Settings > Pages
-
-### Netlify/Vercel
-Domain settings in dashboard - very easy!
+**GitHub Pages Settings**:
+- Source: **GitHub Actions** (automatic deployment)
+- `.nojekyll` file disables Jekyll processing
 
 ---
 
-**That's it!** Your Algomodo instance is now live on the internet. 🚀
+## GitHub Pages Configuration
+
+Your repository is already configured for GitHub Actions deployment:
+
+1. **Settings > Pages**
+2. Source: **GitHub Actions** (should be selected)
+3. Branch visibility: Automatic
+
+No further configuration needed!
+
+---
+
+## Manual Local Build (Optional)
+
+If you want to build locally and test before pushing:
+
+```bash
+npm run build
+npm run preview
+```
+
+This builds to `dist/` and serves it locally at `http://localhost:5173/algomodo/`.
+
+---
+
+## Testing Your Changes
+
+After pushing to `main`:
+
+1. **Watch GitHub Actions**: Go to your repo → **Actions** tab to see the build status
+2. **Wait for completion**: Green checkmark = deployed successfully
+3. **Visit your site**: https://aalorro.github.io/algomodo
+4. **Check browser console** (F12) for any errors
+
+---
+
+## Troubleshooting
+
+### Workflow Fails to Build
+Check the **Actions** tab in GitHub for error logs. Common issues:
+- TypeScript errors (run `npm run build` locally to debug)
+- Missing dependencies (run `npm install` locally)
+
+### Assets Return 404
+- Ensure `.nojekyll` file is in the repo root (disables Jekyll)
+- Check that `base: '/algomodo/'` is set in `vite.config.ts`
+- Clear browser cache (Ctrl+Shift+Delete)
+
+### Deployment Stuck
+- Check GitHub Actions permissions: Settings > Pages should show "GitHub Actions" as source
+- Re-run workflow: Go to Actions tab, select the latest run, click "Re-run jobs"
+
+### Site Shows Blank Page
+- Open DevTools (F12) → **Console** tab to check for JavaScript errors
+- Check **Network** tab to verify files load with 200 status (not 404)
+
+---
+
+## Key Files for Deployment
+
+| File | Purpose |
+|---|---|
+| `.github/workflows/deploy.yml` | GitHub Actions automation |
+| `vite.config.ts` | Build configuration + base path |
+| `.gitignore` | Excludes `dist/` and `docs/` from git |
+| `.nojekyll` | Tells GitHub to skip Jekyll processing |
+| `package.json` | Dependencies and build scripts |
+
+---
+
+## Advanced: Using Custom Domain
+
+To point your own domain to the GitHub Pages site:
+
+1. **Add CNAME**: Create a `CNAME` file in `public/` folder:
+   ```
+   algomodo.yourdomain.com
+   ```
+
+2. **GitHub Pages Settings**:
+   - Settings > Pages
+   - Enter custom domain in the text field
+   - GitHub manages DNS verification
+
+3. **DNS Configuration** (at your registrar):
+   - Add CNAME record pointing to `aalorro.github.io`
+   - Or use GitHub's recommended IP addresses (see GitHub Pages docs)
+
+---
+
+**Deployment is automatic. Just commit and push!** 🚀
