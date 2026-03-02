@@ -10,7 +10,7 @@ MIT License · v1.0.0 · © 2026 ArtMondo
 
 | Feature | Details |
 |---|---|
-| **60 generators** | Across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image |
+| **74 generators** | Across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image |
 | **Live animation** | requestAnimationFrame loop with persistent simulation state; per-generator steps/frame control |
 | **Seeded RNG** | xorshift128+ — every output is fully reproducible from its integer seed |
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
@@ -27,7 +27,7 @@ MIT License · v1.0.0 · © 2026 ArtMondo
 
 ## Generators
 
-### Cellular (12)
+### Cellular (15)
 
 Simulation-based automata and physics models. All support live animation with persistent state between frames.
 
@@ -43,21 +43,29 @@ Simulation-based automata and physics models. All support live animation with pe
 | **Fluid Lite** | Seeded point-vortex velocity field advects a passive dye density on a periodic grid; no PDE solver required |
 | **Cyclic CA** | K-state cyclic automaton — cells advance through a colour wheel when enough neighbours are ahead, self-organising into counter-rotating spirals and phase waves |
 | **Brian's Brain** | 3-state excitable automaton (ON → DYING → OFF → ON if 2 neighbours firing) — no still lifes, only perpetually moving gliders |
+| **Age Trails** | Floating-point exposure accumulation over multiple CA rules — creates luminous long-exposure trail photographs of automaton activity |
+| **Turing Patterns** | Schnakenberg activator-inhibitor reaction-diffusion (du/dt = Du·∇²u + γ(a−u+u²v)) — self-organising spots and labyrinthine stripes |
+| **Crystal Growth** | Kobayashi (1993) anisotropic phase-field solidification — simulates dendritic crystal growth with tunable symmetry (3/4/6/8-fold) and undercooling |
 | **DLA** | Diffusion-Limited Aggregation — random walkers freeze on contact with a growing cluster, producing fractal trees of Hausdorff dimension ≈ 1.71 |
 | **Elementary CA** | Wolfram's 1D automata shown as a scrolling spacetime diagram — Rule 30 (chaotic), 90 (Sierpiński), 110 (Turing-complete), and all 256 rules selectable |
 
-### Noise (2)
+### Noise (7)
 
-Procedural terrain and surface textures driven by Fractal Brownian Motion.
+Procedural terrain and surface textures driven by fractal noise algorithms. All support live animation.
 
 | Name | Key Feature |
 |---|---|
 | **FBM Terrain** | Natural terrain from stacked octaves of Simplex noise with optional domain warping and palette-mapped elevation bands |
 | **Domain Warped Marble** | Layered domain warping of FBM creates organic marble veining and turbulent flow structures |
+| **Simplex Field** | Raw single-layer or low-octave Simplex noise — the baseline of all procedural generation; drift or rotate animation |
+| **FBM** | Full fractal Brownian Motion with explicit lacunarity and gain controls; pulse animation breathes the scale |
+| **Turbulence** | Absolute-value noise per octave folds the field into sharp V-shaped creases — fire, plasma, and cloud textures; churn animation drifts each octave independently |
+| **Ridged Multifractal** | Ken Musgrave's cascaded ridge formula: max(0, offset−\|noise\|)² with amplitude cascade produces knife-edge mountain ridges; sculpt animation oscillates ridge sharpness |
+| **Domain Warp** | Two independent noise instances — coordinates displaced by one fBm field before evaluating another; single or double-iterated warp; flow animation morphs the warp field phase |
 
-### Geometry (5)
+### Geometry (10)
 
-Mathematical curves and graph structures rendered as line art.
+Mathematical curves and tiling structures rendered as line art.
 
 | Name | Key Feature |
 |---|---|
@@ -66,8 +74,13 @@ Mathematical curves and graph structures rendered as line art.
 | **L-System** | Lindenmayer string rewriting rendered as turtle graphics — presets for ferns, trees, and Koch snowflakes |
 | **MST Web** | Minimum spanning tree over a noise-scattered point field — organic web and neural network aesthetic |
 | **Chladni Figures** | Resonance nodal lines of a vibrating square plate; mode numbers (m, n) select distinct symmetry patterns |
+| **Rosettes** | Polar rose curves r = cos(n/d · θ) — rational k = n/d controls petal count and winding; layered with staggered ratios for mandala-like interference patterns |
+| **Superformula** | Johan Gielis' generalised polar equation r = (\|cos(mθ/4)/a\|^n2 + \|sin(mθ/4)/b\|^n3)^(−1/n1) — morphs continuously through every polygon, star, and organic shape |
+| **Moiré** | Two overlapping periodic gratings (lines / circles / dots / radial) at a small relative angle or offset — the beating between gratings generates macroscopic fringe bands |
+| **Islamic Patterns** | Star polygon tilings {n/k} arrayed on square, hexagonal, or triangular grids — inspired by classical Islamic geometric art with interlocking girih-style bands |
+| **Truchet Tiles** | Each cell randomly assigned one of two orientations — quarter-circle arcs (classic Truchet 1704), diagonal lines (Smith 1987), or filled wedges; wave animation sweeps flipping boundaries across the canvas |
 
-### Plotter (13)
+### Plotter (14)
 
 Pen-plotter-inspired vector-style generators optimised for line art and print output.
 
@@ -75,7 +88,8 @@ Pen-plotter-inspired vector-style generators optimised for line art and print ou
 |---|---|
 | **Stippling** | Density-adaptive dot placement driven by a noise field; variable dot size and per-dot palette colour mapping |
 | **Hatching** | Parallel, contour-following, or scribble engraving lines with per-segment hand-drawn Simplex wobble |
-| **Topographic Contours** | Marching Squares iso-contours extracted from an FBM height field — clean topographic map line art |
+| **Topographic Contours** | Marching Squares iso-contours extracted from an FBM height field — clean topographic map line art with hand-drawn wobble |
+| **Contour Lines** | Filled elevation-band topographic map — noise field (fBm / ridged / turbulence) quantised into palette-coloured bands with optional contour outlines; visually distinct from line-only Topographic Contours |
 | **Streamlines** | Evenly-spaced streamlines traced through a smooth 2D noise-derived vector field |
 | **TSP Art** | Single Hamiltonian tour through density-weighted stipple points via nearest-neighbour construction + 2-opt refinement |
 | **Circle Packing** | Non-overlapping circles grown to maximum radius, biased by a noise density field |

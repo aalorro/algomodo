@@ -5,6 +5,35 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-02
+
+### Added
+
+**14 new generators** (total now 74 across 7 families):
+
+- **Cellular** — Age Trails: floating-point exposure accumulator over configurable CA rules (Life / HighLife / Maze / Day & Night / Seeds) producing luminous long-exposure trail photographs
+- **Cellular** — Turing Patterns: Schnakenberg activator-inhibitor PDE producing self-organising spots and labyrinthine stripes
+- **Cellular** — Crystal Growth: Kobayashi (1993) anisotropic phase-field solidification with tunable n-fold symmetry and undercooling
+- **Noise** — Simplex Field: raw single-layer or low-octave simplex noise with drift/rotate animation
+- **Noise** — FBM: full fractal Brownian Motion with lacunarity and gain controls; pulse animation
+- **Noise** — Turbulence: absolute-value fractal noise with per-octave churn animation and heat colormap
+- **Noise** — Ridged Multifractal: Ken Musgrave's cascaded ridge formula; sculpt animation oscillates ridge sharpness
+- **Noise** — Domain Warp: two independent noise instances with single/double-iterated coordinate displacement; flow animation
+- **Geometry** — Rosettes: polar rose curves r = cos(n/d · θ) with multi-layer staggered ratios; spin/bloom/morph animation
+- **Geometry** — Superformula: Gielis generalised polar curve morphing through every polygon and organic shape; morph animation
+- **Geometry** — Moiré: two overlapping periodic gratings (lines/circles/dots/radial) producing interference fringe bands
+- **Geometry** — Islamic Patterns: star polygon tilings {n/k} on square/hexagonal/triangular grids with fill and spin/kaleidoscope animation
+- **Geometry** — Truchet Tiles: classic quarter-circle arc, diagonal, and wedge tile variants with wave animation that sweeps flipping boundaries across the canvas
+- **Plotter** — Contour Lines: filled elevation-band topographic map with palette-coloured bands and optional contour outlines; distinct from the existing line-only Topographic Contours
+
+**Animation support added** to all 5 new Noise generators and both original Noise generators (FBM Terrain, Domain Warped Marble) — all now have `supportsAnimation: true` with mode and speed controls.
+
+### Changed
+
+- **Params toolbar**: Reset button replaced with an Animate toggle button — green when animation is on, grey when off, disabled for generators that don't support animation. Syncs with the Animate checkbox in Settings.
+
+---
+
 ## [1.0.0] - 2026-03-02
 
 ### Added
