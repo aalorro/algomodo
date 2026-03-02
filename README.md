@@ -178,17 +178,16 @@ npm run preview
 
 ## Deployment
 
-Algomodo is automatically deployed to GitHub Pages via GitHub Actions on every push to the `main` branch.
+Algomodo uses a **Pull Request workflow** with automatic deployment from the `main` branch.
 
-**Workflow:**
-1. Make code changes in your local repository
-2. Commit and push to `main`: `git push origin main`
-3. GitHub Actions automatically builds the project and deploys to GitHub Pages
-4. Site is live at: **https://aalorro.github.io/algomodo**
+**Development Flow:**
+1. Create a feature branch: `git checkout -b feature/my-feature`
+2. Test locally: `npm run dev` (runs on http://localhost:5173/algomodo/)
+3. Push your branch and create a **Pull Request** to `main`
+4. Once merged to `main`, GitHub Actions automatically builds and deploys to GitHub Pages
+5. Site is live at: **https://aalorro.github.io/algomodo**
 
-**No manual build or push required!** The CI/CD pipeline handles everything.
-
-For more details, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ---
 

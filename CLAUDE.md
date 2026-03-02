@@ -21,7 +21,13 @@ npm run build
 npm run preview
 ```
 
-**Deployment:** Automatic via GitHub Actions on push to `main`. See [DEPLOYMENT.md](./DEPLOYMENT.md).
+**Deployment:** Automatic via GitHub Actions when PRs are merged to `main`. See [DEPLOYMENT.md](./DEPLOYMENT.md) for workflow details.
+
+**Workflow:**
+- Feature branches: Test locally with `npm run dev`
+- Create PR to `main`
+- When merged, GitHub Actions auto-deploys to https://aalorro.github.io/algomodo
+- Only the `main` branch triggers deployments
 
 **Build:**
 - Output: `dist/` folder (in .gitignore, never committed)
