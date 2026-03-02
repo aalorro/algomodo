@@ -38,6 +38,9 @@ import { sandpile } from './cellular/sandpile';
 import { fluidLite } from './cellular/fluid-lite';
 import { cyclicCA } from './cellular/cyclic-ca';
 import { briansBrain } from './cellular/brians-brain';
+import { ageTrails } from './cellular/age-trails';
+import { turingPatterns } from './cellular/turing-patterns';
+import { crystalGrowth } from './cellular/crystal-growth';
 import { dla } from './cellular/dla';
 import { elementaryCA } from './cellular/elementary-ca';
 import { orbital } from './animation/orbital';
@@ -100,6 +103,9 @@ export function initializeGenerators() {
   registerGenerator(fluidLite);
   registerGenerator(cyclicCA);
   registerGenerator(briansBrain);
+  registerGenerator(ageTrails);
+  registerGenerator(turingPatterns);
+  registerGenerator(crystalGrowth);
   registerGenerator(dla);
   registerGenerator(elementaryCA);
   registerGenerator(orbital);
@@ -131,7 +137,7 @@ export {
   guilloche, halftoneDots, phyllotaxis, meanderMaze, scribbleShading, bezierRibbonWeaves,
   gameOfLife, reactionDiffusion,
   forestFire, isingModel, edenGrowth, percolation, sandpile, fluidLite,
-  cyclicCA, briansBrain, dla, elementaryCA,
+  cyclicCA, briansBrain, ageTrails, turingPatterns, crystalGrowth, dla, elementaryCA,
   orbital, flowingParticles, flowFieldInk, attractorTrails, curlFluid, plasmaFeedback,
   kaleidoscope, waveInterference,
   voronoiCells, crackle, ridges, voronoiMosaic, delaunayMesh, centroidalVoronoi, contourBands,
