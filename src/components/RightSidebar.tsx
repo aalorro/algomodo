@@ -281,7 +281,7 @@ export const RightSidebar: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 overflow-hidden px-2 sm:px-4 md:px-6 lg:px-12">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 overflow-hidden pl-[30px] px-2 sm:px-4 md:px-6 lg:px-12">
       {/* Source Image */}
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">Source Image</label>
