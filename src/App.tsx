@@ -102,14 +102,14 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white overflow-hidden">
       {/* Desktop: Three-panel layout */}
-      <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
+      <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden gap-4">
         {/* Left Sidebar */}
         <div className="w-64 flex-shrink-0 overflow-hidden border-r border-gray-200 dark:border-gray-700">
           <LeftSidebar />
         </div>
 
         {/* Center Canvas */}
-        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-3 pl-3 pr-3">
+        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-6 px-6">
           <CanvasRenderer showFPS={showFPS} />
         </div>
 
