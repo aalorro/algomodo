@@ -25,7 +25,9 @@ import { geoSuperformula } from './geometry/geo-superformula';
 import { geoMoire } from './geometry/geo-moire';
 // import { geoApolloian } from './geometry/geo-apollonian'; // TODO: Fix incomplete generator
 import { geoIslamic } from './geometry/geo-islamic';
+import { geoTruchet } from './geometry/geo-truchet';
 import { stippling } from './plotter/stippling';
+import { contourLines } from './plotter/contour-lines';
 import { hatching } from './plotter/hatching';
 import { contourTopo } from './plotter/contour-topo';
 import { streamlines } from './plotter/streamlines';
@@ -100,9 +102,11 @@ export function initializeGenerators() {
   registerGenerator(geoMoire);
   // registerGenerator(geoApolloian); // TODO: Fix incomplete generator
   registerGenerator(geoIslamic);
+  registerGenerator(geoTruchet);
   registerGenerator(hatching);
   registerGenerator(stippling);
   registerGenerator(contourTopo);
+  registerGenerator(contourLines);
   registerGenerator(streamlines);
   registerGenerator(tspArt);
   registerGenerator(circlePacking);
@@ -154,8 +158,8 @@ export {
   fbmTerrain, domainWarpMarble,
   noisePerlin, noiseFbm, noiseTurbulence, noiseRidged, noiseDomainWarp,
   spirograph, lissajous, lsystem, mstWeb, chladni,
-  geoRosettes, geoSuperformula, geoMoire, geoIslamic,
-  stippling, hatching, contourTopo, streamlines, tspArt, circlePacking, offsetPaths,
+  geoRosettes, geoSuperformula, geoMoire, geoIslamic, geoTruchet,
+  stippling, hatching, contourTopo, contourLines, streamlines, tspArt, circlePacking, offsetPaths,
   guilloche, halftoneDots, phyllotaxis, meanderMaze, scribbleShading, bezierRibbonWeaves,
   gameOfLife, reactionDiffusion,
   forestFire, isingModel, edenGrowth, percolation, sandpile, fluidLite,
