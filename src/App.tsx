@@ -158,7 +158,7 @@ function App() {
         {/* Floating Left Arrow Button */}
         <button
           onClick={() => setLeftPanelVisible(!leftPanelVisible)}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-40 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all"
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-40 p-4 bg-blue-600 hover:bg-blue-700 text-white text-2xl rounded-full shadow-lg transition-all"
           title={leftPanelVisible ? 'Hide generators' : 'Show generators'}
         >
           {leftPanelVisible ? '←' : '→'}
@@ -167,7 +167,7 @@ function App() {
         {/* Floating Right Arrow Button */}
         <button
           onClick={() => setRightPanelVisible(!rightPanelVisible)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-40 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-40 p-4 bg-blue-600 hover:bg-blue-700 text-white text-2xl rounded-full shadow-lg transition-all"
           title={rightPanelVisible ? 'Hide controls' : 'Show controls'}
         >
           {rightPanelVisible ? '→' : '←'}

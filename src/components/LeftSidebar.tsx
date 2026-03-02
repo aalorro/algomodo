@@ -10,7 +10,7 @@ export const LeftSidebar: React.FC = () => {
   const families = getAllFamilies();
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden pr-[30px]">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <img src={logoImage} alt="Algomodo" className="h-[126px] w-auto max-w-full object-contain" />
