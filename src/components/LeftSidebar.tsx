@@ -71,13 +71,27 @@ export const LeftSidebar: React.FC = () => {
           <p>Open Source</p>
         </div>
         
-        {/* About and Privacy Links */}
+        {/* Support Development Button */}
+        <button
+          onClick={() => setOpenModal('donation')}
+          className="w-full px-3 py-2 text-xs font-semibold bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded hover:from-blue-700 hover:to-blue-800 transition text-center"
+        >
+          💙 Support Development
+        </button>
+        
+        {/* About, Changelog and Privacy Links */}
         <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setOpenModal('about')}
             className="flex-1 px-2 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
           >
             About
+          </button>
+          <button
+            onClick={() => setOpenModal('changelog')}
+            className="flex-1 px-2 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
+          >
+            Changelog
           </button>
           <button
             onClick={() => setOpenModal('privacy')}

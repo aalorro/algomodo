@@ -63,7 +63,7 @@ export const useStore = create<AppState>()(
       interactionEnabled: false,
       isAnimating: false,
       animationFps: 30,
-      openModal: null as 'about' | 'privacy' | null,
+      openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | null,
 
       // PostFX
       postFX: {

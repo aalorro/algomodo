@@ -147,7 +147,7 @@ export interface AppState {
   interactionEnabled: boolean;
   isAnimating: boolean;
   animationFps: number;
-  openModal: 'about' | 'privacy' | null;
+  openModal: 'about' | 'privacy' | 'changelog' | 'donation' | null;
 
   // PostFX
   postFX: Record<string, any>;
