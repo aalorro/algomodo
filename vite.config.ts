@@ -8,7 +8,7 @@ export default defineConfig({
     target: 'esnext',
     minify: 'terser',
     assetsInlineLimit: 4096,
-    outDir: 'docs',
+    outDir: 'dist',
     rollupOptions: {
       output: {
         manualChunks: {
