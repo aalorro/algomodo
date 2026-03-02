@@ -4,7 +4,7 @@ import { getAllFamilies, getGeneratorsByFamily } from '../core/registry';
 
 export const LeftSidebar: React.FC = () => {
   const [expandedFamily, setExpandedFamily] = useState<string | null>('noise');
-  const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator } = useStore();
+  const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator, setOpenModal } = useStore();
 
   const families = getAllFamilies();
 
@@ -64,10 +64,28 @@ export const LeftSidebar: React.FC = () => {
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500">
-        <p>Deterministic</p>
-        <p>Offline</p>
-        <p>Open Source</p>
+      <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+        <div className="text-xs text-gray-400 dark:text-gray-500 space-y-1">
+          <p>Deterministic</p>
+          <p>Offline</p>
+          <p>Open Source</p>
+        </div>
+        
+        {/* About and Privacy Links */}
+        <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => setOpenModal('about')}
+            className="flex-1 px-2 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
+          >
+            About
+          </button>
+          <button
+            onClick={() => setOpenModal('privacy')}
+            className="flex-1 px-2 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
+          >
+            Privacy
+          </button>
+        </div>
       </div>
     </div>
   );

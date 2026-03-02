@@ -63,6 +63,7 @@ export const useStore = create<AppState>()(
       interactionEnabled: false,
       isAnimating: false,
       animationFps: 30,
+      openModal: null as 'about' | 'privacy' | null,
 
       // PostFX
       postFX: {
@@ -234,6 +235,8 @@ export const useStore = create<AppState>()(
         set((state) => ({
           postFX: { ...state.postFX, [key]: value },
         })),
+
+      setOpenModal: (modal) => set({ openModal: modal }),
 
       pushToHistory: () => {
         const state = get();

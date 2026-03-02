@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { CanvasRenderer } from './components/CanvasRenderer';
+import { AboutModal } from './components/AboutModal';
+import { PrivacyModal } from './components/PrivacyModal';
 import { initializeGenerators } from './generators';
 import { getAllGenerators } from './core/registry';
 import { useStore } from './store';
@@ -10,7 +12,7 @@ import { useStore } from './store';
 initializeGenerators();
 
 function App() {
-  const { showFPS, theme, undo, redo, selectGenerator } = useStore();
+  const { showFPS, theme, undo, redo, selectGenerator, openModal } = useStore();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -67,6 +69,10 @@ function App() {
         </p>
         <p className="text-sm font-bold text-white">v1.0.0</p>
       </div>
+
+      {/* Modals */}
+      {openModal === 'about' && <AboutModal />}
+      {openModal === 'privacy' && <PrivacyModal />}
     </div>
   );
 }

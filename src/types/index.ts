@@ -147,6 +147,7 @@ export interface AppState {
   interactionEnabled: boolean;
   isAnimating: boolean;
   animationFps: number;
+  openModal: 'about' | 'privacy' | null;
 
   // PostFX
   postFX: Record<string, any>;
@@ -182,6 +183,7 @@ export interface AppState {
   setAnimating: (animating: boolean) => void;
   setAnimationFps: (fps: number) => void;
   updatePostFX: (key: string, value: any) => void;
+  setOpenModal: (modal: 'about' | 'privacy' | null) => void;
 
   // History (undo/redo)
   historyPast: HistorySnapshot[];
