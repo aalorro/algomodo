@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { CanvasRenderer } from './components/CanvasRenderer';
@@ -14,6 +14,7 @@ import { useStore } from './store';
 initializeGenerators();
 
 function App() {
+  const [mobileTab, setMobileTab] = useState<'generators' | 'canvas' | 'controls'>('canvas');
   const { showFPS, theme, undo, redo, selectGenerator, openModal } = useStore();
 
   useEffect(() => {
@@ -46,30 +47,88 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white overflow-hidden">
-      {/* Main three-panel row */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* Desktop: Three-panel layout */}
+      <div className="hidden lg:flex flex-1 min-h-0 overflow-hidden">
         {/* Left Sidebar */}
-        <div className="w-64 flex-shrink-0 overflow-hidden">
+        <div className="w-64 flex-shrink-0 overflow-hidden border-r border-gray-200 dark:border-gray-700">
           <LeftSidebar />
         </div>
 
-        {/* Center Canvas — square based on viewport height */}
-        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-3 pl-3 pr-[50px]">
+        {/* Center Canvas */}
+        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-3 pl-3 pr-3">
           <CanvasRenderer showFPS={showFPS} />
         </div>
 
-        {/* Right Sidebar — fills remaining horizontal space */}
-        <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+        {/* Right Sidebar */}
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col border-l border-gray-200 dark:border-gray-700">
           <RightSidebar />
         </div>
       </div>
 
-      {/* Footer — own frame, full width across all panels */}
-      <div className="flex-shrink-0 px-6 py-2 border-t border-gray-700 bg-gray-800 dark:bg-gray-900 flex items-center justify-center gap-6">
-        <p className="text-sm font-bold text-white">
-          &copy; 2026 ArtMondo. All rights reserved. &mdash; Algomodo is open-source, licensed under MIT.
+      {/* Mobile: Tabbed layout */}
+      <div className="lg:hidden flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Tab Navigation */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <button
+            onClick={() => setMobileTab('generators')}
+            className={`flex-1 px-4 py-3 text-sm font-semibold transition ${
+              mobileTab === 'generators'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-gray-600 dark:text-gray-400'
+            }`}
+          >
+            Generators
+          </button>
+          <button
+            onClick={() => setMobileTab('canvas')}
+            className={`flex-1 px-4 py-3 text-sm font-semibold transition ${
+              mobileTab === 'canvas'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-gray-600 dark:text-gray-400'
+            }`}
+          >
+            Canvas
+          </button>
+          <button
+            onClick={() => setMobileTab('controls')}
+            className={`flex-1 px-4 py-3 text-sm font-semibold transition ${
+              mobileTab === 'controls'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-gray-600 dark:text-gray-400'
+            }`}
+          >
+            Controls
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <div className="flex-1 overflow-hidden">
+          {mobileTab === 'generators' && (
+            <div className="h-full overflow-hidden">
+              <LeftSidebar />
+            </div>
+          )}
+          {mobileTab === 'canvas' && (
+            <div className="h-full flex items-center justify-center p-3 bg-black">
+              <div className="w-full max-w-md aspect-square">
+                <CanvasRenderer showFPS={showFPS} />
+              </div>
+            </div>
+          )}
+          {mobileTab === 'controls' && (
+            <div className="h-full overflow-y-auto">
+              <RightSidebar />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer — responsive */}
+      <div className="flex-shrink-0 px-3 md:px-6 py-2 border-t border-gray-300 dark:border-gray-700 bg-gray-800 dark:bg-gray-900 flex flex-col md:flex-row items-center justify-center gap-2 md:gap-6 text-center md:text-left">
+        <p className="text-xs md:text-sm font-bold text-white">
+          &copy; 2026 ArtMondo &mdash; MIT License
         </p>
-        <p className="text-sm font-bold text-white">v1.0.0</p>
+        <p className="text-xs md:text-sm font-bold text-gray-400">v1.0.0</p>
       </div>
 
       {/* Modals */}
