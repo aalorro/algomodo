@@ -1,0 +1,74 @@
+import React, { useState } from 'react';
+import { useStore } from '../store';
+import { getAllFamilies, getGeneratorsByFamily } from '../core/registry';
+
+export const LeftSidebar: React.FC = () => {
+  const [expandedFamily, setExpandedFamily] = useState<string | null>('noise');
+  const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator } = useStore();
+
+  const families = getAllFamilies();
+
+  return (
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <img src="/algomodo-logo.png" alt="Algomodo" className="h-[126px] w-auto max-w-full object-contain" />
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Algorithmic Art Generator</p>
+      </div>
+
+      {/* Families and Generators */}
+      <div className="flex-1 overflow-hidden">
+        {families.map((family) => {
+          const generators = getGeneratorsByFamily(family.id);
+          const isExpanded = expandedFamily === family.id;
+
+          return (
+            <div key={family.id} className="border-b border-gray-200 dark:border-gray-800">
+              {/* Family Header */}
+              <button
+                onClick={() => setExpandedFamily(isExpanded ? null : family.id)}
+                className={`w-full px-4 py-3 text-left text-sm font-semibold transition ${
+                  isExpanded
+                    ? 'bg-gray-100 dark:bg-gray-800 text-blue-600 dark:text-blue-400'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                <span className="inline-block mr-2">{isExpanded ? '▼' : '▶'}</span>
+                {family.name}
+              </button>
+
+              {/* Generators */}
+              {isExpanded && (
+                <div className="bg-gray-50 dark:bg-gray-950">
+                  {generators.map((gen) => (
+                    <button
+                      key={gen.id}
+                      onClick={() => {
+                        selectFamily(family.id);
+                        selectGenerator(gen.id);
+                      }}
+                      className={`w-full px-6 py-2 text-left text-xs transition ${
+                        selectedGeneratorId === gen.id
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
+                      }`}
+                    >
+                      {gen.styleName}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500">
+        <p>Deterministic</p>
+        <p>Offline</p>
+        <p>Open Source</p>
+      </div>
+    </div>
+  );
+};
