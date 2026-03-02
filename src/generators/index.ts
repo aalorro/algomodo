@@ -10,11 +10,21 @@ import { ditherImage } from './image/dither-image';
 import { asciiArt } from './image/ascii-art';
 import { fbmTerrain } from './noise/fbm-terrain';
 import { domainWarpMarble } from './noise/domain-warp-marble';
+import { noisePerlin } from './noise/noise-perlin';
+import { noiseFbm } from './noise/noise-fbm';
+import { noiseTurbulence } from './noise/noise-turbulence';
+import { noiseRidged } from './noise/noise-ridged';
+import { noiseDomainWarp } from './noise/noise-domain-warp';
 import { spirograph } from './geometry/spirograph';
 import { lissajous } from './geometry/lissajous';
 import { lsystem } from './geometry/lsystem';
 import { mstWeb } from './geometry/mst-web';
 import { chladni } from './geometry/chladni';
+import { geoRosettes } from './geometry/geo-rosettes';
+import { geoSuperformula } from './geometry/geo-superformula';
+import { geoMoire } from './geometry/geo-moire';
+import { geoApolloian } from './geometry/geo-apollonian';
+import { geoIslamic } from './geometry/geo-islamic';
 import { stippling } from './plotter/stippling';
 import { hatching } from './plotter/hatching';
 import { contourTopo } from './plotter/contour-topo';
@@ -75,11 +85,21 @@ export function initializeGenerators() {
   registerGenerator(asciiArt);
   registerGenerator(fbmTerrain);
   registerGenerator(domainWarpMarble);
+  registerGenerator(noisePerlin);
+  registerGenerator(noiseFbm);
+  registerGenerator(noiseTurbulence);
+  registerGenerator(noiseRidged);
+  registerGenerator(noiseDomainWarp);
   registerGenerator(spirograph);
   registerGenerator(lissajous);
   registerGenerator(lsystem);
   registerGenerator(mstWeb);
   registerGenerator(chladni);
+  registerGenerator(geoRosettes);
+  registerGenerator(geoSuperformula);
+  registerGenerator(geoMoire);
+  registerGenerator(geoApolloian);
+  registerGenerator(geoIslamic);
   registerGenerator(hatching);
   registerGenerator(stippling);
   registerGenerator(contourTopo);
@@ -132,7 +152,9 @@ export function initializeGenerators() {
 export {
   pixelSort, mosaic, halftone, dataMosh, lumaMesh, opticalFlow, linoCut, ditherImage, asciiArt,
   fbmTerrain, domainWarpMarble,
+  noisePerlin, noiseFbm, noiseTurbulence, noiseRidged, noiseDomainWarp,
   spirograph, lissajous, lsystem, mstWeb, chladni,
+  geoRosettes, geoSuperformula, geoMoire, geoApolloian, geoIslamic,
   stippling, hatching, contourTopo, streamlines, tspArt, circlePacking, offsetPaths,
   guilloche, halftoneDots, phyllotaxis, meanderMaze, scribbleShading, bezierRibbonWeaves,
   gameOfLife, reactionDiffusion,

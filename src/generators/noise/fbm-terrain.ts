@@ -63,6 +63,24 @@ const parameterSchema: ParameterSchema = {
     help: 'Size of warping pattern',
     group: 'Composition',
   },
+  animMode: {
+    name: 'Anim Mode',
+    type: 'select',
+    options: ['drift', 'rotate', 'pulse'],
+    default: 'drift',
+    help: 'drift: pan through the noise field | rotate: slowly spin the sample coordinates | pulse: oscillating zoom breath',
+    group: 'Flow/Motion',
+  },
+  speed: {
+    name: 'Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3.0,
+    step: 0.1,
+    default: 0.5,
+    help: 'Animation speed multiplier',
+    group: 'Flow/Motion',
+  },
   contrast: {
     name: 'Contrast',
     type: 'number',
@@ -99,10 +117,12 @@ export const fbmTerrain: Generator = {
     warpScale: 2,
     contrast: 1,
     colorMode: 'height',
+    animMode: 'drift',
+    speed: 0.5,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
   renderWebGL2(gl, params, seed, palette, quality, time) {
     const width = gl.canvas.width;
@@ -204,18 +224,44 @@ export const fbmTerrain: Generator = {
     gl.deleteProgram(program);
   },
 
-  renderCanvas2D(ctx, params, seed, palette, quality) {
+  renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noise = new SimplexNoise(seed);
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
+
+    const animMode = params.animMode ?? 'drift';
+    const speed    = params.speed    ?? 0.5;
+    const t = time * speed;
+
+    // Precompute rotation for 'rotate' mode
+    const rotAngle = animMode === 'rotate' ? t * 0.1 : 0;
+    const rotCos = Math.cos(rotAngle);
+    const rotSin = Math.sin(rotAngle);
+    // Noise-space center (midpoint of 4*scale range)
+    const nCenter = 2 * params.scale;
+
+    // Scale multiplier for 'pulse' mode — oscillates ±20 %
+    const pulseMul = animMode === 'pulse' ? 1 + 0.2 * Math.sin(t * 0.4) : 1;
 
     const imageData = ctx.createImageData(width, height);
     const data = imageData.data;
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const nx = (x / width) * 4 * params.scale;
-        const ny = (y / height) * 4 * params.scale;
+        let nx = (x / width) * 4 * params.scale * pulseMul;
+        let ny = (y / height) * 4 * params.scale * pulseMul;
+
+        if (animMode === 'drift') {
+          // Pan through noise field at a gentle angle so X and Y drift differ
+          nx += t * 0.04;
+          ny += t * 0.027;
+        } else if (animMode === 'rotate') {
+          // Rotate sample coordinates around the noise-space centre
+          const dx = nx - nCenter, dy = ny - nCenter;
+          nx = nCenter + dx * rotCos - dy * rotSin;
+          ny = nCenter + dx * rotSin + dy * rotCos;
+        }
+        // 'pulse' already applied via pulseMul above
 
         let value = noise.fbm(nx, ny, params.octaves, params.lacunarity, params.gain);
         value = Math.pow(value, 1 / params.contrast);
