@@ -4,8 +4,8 @@ import { getAllFamilies, getGeneratorsByFamily } from '../core/registry';
 import logoImage from '../assets/algomodo-logo.png';
 
 export const LeftSidebar: React.FC = () => {
-  const [expandedFamily, setExpandedFamily] = useState<string | null>('noise');
   const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator, setOpenModal } = useStore();
+  const [expandedFamily, setExpandedFamily] = useState<string | null>(selectedFamilyId);
 
   const families = getAllFamilies();
 
@@ -48,12 +48,13 @@ export const LeftSidebar: React.FC = () => {
                         selectFamily(family.id);
                         selectGenerator(gen.id);
                       }}
-                      className={`w-full px-6 py-2 text-left text-xs transition ${
+                      className={`w-full px-6 py-2 text-left text-xs transition border-l-4 ${
                         selectedGeneratorId === gen.id
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
+                          ? 'bg-blue-600 text-white border-l-blue-300 font-semibold shadow-md'
+                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200 border-l-transparent'
                       }`}
                     >
+                      <span className="inline-block mr-2">{selectedGeneratorId === gen.id ? '★' : ' '}</span>
                       {gen.styleName}
                     </button>
                   ))}
