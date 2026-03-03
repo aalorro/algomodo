@@ -41,7 +41,7 @@ export const AboutModal: React.FC = () => {
 
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Version</h3>
-            <p>v1.0.0</p>
+            <p>v1.1.0</p>
           </div>
 
           <div>

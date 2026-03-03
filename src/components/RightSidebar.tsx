@@ -28,6 +28,8 @@ export const RightSidebar: React.FC = () => {
     setShowFPS,
     performanceMode,
     setPerformanceMode,
+    useWebGL,
+    setUseWebGL,
     isAnimating,
     setAnimating,
     animationFps,
@@ -446,7 +448,8 @@ export const RightSidebar: React.FC = () => {
         {activeTab === 'params' && <ParameterControls generator={generator} />}
 
         {activeTab === 'presets' && (
-          <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          <div className="flex flex-col h-full">
+            <div className="px-4 py-4 space-y-3 overflow-y-auto pb-[30px] flex-1">
             {/* Save section */}
             {!showSaveForm ? (
               <button
@@ -530,11 +533,13 @@ export const RightSidebar: React.FC = () => {
                 ))}
               </div>
             )}
+            </div>
           </div>
         )}
 
         {activeTab === 'export' && (
-          <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          <div className="flex flex-col h-full">
+            <div className="px-4 py-4 space-y-3 overflow-y-auto pb-[30px] flex-1">
             <div>
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-1">Filename Prefix</label>
               <input
@@ -634,11 +639,13 @@ export const RightSidebar: React.FC = () => {
                 <p>DPR: {canvasSettings.devicePixelRatio}x</p>
               </div>
             </div>
+            </div>
           </div>
         )}
 
         {activeTab === 'settings' && (
-          <div className="px-4 py-4 space-y-4">
+          <div className="flex flex-col h-full">
+            <div className="px-4 py-4 space-y-4 overflow-y-auto pb-[30px] flex-1">
             {/* Theme toggle */}
             <div>
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
@@ -697,6 +704,19 @@ export const RightSidebar: React.FC = () => {
                 Performance Mode
               </label>
               <p className="text-xs text-gray-400 dark:text-gray-500">Reduces quality while interacting</p>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-2">
+                <input
+                  type="checkbox"
+                  checked={useWebGL}
+                  onChange={(e) => setUseWebGL(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                Use WebGL Rendering
+              </label>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Optional WebGL2 acceleration (if supported)</p>
             </div>
 
             <div>
@@ -780,7 +800,8 @@ export const RightSidebar: React.FC = () => {
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
                 Version
               </label>
-              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.0.0</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.1.0</p>
+            </div>
             </div>
           </div>
         )}

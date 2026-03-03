@@ -59,10 +59,11 @@ export const useStore = create<AppState>()(
       quality: 'balanced',
       performanceMode: false,
       useWebGPU: false,
+      useWebGL: false,
       showFPS: false,
       interactionEnabled: false,
       isAnimating: false,
-      animationFps: 30,
+      animationFps: 24,
       openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | null,
 
       // PostFX
@@ -229,6 +230,8 @@ export const useStore = create<AppState>()(
       setPerformanceMode: (enabled) => set({ performanceMode: enabled }),
 
       setUseWebGPU: (enabled) => set({ useWebGPU: enabled }),
+
+      setUseWebGL: (enabled) => set({ useWebGL: enabled }),
 
       setShowFPS: (show) => set({ showFPS: show }),
 
