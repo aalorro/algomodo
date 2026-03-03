@@ -7,11 +7,9 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 // ---------------------------------------------------------------------------
-// States: 0=OFF, 1..dyingStates=DYING (1=freshest), dyingStates+1=ON
-// We always use dyingStates+2 distinct values.
+// States: 0 = OFF, 1..dyingStates = DYING (1 = freshest), dyingStates+1 = ON
 // ---------------------------------------------------------------------------
-
-function onState(dyingStates: number): number { return dyingStates + 1; }
+function onState(ds: number): number { return ds + 1; }
 
 // ---------------------------------------------------------------------------
 // Persistent animation state
@@ -20,8 +18,7 @@ let _brainAnim: {
   key: string;
   grid: Uint8Array;
   next: Uint8Array;
-  // age: positive = consecutive ON frames, negative = frames since last ON
-  age: Int16Array;
+  age: Int16Array;   // >0: consecutive ON frames; <0: frames since last ON
   size: number;
 } | null = null;
 
@@ -36,19 +33,23 @@ function initBrain(seed: number, size: number, density: number, dyingStates: num
     if (r < density) {
       grid[i] = ON; age[i] = 1;
     } else if (r < density * (1 + dyingStates)) {
-      // Spread initial dying cells across all dying states
-      grid[i] = 1 + ((rng.random() * dyingStates) | 0);
+      // Distribute initial dying cells uniformly across all dying states.
+      // For dyingStates === 1 this always gives 1 (no ambiguity).
+      grid[i] = dyingStates === 1
+        ? 1
+        : 1 + ((rng.random() * dyingStates) | 0);
     }
+    // else: OFF — stays 0
   }
   return { grid, next: new Uint8Array(N), age };
 }
 
 // ---------------------------------------------------------------------------
 // Step — generalised excitable automaton
-//   ON → DYING(1)
-//   DYING(k) → DYING(k+1) … DYING(dyingStates) → OFF
-//   OFF → ON  iff  birthMin ≤ ON-neighbours ≤ birthMax
-// neighbourhood: 'moore' = 8-cell, 'von-neumann' = 4-cell
+//   ON           → DYING(1)
+//   DYING(k)     → DYING(k+1)  …  DYING(dyingStates) → OFF
+//   OFF          → ON  iff  birthMin ≤ ON-neighbours ≤ birthMax
+// neighbourhood: 'moore' = 8-cell, 'von-neumann' = 4-cell (periodic boundary)
 // ---------------------------------------------------------------------------
 function stepBrain(
   grid: Uint8Array, next: Uint8Array, age: Int16Array,
@@ -59,14 +60,14 @@ function stepBrain(
   const ON = onState(dyingStates);
   const useMoore = neighborhood !== 'von-neumann';
 
+  // --- compute next state (reads grid, writes next; grid untouched) ---------
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const s = grid[y * size + x];
       if (s === ON) {
-        next[y * size + x] = 1; // enter first dying state
+        next[y * size + x] = 1;                                      // → DYING(1)
       } else if (s > 0) {
-        // Advance through dying states
-        next[y * size + x] = s < dyingStates ? s + 1 : 0;
+        next[y * size + x] = s < dyingStates ? s + 1 : 0;           // advance or → OFF
       } else {
         // OFF — count ON neighbours
         let count = 0;
@@ -78,7 +79,6 @@ function stepBrain(
             }
           }
         } else {
-          // Von Neumann — only cardinal directions
           if (grid[((y - 1 + size) % size) * size + x] === ON) count++;
           if (grid[((y + 1)        % size) * size + x] === ON) count++;
           if (grid[y * size + ((x - 1 + size) % size)] === ON) count++;
@@ -89,18 +89,21 @@ function stepBrain(
     }
   }
 
+  // --- update age (reads OLD grid + next, writes age) ----------------------
   const N = size * size;
   for (let i = 0; i < N; i++) {
-    if (next[i] === ON) {
-      age[i] = age[i] <= 0 ? 1 : Math.min(age[i] + 1, 32767);
-    } else if (next[i] === 0 && grid[i] !== 0) {
-      // Just transitioned off
-      age[i] = -1;
-    } else if (next[i] === 0) {
-      age[i] = age[i] >= 0 ? -1 : Math.max(age[i] - 1, -60);
+    const nv = next[i];
+    const ov = grid[i];
+    if (nv === ON) {
+      age[i] = ov === ON ? Math.min(age[i] + 1, 32767) : 1;
+    } else if (nv === 0) {
+      age[i] = ov !== 0 ? -1 : Math.max(age[i] >= 0 ? -1 : age[i] - 1, -60);
     }
-    grid[i] = next[i];
+    // dying states: leave age unchanged (still shows the last ON age value)
   }
+
+  // --- copy next → grid (atomic) ------------------------------------------
+  grid.set(next);
 }
 
 // ---------------------------------------------------------------------------
@@ -115,11 +118,6 @@ function renderBrain(
   const colors = palette.colors.map(hexToRgb);
   const ON = onState(dyingStates);
 
-  // Classic hardcoded colors
-  const cOnClassic:    [number, number, number] = [240, 240, 255];
-  const cDyingClassic: [number, number, number] = [80,  80,  200];
-  const cOffClassic:   [number, number, number] = [8,   8,   16];
-
   const img = ctx.createImageData(w, h);
   const d = img.data;
   const cw = w / size, ch = h / size;
@@ -128,66 +126,70 @@ function renderBrain(
     const y0 = Math.floor(cy * ch), y1 = Math.floor((cy + 1) * ch);
     for (let cx = 0; cx < size; cx++) {
       const idx = cy * size + cx;
-      const s = grid[idx];
-      const a = age[idx];
-      let r: number, g: number, b: number;
+      const s   = grid[idx];
+      const a   = age[idx];
+      let rv: number, gv: number, bv: number;
 
       if (colorMode === 'classic') {
-        if (s === ON)      [r, g, b] = cOnClassic;
-        else if (s > 0)    [r, g, b] = cDyingClassic;
-        else               [r, g, b] = cOffClassic;
+        if (s === ON) {
+          rv = 240; gv = 240; bv = 255;           // bright white-blue
+        } else if (s > 0) {
+          rv = 80;  gv = 80;  bv = 200;           // mid blue (dying)
+        } else {
+          rv = 8;   gv = 8;   bv = 16;            // near-black (off)
+        }
       } else if (colorMode === 'palette') {
         if (s === ON) {
-          [r, g, b] = colors[colors.length - 1];
+          [rv, gv, bv] = colors[colors.length - 1];
         } else if (s > 0) {
-          // Dying: fade from last to first color based on dying progress
-          const t = 1 - (s - 1) / dyingStates;
+          // Dying: linearly interpolate from last-palette (fresh) toward
+          // first-palette (old). t ranges from (ds)/(ds+1) down to 1/(ds+1).
+          const t  = (dyingStates - s + 1) / (dyingStates + 1);
           const ci = t * (colors.length - 1);
           const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
-          const f = ci - i0;
-          r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
-          g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
-          b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
+          const f  = ci - i0;
+          rv = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
+          gv = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
+          bv = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
         } else {
-          [r, g, b] = colors[0];
+          [rv, gv, bv] = colors[0];
         }
       } else if (colorMode === 'age') {
         if (s === ON) {
-          const t = Math.min(1, a / 80);
+          const t  = Math.min(1, a / 80);
           const ci = t * (colors.length - 1);
           const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
-          const f = ci - i0;
-          r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
-          g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
-          b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
+          const f  = ci - i0;
+          rv = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
+          gv = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
+          bv = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
         } else if (s > 0) {
-          // Dying — dimmed midpoint color
           const mid = colors[(colors.length / 2) | 0];
-          r = (mid[0] * 0.6) | 0; g = (mid[1] * 0.6) | 0; b = (mid[2] * 0.6) | 0;
-        } else { r = 8; g = 8; b = 8; }
+          rv = (mid[0] * 0.55) | 0; gv = (mid[1] * 0.55) | 0; bv = (mid[2] * 0.55) | 0;
+        } else {
+          rv = 8; gv = 8; bv = 8;
+        }
       } else {
-        // trails — ON bright, dying dim, recently-off fading
-        const aliveColor = colors[colors.length - 1];
+        // trails
+        const ac = colors[colors.length - 1];
         if (s === ON) {
-          [r, g, b] = aliveColor;
+          [rv, gv, bv] = ac;
         } else if (s > 0) {
-          const t = 1 - (s - 1) / dyingStates;
-          r = (aliveColor[0] * t * 0.5) | 0;
-          g = (aliveColor[1] * t * 0.5) | 0;
-          b = (aliveColor[2] * t * 0.5) | 0;
+          const t = (dyingStates - s + 1) / (dyingStates + 1);
+          rv = (ac[0] * t * 0.5) | 0; gv = (ac[1] * t * 0.5) | 0; bv = (ac[2] * t * 0.5) | 0;
         } else if (a < 0) {
           const t = Math.max(0, 1 + a / 30);
-          r = (8 + (aliveColor[0] - 8) * t) | 0;
-          g = (8 + (aliveColor[1] - 8) * t) | 0;
-          b = (8 + (aliveColor[2] - 8) * t) | 0;
-        } else { r = 8; g = 8; b = 8; }
+          rv = (8 + (ac[0] - 8) * t) | 0; gv = (8 + (ac[1] - 8) * t) | 0; bv = (8 + (ac[2] - 8) * t) | 0;
+        } else {
+          rv = 8; gv = 8; bv = 8;
+        }
       }
 
       const x0 = Math.floor(cx * cw), x1 = Math.floor((cx + 1) * cw);
       for (let py = y0; py < y1; py++) {
         for (let px = x0; px < x1; px++) {
-          const i = (py * w + px) * 4;
-          d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;
+          const pi = (py * w + px) * 4;
+          d[pi] = rv; d[pi + 1] = gv; d[pi + 2] = bv; d[pi + 3] = 255;
         }
       }
     }
@@ -206,7 +208,7 @@ const parameterSchema: ParameterSchema = {
   },
   initialDensity: {
     name: 'Initial ON Density',
-    type: 'number', min: 0.05, max: 0.6, step: 0.05, default: 0.25,
+    type: 'number', min: 0.05, max: 0.5, step: 0.05, default: 0.25,
     help: 'Fraction of cells starting ON; an equal total fraction start in random dying states',
     group: 'Composition',
   },
@@ -219,7 +221,7 @@ const parameterSchema: ParameterSchema = {
   dyingStates: {
     name: 'Dying States',
     type: 'number', min: 1, max: 5, step: 1, default: 1,
-    help: 'Refractory period — number of intermediate dying states before a cell returns to OFF. 1 = classic Brian\'s Brain; higher values slow wave propagation and produce longer, more visible afterglows',
+    help: "Refractory period length. 1 = classic Brian's Brain. Higher values slow wave speed and produce longer visible afterglows and spiral waves instead of bullet-like gliders.",
     group: 'Geometry',
   },
   birthMin: {
@@ -231,7 +233,7 @@ const parameterSchema: ParameterSchema = {
   birthMax: {
     name: 'Birth Max',
     type: 'number', min: 1, max: 8, step: 1, default: 2,
-    help: 'Maximum ON neighbours allowed for birth (classic = 2; increasing creates denser, more turbulent patterns)',
+    help: 'Maximum ON neighbours for birth (classic = 2; increasing creates denser turbulent patterns)',
     group: 'Geometry',
   },
   neighborhood: {
@@ -239,7 +241,7 @@ const parameterSchema: ParameterSchema = {
     type: 'select',
     options: ['moore', 'von-neumann'],
     default: 'moore',
-    help: 'moore: 8-cell diagonal+cardinal (classic) | von-neumann: 4-cell cardinal only — produces different glider shapes and slower, more directional wave propagation',
+    help: 'moore: 8-cell diagonal+cardinal (classic) | von-neumann: 4-cell cardinal only — diamond wavefronts and different glider families',
     group: 'Geometry',
   },
   stepsPerFrame: {
@@ -252,7 +254,7 @@ const parameterSchema: ParameterSchema = {
     type: 'select',
     options: ['classic', 'palette', 'age', 'trails'],
     default: 'classic',
-    help: 'classic: white/blue/dark | palette: ON/dying/OFF mapped to palette gradient | age: ON cells tinted by consecutive ON streak | trails: dying/recently-dead cells leave fading glow',
+    help: 'classic: white/blue/dark | palette: ON/dying/OFF mapped to palette gradient | age: ON cells tinted by consecutive firing streak | trails: recently-dead cells leave a fading glow',
     group: 'Color',
   },
 };
@@ -263,7 +265,7 @@ export const briansBrain: Generator = {
   styleName: "Brian's Brain",
   definition: "Brian Silverman's generalised excitable automaton — configurable refractory period, birth threshold range, and neighbourhood type; produces perpetually moving gliders, spirals, and compound oscillators",
   algorithmNotes:
-    "Generalised excitable CA with dyingStates refractory states and configurable birth threshold. States: ON (firing) → DYING(1) → DYING(2) → … → DYING(dyingStates) → OFF. An OFF cell becomes ON iff birthMin ≤ ON-neighbours ≤ birthMax (classic: both = 2). Classic dyingStates=1 with Moore neighbourhood gives Brian's Brain: the strict two-neighbour birth rule prevents still lifes — every stable structure must move. Increasing dyingStates to 2–3 extends the refractory period, slowing wave velocity and producing longer visible trails of dying cells; this creates richer spiral waves rather than bullet-like gliders. Widening birthMin–birthMax (e.g. 1–3) allows denser birth conditions, producing turbulent boiling patterns. Von Neumann neighbourhood restricts propagation to cardinal directions, yielding diamond-shaped wavefronts and different glider families.",
+    "Generalised excitable CA with dyingStates refractory states and configurable birth threshold. States: ON → DYING(1) → … → DYING(dyingStates) → OFF. OFF → ON iff birthMin ≤ ON-neighbours ≤ birthMax (classic: both = 2). dyingStates=1 with Moore neighbourhood is classic Brian's Brain — the strict two-neighbour birth rule prevents still lifes; every structure must move. Increasing dyingStates to 2–3 lengthens the refractory period, slowing wave velocity and producing richer spiral waves. Widening birthMin–birthMax (e.g. 1–3) creates turbulent boiling patterns. Von Neumann neighbourhood restricts propagation to cardinal directions, yielding diamond wavefronts.",
   parameterSchema,
   defaultParams: {
     gridSize: 128, initialDensity: 0.25, warmupSteps: 30,
@@ -273,13 +275,13 @@ export const briansBrain: Generator = {
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const size        = Math.max(16, (params.gridSize     ?? 128) | 0);
-    const density     = params.initialDensity ?? 0.25;
+    const size        = Math.max(16, (params.gridSize      ?? 128) | 0);
+    const density     = Math.min(0.5, params.initialDensity ?? 0.25);
     const dyingStates = Math.max(1, Math.min(5, (params.dyingStates ?? 1) | 0));
     const birthMin    = Math.max(1, (params.birthMin ?? 2) | 0);
     const birthMax    = Math.max(birthMin, (params.birthMax ?? 2) | 0);
     const nbhood      = params.neighborhood || 'moore';
-    const colorMode   = params.colorMode || 'classic';
+    const colorMode   = params.colorMode    || 'classic';
 
     if (time === 0) {
       const { grid, next, age } = initBrain(seed, size, density, dyingStates);
@@ -294,6 +296,7 @@ export const briansBrain: Generator = {
       const { grid, next, age } = initBrain(seed, size, density, dyingStates);
       _brainAnim = { key, grid, next, age, size };
     }
+
     const spf = Math.max(1, (params.stepsPerFrame ?? 1) | 0);
     for (let s = 0; s < spf; s++) {
       stepBrain(_brainAnim.grid, _brainAnim.next, _brainAnim.age, _brainAnim.size, dyingStates, birthMin, birthMax, nbhood);
