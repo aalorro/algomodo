@@ -14,12 +14,9 @@ interface Source { x: number; y: number; channel: number; }
 
 let _fluidAnim: {
   key: string;
-  // Single-channel density
   d: Float32Array; d0: Float32Array;
-  // Multi-channel RGB dye (always allocated; used when dyeChannels === 'multi')
   dr: Float32Array; dg: Float32Array; db: Float32Array;
   dr0: Float32Array; dg0: Float32Array; db0: Float32Array;
-  // Temperature for buoyancy
   t: Float32Array; t0: Float32Array;
   size: number;
   vortices: Vortex[];
@@ -38,10 +35,11 @@ function initFluid(seed: number, size: number, vortexCount: number, sourceCount:
 
   const vortices: Vortex[] = [];
   for (let i = 0; i < vortexCount; i++) {
+    // Concentrate vortices in the center third to keep them interacting
     vortices.push({
-      x: rng.random() * size,
-      y: rng.random() * size,
-      gamma: (rng.random() - 0.5) * 2 * 5.0 * velocityScale,
+      x: rng.range(size * 0.25, size * 0.75),
+      y: rng.range(size * 0.25, size * 0.75),
+      gamma: (rng.random() - 0.5) * 2 * 8.0 * velocityScale,
     });
   }
 
@@ -59,8 +57,7 @@ function initFluid(seed: number, size: number, vortexCount: number, sourceCount:
 }
 
 // ---------------------------------------------------------------------------
-// Velocity from point vortices (Biot-Savart 2D)
-// Includes periodic nearest-image correction
+// Velocity from point vortices (Biot-Savart 2D), nearest-image periodic
 // ---------------------------------------------------------------------------
 function velocityFromVortices(
   px: number, py: number, vortices: Vortex[], size: number,
@@ -71,12 +68,11 @@ function velocityFromVortices(
     if (i === excludeIdx) continue;
     const vt = vortices[i];
     let dx = px - vt.x, dy = py - vt.y;
-    // Nearest-image periodic correction
-    if (dx > size * 0.5) dx -= size;
+    if (dx >  size * 0.5) dx -= size;
     else if (dx < -size * 0.5) dx += size;
-    if (dy > size * 0.5) dy -= size;
+    if (dy >  size * 0.5) dy -= size;
     else if (dy < -size * 0.5) dy += size;
-    const r2 = Math.max(1, dx * dx + dy * dy);
+    const r2 = Math.max(4, dx * dx + dy * dy); // min core radius = 2 cells
     const fac = vt.gamma / (2 * Math.PI * r2);
     u += -dy * fac;
     v +=  dx * fac;
@@ -85,21 +81,19 @@ function velocityFromVortices(
 }
 
 // ---------------------------------------------------------------------------
-// Curl noise — divergence-free turbulent velocity from curl of simplex noise
-// The noise field evolves by shifting the sample offset with time
+// Curl noise — divergence-free turbulent perturbation
+// Uses finite-difference curl of evolving 2-D noise field
 // ---------------------------------------------------------------------------
 function curlNoise(
-  noise: SimplexNoise, x: number, y: number, timeOffset: number,
+  noise: SimplexNoise, x: number, y: number, timeStep: number,
   freq: number, amp: number,
 ): [number, number] {
   if (amp <= 0) return [0, 0];
-  const eps = 0.5;
-  const xf = x * freq, yf = y * freq;
-  const t = timeOffset * 0.008;
-  const dny = noise.noise2D(xf + t,       yf + eps + t * 0.3)
-             - noise.noise2D(xf + t,       yf - eps + t * 0.3);
-  const dnx = noise.noise2D(xf + eps + t, yf       + t * 0.3)
-             - noise.noise2D(xf - eps + t, yf       + t * 0.3);
+  const eps = 1.0;
+  const t = timeStep * 0.005;
+  const xf = x * freq + t, yf = y * freq + t * 0.7;
+  const dny = noise.noise2D(xf, yf + eps) - noise.noise2D(xf, yf - eps);
+  const dnx = noise.noise2D(xf + eps, yf) - noise.noise2D(xf - eps, yf);
   return [(dny / (2 * eps)) * amp, (-dnx / (2 * eps)) * amp];
 }
 
@@ -131,28 +125,28 @@ function moveVorticesDynamic(vortices: Vortex[], size: number): void {
     const [u, v] = velocityFromVortices(vortices[i].x, vortices[i].y, vortices, size, i);
     us[i] = u; vs[i] = v;
   }
+  // Use a moderate step so vortex pairs orbit each other visibly over ~300 frames
+  const dynDt = 0.6;
   for (let i = 0; i < n; i++) {
-    vortices[i].x = ((vortices[i].x + us[i] * 0.08) % size + size) % size;
-    vortices[i].y = ((vortices[i].y + vs[i] * 0.08) % size + size) % size;
+    vortices[i].x = ((vortices[i].x + us[i] * dynDt) % size + size) % size;
+    vortices[i].y = ((vortices[i].y + vs[i] * dynDt) % size + size) % size;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Advect a single scalar field backwards along velocity
+// Advect a single scalar field backwards along the combined velocity
 // ---------------------------------------------------------------------------
 function advectField(
   dst: Float32Array, src: Float32Array,
   size: number, vortices: Vortex[],
-  noise: SimplexNoise, time: number, turbAmp: number, turbScale: number,
+  noise: SimplexNoise, time: number, turbAmp: number, turbFreq: number,
   dt: number,
 ): void {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const [u0, v0] = velocityFromVortices(x + 0.5, y + 0.5, vortices, size);
-      const [ut, vt] = curlNoise(noise, x + 0.5, y + 0.5, time, turbScale / size, turbAmp);
-      const srcX = x - (u0 + ut) * dt;
-      const srcY = y - (v0 + vt) * dt;
-      dst[y * size + x] = samplePeriodic(src, srcX, srcY, size);
+      const [ut, vt] = curlNoise(noise, x + 0.5, y + 0.5, time, turbFreq, turbAmp);
+      dst[y * size + x] = samplePeriodic(src, x - (u0 + ut) * dt, y - (v0 + vt) * dt, size);
     }
   }
 }
@@ -174,7 +168,7 @@ function diffuseField(f: Float32Array, scratch: Float32Array, size: number, alph
 }
 
 // ---------------------------------------------------------------------------
-// Step fluid simulation
+// One simulation step
 // ---------------------------------------------------------------------------
 function stepFluid(
   d: Float32Array, d0: Float32Array,
@@ -184,19 +178,17 @@ function stepFluid(
   size: number, vortices: Vortex[], sources: Source[],
   dt: number, diffusion: number, decay: number, inject: number,
   vortexDynamics: boolean, densityMode: string, buoyancy: number,
-  turbulence: number, turbScale: number, multiDye: boolean,
+  turbulence: number, turbFreq: number, multiDye: boolean,
   noise: SimplexNoise, time: number,
 ): void {
   const N = size * size;
 
-  // Vortex mutual dynamics (Biot-Savart N-body)
   if (vortexDynamics) moveVorticesDynamic(vortices, size);
 
   if (multiDye) {
-    // Advect 3 separate dye channels
-    advectField(dr0, dr, size, vortices, noise, time, turbulence, turbScale, dt); dr.set(dr0);
-    advectField(dg0, dg, size, vortices, noise, time, turbulence, turbScale, dt); dg.set(dg0);
-    advectField(db0, db, size, vortices, noise, time, turbulence, turbScale, dt); db.set(db0);
+    advectField(dr0, dr, size, vortices, noise, time, turbulence, turbFreq, dt); dr.set(dr0);
+    advectField(dg0, dg, size, vortices, noise, time, turbulence, turbFreq, dt); dg.set(dg0);
+    advectField(db0, db, size, vortices, noise, time, turbulence, turbFreq, dt); db.set(db0);
     diffuseField(dr, dr0, size, diffusion);
     diffuseField(dg, dg0, size, diffusion);
     diffuseField(db, db0, size, diffusion);
@@ -216,8 +208,7 @@ function stepFluid(
       }
     }
   } else {
-    // Single-channel density
-    advectField(d0, d, size, vortices, noise, time, turbulence, turbScale, dt); d.set(d0);
+    advectField(d0, d, size, vortices, noise, time, turbulence, turbFreq, dt); d.set(d0);
     diffuseField(d, d0, size, diffusion);
     for (let i = 0; i < N; i++) d[i] *= decay;
     for (const src of sources) {
@@ -234,7 +225,6 @@ function stepFluid(
     }
   }
 
-  // Temperature / buoyancy
   if (buoyancy > 0) {
     advectField(t0, t, size, vortices, noise, time, 0, 1, dt); t.set(t0);
     diffuseField(t, t0, size, diffusion);
@@ -263,12 +253,11 @@ function renderFluid(
 ): void {
   const w = ctx.canvas.width, h = ctx.canvas.height;
   const colors = palette.colors.map(hexToRgb);
-  const c0 = colors[0] || [0, 0, 30];
-  const cLast = colors[colors.length - 1] || [255, 200, 100];
-  // For multi-dye: pick 3 evenly spaced palette colors as channel tints
-  const cR = colors[0] || [255, 60, 30];
-  const cG = colors[Math.floor(colors.length * 0.5)] || [30, 255, 100];
-  const cB = colors[colors.length - 1] || [30, 100, 255];
+  const c0    = colors[0]                              || [0, 0, 30];
+  const cLast = colors[colors.length - 1]              || [255, 200, 100];
+  const cR    = colors[0]                              || [255, 60, 30];
+  const cG    = colors[Math.floor(colors.length * 0.5)] || [30, 255, 100];
+  const cB    = colors[colors.length - 1]              || [30, 100, 255];
 
   const img = ctx.createImageData(w, h);
   const data = img.data;
@@ -314,6 +303,31 @@ function renderFluid(
 }
 
 // ---------------------------------------------------------------------------
+// Helper — run warmup steps on a fresh fluid state
+// ---------------------------------------------------------------------------
+function warmupFluid(
+  state: ReturnType<typeof initFluid>,
+  steps: number, size: number, dt: number,
+  diffusion: number, decay: number, inject: number,
+  vortexDynamics: boolean, densityMode: string, buoyancy: number,
+  turbulence: number, turbFreq: number, multiDye: boolean,
+): void {
+  for (let s = 0; s < steps; s++) {
+    stepFluid(
+      state.d, state.d0,
+      state.dr, state.dg, state.db,
+      state.dr0, state.dg0, state.db0,
+      state.t, state.t0,
+      size, state.vortices, state.sources,
+      dt, diffusion, decay, inject,
+      vortexDynamics, densityMode, buoyancy,
+      turbulence, turbFreq, multiDye,
+      state.noise, s,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
 const parameterSchema: ParameterSchema = {
@@ -324,19 +338,19 @@ const parameterSchema: ParameterSchema = {
   },
   vortexCount: {
     name: 'Vortex Count',
-    type: 'number', min: 1, max: 12, step: 1, default: 5,
+    type: 'number', min: 1, max: 12, step: 1, default: 4,
     help: 'Number of seeded point vortices driving the flow',
     group: 'Composition',
   },
   sourceCount: {
     name: 'Source Count',
-    type: 'number', min: 1, max: 8, step: 1, default: 3,
+    type: 'number', min: 1, max: 8, step: 1, default: 2,
     help: 'Number of density injection points',
     group: 'Composition',
   },
   velocityScale: {
     name: 'Velocity Scale',
-    type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 1.2,
+    type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 1.0,
     help: 'Overall flow intensity — scales vortex circulation strength',
     group: 'Flow/Motion',
   },
@@ -345,24 +359,24 @@ const parameterSchema: ParameterSchema = {
     type: 'select',
     options: ['on', 'off'],
     default: 'on',
-    help: 'on: vortices orbit and interact via mutual Biot-Savart induction (chaotic N-body) | off: vortices remain fixed',
+    help: 'on: vortices orbit each other via mutual Biot-Savart induction, evolving chaotically | off: vortices stay fixed',
     group: 'Flow/Motion',
   },
   turbulence: {
     name: 'Turbulence',
-    type: 'number', min: 0, max: 3.0, step: 0.1, default: 0.8,
-    help: 'Amplitude of curl-noise turbulent velocity — adds small-scale chaotic eddies on top of vortex flow',
+    type: 'number', min: 0, max: 2.0, step: 0.05, default: 0.15,
+    help: 'Curl-noise turbulent velocity amplitude — small values add wispy texture; large values scatter dye chaotically',
     group: 'Flow/Motion',
   },
   turbScale: {
     name: 'Turb. Scale',
-    type: 'number', min: 0.5, max: 8.0, step: 0.5, default: 3.0,
-    help: 'Spatial frequency of turbulence noise — lower = large swirls, higher = fine-grain chaos',
+    type: 'number', min: 0.01, max: 0.2, step: 0.01, default: 0.05,
+    help: 'Spatial frequency of turbulence noise (fraction of grid) — lower = large swirls, higher = fine eddies',
     group: 'Flow/Motion',
   },
   diffusion: {
     name: 'Diffusion',
-    type: 'number', min: 0.0, max: 0.5, step: 0.01, default: 0.04,
+    type: 'number', min: 0.0, max: 0.5, step: 0.01, default: 0.05,
     help: 'Density spread rate per step',
     group: 'Texture',
   },
@@ -391,13 +405,13 @@ const parameterSchema: ParameterSchema = {
     type: 'select',
     options: ['single', 'multi'],
     default: 'single',
-    help: 'single: one density field coloured by palette | multi: 3 RGB dye channels injected at different sources and composited',
+    help: 'single: one density field coloured by palette | multi: 3 RGB dye channels, one per source, additively composited',
     group: 'Color',
   },
   buoyancy: {
     name: 'Buoyancy',
     type: 'number', min: 0, max: 1.0, step: 0.05, default: 0,
-    help: 'Enable temperature-driven buoyancy — creates rising plumes (single dye mode only)',
+    help: 'Temperature-driven buoyancy — creates rising plumes from sources (single dye mode only)',
     group: 'Texture',
   },
   stepsPerFrame: {
@@ -421,13 +435,13 @@ export const fluidLite: Generator = {
   styleName: 'Fluid Lite',
   definition: 'Lightweight 2D fluid with N-body vortex dynamics and curl-noise turbulence — point vortices evolve under mutual Biot-Savart induction, curl noise adds chaotic eddies, and multi-channel dye produces vivid swirling colour mixing',
   algorithmNotes:
-    'Velocity at each grid point is summed analytically from N point vortices (Biot–Savart 2D). When vortex dynamics is on, each vortex moves under induction from all other vortices (N-body, nearest-image periodic), creating chaotic orbiting behaviour. Curl noise — the curl of time-evolving 2D simplex noise — adds a divergence-free turbulent perturbation at each advection step. A passive scalar (dye) is advected backwards along the combined velocity field, then diffused with 2 Jacobi iterations, decayed, and replenished at source points. Multi-channel mode tracks separate R/G/B dye fields per source and additively composites them using palette colours.',
+    'Velocity at each grid point is summed analytically from N point vortices (Biot–Savart 2D, nearest-image periodic). When vortex dynamics is on, each vortex moves each step under induction from all other vortices — pairs orbit each other on a ~300-step timescale, creating slowly evolving flow topology. Curl noise (finite-difference curl of a time-drifting 2D simplex noise field) adds a divergence-free turbulent perturbation on top of the vortex flow; keep turbulence small (≤0.3) so dye stays visible. A passive scalar is advected backwards along the combined field, diffused by 2 Jacobi iterations, decayed, and replenished at source points. Multi-channel mode tracks R/G/B dye separately per source and composites using palette colours.',
   parameterSchema,
   defaultParams: {
-    gridSize: 96, vortexCount: 5, sourceCount: 3,
-    velocityScale: 1.2, vortexDynamics: 'on',
-    turbulence: 0.8, turbScale: 3.0,
-    diffusion: 0.04, decay: 0.98, injectAmount: 0.12,
+    gridSize: 96, vortexCount: 4, sourceCount: 2,
+    velocityScale: 1.0, vortexDynamics: 'on',
+    turbulence: 0.15, turbScale: 0.05,
+    diffusion: 0.05, decay: 0.98, injectAmount: 0.12,
     densityMode: 'additive', buoyancy: 0,
     dyeChannels: 'single',
     stepsPerFrame: 3, colorMode: 'gradient',
@@ -435,35 +449,38 @@ export const fluidLite: Generator = {
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const size = Math.max(16, (params.gridSize ?? 96) | 0);
-    const vortexCount = Math.max(1, (params.vortexCount ?? 5) | 0);
-    const sourceCount = Math.max(1, (params.sourceCount ?? 3) | 0);
-    const velocityScale = params.velocityScale ?? 1.2;
+    const size         = Math.max(16, (params.gridSize ?? 96) | 0);
+    const vortexCount  = Math.max(1, (params.vortexCount ?? 4) | 0);
+    const sourceCount  = Math.max(1, (params.sourceCount ?? 2) | 0);
+    const velocityScale = params.velocityScale ?? 1.0;
     const vortexDynamics = (params.vortexDynamics ?? 'on') === 'on';
-    const diffusion = params.diffusion ?? 0.04;
-    const decay = params.decay ?? 0.98;
-    const inject = params.injectAmount ?? 0.12;
-    const densityMode = params.densityMode ?? 'additive';
-    const buoyancy = params.buoyancy ?? 0;
-    const turbulence = params.turbulence ?? 0.8;
-    const turbScale = params.turbScale ?? 3.0;
-    const colorMode = params.colorMode || 'gradient';
-    const multiDye = (params.dyeChannels ?? 'single') === 'multi';
+    const diffusion    = params.diffusion    ?? 0.05;
+    const decay        = params.decay        ?? 0.98;
+    const inject       = params.injectAmount ?? 0.12;
+    const densityMode  = params.densityMode  ?? 'additive';
+    const buoyancy     = params.buoyancy     ?? 0;
+    const turbulence   = params.turbulence   ?? 0.15;
+    const turbFreq     = params.turbScale    ?? 0.05;
+    const colorMode    = params.colorMode    || 'gradient';
+    const multiDye     = (params.dyeChannels ?? 'single') === 'multi';
     const dt = 1.0;
 
+    const key = `${seed}|${size}|${vortexCount}|${sourceCount}|${velocityScale}|${multiDye}`;
+
     if (time === 0) {
-      const { d, d0, dr, dg, db, dr0, dg0, db0, t, t0, vortices, sources, noise } =
-        initFluid(seed, size, vortexCount, sourceCount, velocityScale);
-      for (let s = 0; s < 200; s++)
-        stepFluid(d, d0, dr, dg, db, dr0, dg0, db0, t, t0, size, vortices, sources, dt, diffusion, decay, inject, vortexDynamics, densityMode, buoyancy, turbulence, turbScale, multiDye, noise, s);
-      renderFluid(ctx, d, dr, dg, db, t, size, colorMode, palette, buoyancy, multiDye);
+      // Static render: use fresh state with warmup
+      const init = initFluid(seed, size, vortexCount, sourceCount, velocityScale);
+      warmupFluid(init, 200, size, dt, diffusion, decay, inject, vortexDynamics, densityMode, buoyancy, turbulence, turbFreq, multiDye);
+      renderFluid(ctx, init.d, init.dr, init.dg, init.db, init.t, size, colorMode, palette, buoyancy, multiDye);
       return;
     }
 
-    const key = `${seed}|${size}|${vortexCount}|${sourceCount}|${velocityScale}|${multiDye}`;
+    // Animation: initialise or reuse persistent state
     if (!_fluidAnim || _fluidAnim.key !== key) {
       const init = initFluid(seed, size, vortexCount, sourceCount, velocityScale);
-      _fluidAnim = { key, ...init, time: 0 };
+      // Warmup so animation starts from a populated, visible state
+      warmupFluid(init, 200, size, dt, diffusion, decay, inject, vortexDynamics, densityMode, buoyancy, turbulence, turbFreq, multiDye);
+      _fluidAnim = { key, ...init, time: 200 };
     }
 
     const spf = Math.max(1, (params.stepsPerFrame ?? 3) | 0);
@@ -475,7 +492,7 @@ export const fluidLite: Generator = {
         _fluidAnim.t, _fluidAnim.t0,
         _fluidAnim.size, _fluidAnim.vortices, _fluidAnim.sources,
         dt, diffusion, decay, inject, vortexDynamics, densityMode, buoyancy,
-        turbulence, turbScale, multiDye, _fluidAnim.noise, _fluidAnim.time,
+        turbulence, turbFreq, multiDye, _fluidAnim.noise, _fluidAnim.time,
       );
       _fluidAnim.time++;
     }
@@ -484,6 +501,6 @@ export const fluidLite: Generator = {
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0.1, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
   estimateCost(params) {
-    return ((params.gridSize ?? 96) ** 2 * (params.stepsPerFrame ?? 3) * (params.vortexCount ?? 5) * 0.012) | 0;
+    return ((params.gridSize ?? 96) ** 2 * (params.stepsPerFrame ?? 3) * (params.vortexCount ?? 4) * 0.01) | 0;
   },
 };
