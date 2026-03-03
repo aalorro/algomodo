@@ -20,6 +20,26 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.1.0 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.1.0] - 2026-03-03
+            </h3>
+            
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Mobile responsive drawer panels with swipe and arrow button controls</li>
+                  <li>Canvas centered with floating toggle buttons for sidebars</li>
+                  <li>ANIMATE and RANDOM buttons directly on canvas</li>
+                  <li>Generator highlighting in sidebar with star indicator</li>
+                  <li>Optional WebGL rendering toggle in settings (unchecked by default)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.0.0 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
