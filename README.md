@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.1.0 · © 2026 ArtMondo
+MIT License · v1.2.0 · © 2026 ArtMondo
 
 ---
 
@@ -33,7 +33,7 @@ Simulation-based automata and physics models. All support live animation with pe
 
 | Name | Key Feature |
 |---|---|
-| **Game of Life** | Conway's rules with binary, age-gradient, and fading-trail colour modes; configurable steps/frame |
+| **Game of Life** | Six rule sets (Conway / HighLife / Day & Night / Seeds / Maze / Morley) as bitmasks; perturbation rate to prevent stagnation; entropy colour mode maps neighbourhood density to the palette gradient |
 | **Reaction Diffusion** | Gray-Scott model (dU/dt = Du·∇²U − UV² + f·(1−U)); tunable feed/kill rates produce spots, stripes, and mazes |
 | **Forest Fire** | Drossel-Schwabl 3-state CA (empty / tree / burning) — self-organised criticality when lightning rate ≪ growth rate |
 | **Eden Growth** | Random frontier growth (Eden Model A) — compact organic blobs coloured by birth order, revealing concentric growth rings |
@@ -68,10 +68,10 @@ Mathematical curves and tiling structures rendered as line art.
 
 | Name | Key Feature |
 |---|---|
-| **Spirograph** | Hypotrochoid and epitrochoid curves with controllable inner/outer radii and pen offset |
-| **Lissajous & Harmonographs** | Lissajous figures and damped harmonograph curves with frequency ratio, phase, and decay controls |
-| **L-System** | Lindenmayer string rewriting rendered as turtle graphics — presets for ferns, trees, and Koch snowflakes |
-| **MST Web** | Minimum spanning tree over a noise-scattered point field — organic web and neural network aesthetic |
+| **Spirograph** | Hypotrochoid and epitrochoid curves; auto-scaling, layered rotation fan, solid and gradient colour modes |
+| **Lissajous & Harmonographs** | Lissajous figures and inward-spiraling harmonographs via exponential decay; multi-layer phase-offset overlapping curves |
+| **L-System** | Lindenmayer string rewriting — 7 presets (Tree, Plant, Dragon, Sierpinski, Hilbert, Koch, Gosper); stochastic angle jitter; tapered branch widths; depth/gradient/single colour modes |
+| **MST Web** | Prim's MST over a point field; edge pruning creates organic subtree clusters; fibonacci phyllotaxis distribution; radial colour mode reveals concentric ring structure |
 | **Chladni Figures** | Resonance nodal lines of a vibrating square plate; mode numbers (m, n) select distinct symmetry patterns |
 | **Rosettes** | Polar rose curves r = cos(n/d · θ) — rational k = n/d controls petal count and winding; layered with staggered ratios for mandala-like interference patterns |
 | **Superformula** | Johan Gielis' generalised polar equation r = (\|cos(mθ/4)/a\|^n2 + \|sin(mθ/4)/b\|^n3)^(−1/n1) — morphs continuously through every polygon, star, and organic shape |

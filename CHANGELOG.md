@@ -5,6 +5,21 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-03
+
+### Changed
+
+**6 existing generators improved** with new parameters, colour modes, and algorithm enhancements:
+
+- **Cellular / Game of Life** — Added 5 additional rule sets (HighLife B36/S23, Day & Night B3678/S34678, Seeds B2/S, Maze B3/S12345, Morley B368/S245) encoded as bitmasks; `perturbRate` parameter randomly flips a fraction of cells each frame to prevent stagnation; new `entropy` colour mode maps the 8-neighbour ON count to the palette gradient regardless of cell state, revealing activity gradients as continuous colour fields
+- **Geometry / Spirograph** — Added `mode` parameter (hypotrochoid / epitrochoid) for rolling-circle-outside curves producing rose petals and limaçons; `colorMode` (solid / gradient) with per-segment lerpColor sweep; auto-scaling so curves always fit the canvas regardless of R, r, d values; fixed layer distribution — layers are now evenly fanned by rotation angle rather than stacked identically
+- **Geometry / Lissajous & Harmonographs** — Added `decay` parameter (harmonograph damping via `exp(−δt)`) that transforms the closed figure into an inward-spiraling harmonograph; `layers` parameter adds phase-offset overlapping curves; proper period calculation using `2π / gcd(fx, fy)` instead of fixed `2π`; gradient alpha fades with amplitude for harmonograph depth effect
+- **Geometry / L-System** — Replaced duplicate Fern preset with three new presets (Plant, Koch snowflake, Gosper flowsnake) for a total of 7 distinct presets; `stochastic` parameter adds seeded random angle jitter on each turn for organic variation; `taper` parameter scales line width by `(1 − depth/maxDepth)^0.7` giving trunk-to-tip thickness; `colorMode` (depth / gradient / single) replaces boolean `colorize`
+- **Geometry / MST Web** — Added `prunePercent` parameter (0–70 %) removes the longest edges from the MST, fragmenting the spanning tree into organic subtree clusters; `fibonacci` distribution option uses phyllotaxis golden-angle spiral for the most spatially uniform point layout; new `radial` colour mode maps edge midpoint distance from canvas centre to the palette gradient, revealing concentric ring structure; fixed node radius (was drawing circles at `nodeSize` diameter, now correctly uses `nodeSize / 2`)
+- **Cellular / Brian's Brain** — Stabilised: hardened `initialDensity` cap at 0.20 and default to 0.15 to prevent empty-canvas renders at high densities; simplified to pure 3-state classic logic (ON → DYING → OFF → ON if exactly 2 Moore neighbours) removing previously broken experimental parameters
+
+---
+
 ## [1.1.0] - 2026-03-02
 
 ### Added
