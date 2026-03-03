@@ -143,6 +143,7 @@ export interface AppState {
   quality: 'draft' | 'balanced' | 'ultra';
   performanceMode: boolean;
   useWebGPU: boolean;
+  useWebGL: boolean;
   showFPS: boolean;
   interactionEnabled: boolean;
   isAnimating: boolean;
@@ -179,6 +180,7 @@ export interface AppState {
   setQuality: (quality: 'draft' | 'balanced' | 'ultra') => void;
   setPerformanceMode: (enabled: boolean) => void;
   setUseWebGPU: (enabled: boolean) => void;
+  setUseWebGL: (enabled: boolean) => void;
   setShowFPS: (show: boolean) => void;
   setAnimating: (animating: boolean) => void;
   setAnimationFps: (fps: number) => void;

@@ -28,6 +28,8 @@ export const RightSidebar: React.FC = () => {
     setShowFPS,
     performanceMode,
     setPerformanceMode,
+    useWebGL,
+    setUseWebGL,
     isAnimating,
     setAnimating,
     animationFps,
@@ -697,6 +699,19 @@ export const RightSidebar: React.FC = () => {
                 Performance Mode
               </label>
               <p className="text-xs text-gray-400 dark:text-gray-500">Reduces quality while interacting</p>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-2">
+                <input
+                  type="checkbox"
+                  checked={useWebGL}
+                  onChange={(e) => setUseWebGL(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                Use WebGL Rendering
+              </label>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Optional WebGL2 acceleration (if supported)</p>
             </div>
 
             <div>
