@@ -19,7 +19,7 @@ function drawShape(
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
       break;
-    case 1: { // square (rotated to face velocity)
+    case 1: { // square rotated to face velocity
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(angle + Math.PI * 0.25);
@@ -62,7 +62,6 @@ function drawAttractor(
   color: string,
 ) {
   ctx.save();
-  // Outer glow rings (large → small, transparent → opaque)
   for (let i = 4; i >= 1; i--) {
     ctx.globalAlpha = 0.055 * i;
     ctx.fillStyle = color;
@@ -70,13 +69,78 @@ function drawAttractor(
     ctx.arc(x, y, radius * (i * 0.35), 0, Math.PI * 2);
     ctx.fill();
   }
-  // Bright core
   ctx.globalAlpha = 0.92;
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.arc(x, y, radius * 0.12, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+// ─── Precomputed curl-noise flow field ────────────────────────────────────────
+//
+// Curl of a scalar field F: flow = (∂F/∂y, −∂F/∂x)
+// This is divergence-free, so particles circulate continuously and fill the
+// entire canvas uniformly instead of piling up at FBM convergence sinks.
+
+const GRID = 72; // resolution of the precomputed grid
+
+interface FlowField {
+  sinA: Float32Array; // sin of each cell's curl angle
+  cosA: Float32Array; // cos of each cell's curl angle
+  seed: number;
+  flowScale: number;
+}
+
+function buildFlowField(noise: SimplexNoise, seed: number, flowScale: number): FlowField {
+  const n = GRID * GRID;
+  const sinA = new Float32Array(n);
+  const cosA = new Float32Array(n);
+  const eps = 0.008;
+
+  for (let gy = 0; gy < GRID; gy++) {
+    for (let gx = 0; gx < GRID; gx++) {
+      const nx = (gx / (GRID - 1) - 0.5) * flowScale + 5;
+      const ny = (gy / (GRID - 1) - 0.5) * flowScale + 5;
+      const n0 = noise.fbm(nx,       ny,       2, 2, 0.5);
+      const n1 = noise.fbm(nx + eps, ny,       2, 2, 0.5);
+      const n2 = noise.fbm(nx,       ny + eps, 2, 2, 0.5);
+      const dnx = (n1 - n0) / eps;
+      const dny = (n2 - n0) / eps;
+      // Curl direction: (∂F/∂y, -∂F/∂x)
+      const a = Math.atan2(dny, -dnx);
+      const i = gy * GRID + gx;
+      sinA[i] = Math.sin(a);
+      cosA[i] = Math.cos(a);
+    }
+  }
+  return { sinA, cosA, seed, flowScale };
+}
+
+function sampleField(
+  field: FlowField,
+  px: number, py: number,
+  width: number, height: number,
+  timeDrift: number,
+): number {
+  const gxf = (px / width)  * (GRID - 1);
+  const gyf = (py / height) * (GRID - 1);
+  const gx0 = Math.max(0, Math.min(GRID - 2, Math.floor(gxf)));
+  const gy0 = Math.max(0, Math.min(GRID - 2, Math.floor(gyf)));
+  const gx1 = gx0 + 1, gy1 = gy0 + 1;
+  const fx = gxf - gx0, fy = gyf - gy0;
+
+  const { sinA, cosA } = field;
+  const i00 = gy0 * GRID + gx0, i10 = gy0 * GRID + gx1;
+  const i01 = gy1 * GRID + gx0, i11 = gy1 * GRID + gx1;
+
+  // Bilinear interpolation over sin/cos (correct for angle wrapping)
+  const s = (1 - fy) * ((1 - fx) * sinA[i00] + fx * sinA[i10])
+           + fy      * ((1 - fx) * sinA[i01] + fx * sinA[i11]);
+  const c = (1 - fy) * ((1 - fx) * cosA[i00] + fx * cosA[i10])
+           + fy      * ((1 - fx) * cosA[i01] + fx * cosA[i11]);
+
+  return Math.atan2(s, c) + timeDrift;
 }
 
 // ─── Parameter schema ─────────────────────────────────────────────────────────
@@ -168,11 +232,13 @@ export const flowingParticles: Generator = {
   id: 'flowing-particles',
   family: 'animation',
   styleName: 'Flowing Particles',
-  definition: 'Animated particles flowing through a vector field',
+  definition: 'Animated particles flowing through a divergence-free curl-noise vector field',
   algorithmNotes:
-    'Particles follow a time-varying vector field derived from Simplex noise. ' +
-    'Optional attractor bodies orbit the canvas and add gravitational warping. ' +
-    'Shapes can be circles, squares, triangles, line segments, or mixed.',
+    'Curl noise (divergence-free) ensures particles circulate uniformly across the entire canvas ' +
+    'without clustering at FBM convergence sinks. A precomputed 72×72 grid makes per-frame ' +
+    'sampling O(1). On first render, 60 draw passes build up full trails immediately. ' +
+    'Optional orbiting attractors add gravitational warping; shapes can be circles, squares, ' +
+    'triangles, line segments, or mixed.',
   parameterSchema,
   defaultParams: {
     particleCount: 2000,
@@ -192,48 +258,67 @@ export const flowingParticles: Generator = {
     const width  = ctx.canvas.width;
     const height = ctx.canvas.height;
 
-    const flowScale     = params.flowScale     ?? 2;
-    const flowSpeed     = params.flowSpeed     ?? 2;
-    const particleSize  = params.particleSize  ?? 3;
-    const trailLength   = params.trailLength   ?? 0.5;
-    const sizeVariance  = params.sizeVariance  ?? 0.3;
+    const flowScale      = params.flowScale      ?? 2;
+    const flowSpeed      = params.flowSpeed      ?? 2;
+    const particleSize   = params.particleSize   ?? 3;
+    const trailLength    = params.trailLength    ?? 0.5;
+    const sizeVariance   = params.sizeVariance   ?? 0.3;
     const attractorCount = Math.round(params.attractorCount ?? 0);
-    const objectType    = (params.objectType   ?? 'circle') as string;
+    const objectType     = (params.objectType    ?? 'circle') as string;
 
-    const shapeIndex = (s: string) =>
+    const shapeIndex = (s: string): number =>
       ({ circle: 0, square: 1, triangle: 2, line: 3 }[s] ?? 0);
     const fixedShape = objectType === 'mixed' ? -1 : shapeIndex(objectType);
 
-    const noise = new SimplexNoise(seed);
-    const isStatic    = time === 0;
-    const warmupSteps = isStatic ? 300 : 0;
+    // ── Precomputed curl-noise flow field (rebuild only on seed/scale change) ──
+    const fieldKey = `__flowfield_${seed}_${flowScale}`;
+    let field = (globalThis as any)[fieldKey] as FlowField | undefined;
+    if (!field || field.seed !== seed || field.flowScale !== flowScale) {
+      const noise = new SimplexNoise(seed);
+      field = buildFlowField(noise, seed, flowScale);
+      (globalThis as any)[fieldKey] = field;
+    }
 
-    // Motion blur / background fade
-    ctx.fillStyle = `rgba(0, 0, 0, ${1 - trailLength})`;
-    ctx.fillRect(0, 0, width, height);
+    const timeDrift = time * 0.1;
+    const getAngle = (px: number, py: number): number =>
+      sampleField(field!, px, py, width, height, timeDrift);
 
     // ── Particle store (keyed so shape/variance changes reinitialise) ──────
-    const storeKey = `__particles_${seed}_${objectType}_${sizeVariance}`;
-    let particles = (globalThis as any)[storeKey] as Array<{
+    const storeKey = `__particles_${seed}_${objectType}_${sizeVariance}_${params.particleCount}`;
+    const isFirstRender = !(globalThis as any)[storeKey];
+
+    interface Particle {
       x: number; y: number; vx: number; vy: number;
       shape: number; sizeMult: number;
-    }> | undefined;
+    }
+    let particles: Particle[];
 
-    if (!particles || isStatic) {
+    if (isFirstRender) {
       const initRng = new SeededRNG(seed);
       particles = [];
+
+      // Grid + jitter initial distribution for guaranteed full-canvas coverage
+      const cols = Math.ceil(Math.sqrt(params.particleCount * (width / height)));
+      const rows = Math.ceil(params.particleCount / cols);
+      const cellW = width  / cols;
+      const cellH = height / rows;
+
       for (let i = 0; i < params.particleCount; i++) {
-        const shape     = fixedShape >= 0 ? fixedShape : Math.floor(initRng.range(0, 4));
-        const sizeMult  = 1 - sizeVariance * 0.5 + initRng.range(0, sizeVariance);
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const shape    = fixedShape >= 0 ? fixedShape : Math.floor(initRng.range(0, 4));
+        const sizeMult = 1 - sizeVariance * 0.5 + initRng.range(0, sizeVariance);
         particles.push({
-          x: initRng.range(0, width),
-          y: initRng.range(0, height),
+          x: col * cellW + initRng.range(0, cellW),
+          y: row * cellH + initRng.range(0, cellH),
           vx: 0, vy: 0,
           shape,
           sizeMult,
         });
       }
-      if (!isStatic) (globalThis as any)[storeKey] = particles;
+      (globalThis as any)[storeKey] = particles;
+    } else {
+      particles = (globalThis as any)[storeKey] as Particle[];
     }
 
     // ── Attractor definitions (derived deterministically from seed) ────────
@@ -247,77 +332,79 @@ export const flowingParticles: Generator = {
       const attrRng = new SeededRNG(seed + 99991);
       for (let i = 0; i < attractorCount; i++) {
         attractors.push({
-          cx:          width  * attrRng.range(0.2, 0.8),
-          cy:          height * attrRng.range(0.2, 0.8),
-          orbitR:      Math.min(width, height) * attrRng.range(0.04, 0.14),
-          orbitSpeed:  attrRng.range(0.3, 1.1) * (attrRng.range(0, 1) > 0.5 ? 1 : -1),
-          orbitPhase:  attrRng.range(0, Math.PI * 2),
-          strength:    attrRng.range(0.6, 2.2),
-          radius:      Math.min(width, height) * attrRng.range(0.1, 0.22),
-          colorIdx:    Math.floor(attrRng.range(0, palette.colors.length)),
+          cx:         width  * attrRng.range(0.2, 0.8),
+          cy:         height * attrRng.range(0.2, 0.8),
+          orbitR:     Math.min(width, height) * attrRng.range(0.04, 0.14),
+          orbitSpeed: attrRng.range(0.3, 1.1) * (attrRng.range(0, 1) > 0.5 ? 1 : -1),
+          orbitPhase: attrRng.range(0, Math.PI * 2),
+          strength:   attrRng.range(0.6, 2.2),
+          radius:     Math.min(width, height) * attrRng.range(0.1, 0.22),
+          colorIdx:   Math.floor(attrRng.range(0, palette.colors.length)),
         });
       }
     }
 
-    // Resolve attractor screen positions at current time
     const attrPos = attractors.map(a => ({
-      x:       a.cx + Math.cos(time * a.orbitSpeed * 0.01 + a.orbitPhase) * a.orbitR,
-      y:       a.cy + Math.sin(time * a.orbitSpeed * 0.01 + a.orbitPhase) * a.orbitR,
+      x:        a.cx + Math.cos(time * a.orbitSpeed * 0.01 + a.orbitPhase) * a.orbitR,
+      y:        a.cy + Math.sin(time * a.orbitSpeed * 0.01 + a.orbitPhase) * a.orbitR,
       strength: a.strength,
-      radius:  a.radius,
+      radius:   a.radius,
       colorIdx: a.colorIdx,
     }));
 
-    // ── Flow field helper ──────────────────────────────────────────────────
-    const getAngle = (px: number, py: number, t: number): number => {
-      const nx = (px / width  - 0.5) * flowScale + 5 + t * 0.1;
-      const ny = (py / height - 0.5) * flowScale + 5 + t * 0.1;
-      return noise.fbm(nx, ny, 2, 2, 0.5) * Math.PI * 2;
-    };
-
-    // ── Warm-up for static render ──────────────────────────────────────────
-    for (let step = 0; step < warmupSteps; step++) {
-      for (const p of particles) {
-        const angle = getAngle(p.x, p.y, 0);
-        p.x += Math.cos(angle) * flowSpeed * 0.5;
-        p.y += Math.sin(angle) * flowSpeed * 0.5;
-        if (p.x < 0) p.x = width;  if (p.x > width)  p.x = 0;
-        if (p.y < 0) p.y = height; if (p.y > height) p.y = 0;
-      }
-    }
-
-    // ── Update & draw particles ────────────────────────────────────────────
     const baseSpeed = flowSpeed * 0.5;
 
-    for (const p of particles) {
-      const angle = getAngle(p.x, p.y, time);
-      p.vx = Math.cos(angle) * baseSpeed;
-      p.vy = Math.sin(angle) * baseSpeed;
+    // ── Inner update + draw helper (reused for warmup and live frame) ──────
+    const updateAndDraw = () => {
+      for (const p of particles) {
+        const angle = getAngle(p.x, p.y);
+        p.vx = Math.cos(angle) * baseSpeed;
+        p.vy = Math.sin(angle) * baseSpeed;
 
-      // Attractor gravity
-      for (const a of attrPos) {
-        const dx   = a.x - p.x;
-        const dy   = a.y - p.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < a.radius && dist > 1) {
-          const force = a.strength * (1 - dist / a.radius) * baseSpeed * 0.4;
-          p.vx += (dx / dist) * force;
-          p.vy += (dy / dist) * force;
+        // Attractor gravity
+        for (const a of attrPos) {
+          const dx   = a.x - p.x;
+          const dy   = a.y - p.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < a.radius && dist > 1) {
+            const force = a.strength * (1 - dist / a.radius) * baseSpeed * 0.4;
+            p.vx += (dx / dist) * force;
+            p.vy += (dy / dist) * force;
+          }
         }
+
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = width;  if (p.x > width)  p.x = 0;
+        if (p.y < 0) p.y = height; if (p.y > height) p.y = 0;
+
+        const normAngle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        const colorIdx  = Math.floor((normAngle / (Math.PI * 2)) * palette.colors.length) % palette.colors.length;
+        const sz        = particleSize * p.sizeMult;
+        const flowAngle = Math.atan2(p.vy, p.vx);
+
+        drawShape(ctx, p.x, p.y, sz, flowAngle, p.shape, palette.colors[colorIdx]);
       }
+    };
 
-      p.x += p.vx;
-      p.y += p.vy;
-      if (p.x < 0) p.x = width;  if (p.x > width)  p.x = 0;
-      if (p.y < 0) p.y = height; if (p.y > height) p.y = 0;
+    if (isFirstRender) {
+      // Stamp solid black so the canvas is fully opaque from frame 1
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, width, height);
 
-      // Color by flow angle (wraps across palette) — more visually varied than speed
-      const normAngle  = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      const colorIdx   = Math.floor((normAngle / (Math.PI * 2)) * palette.colors.length) % palette.colors.length;
-      const sz         = particleSize * p.sizeMult;
-      const flowAngle  = Math.atan2(p.vy, p.vx);
-
-      drawShape(ctx, p.x, p.y, sz, flowAngle, p.shape, palette.colors[colorIdx]);
+      // Run 60 draw+fade passes so trails are fully developed immediately
+      // (prevents the "sparse first frame" artifact on static renders)
+      const WARMUP = 60;
+      for (let w = 0; w < WARMUP; w++) {
+        ctx.fillStyle = `rgba(0,0,0,${1 - trailLength})`;
+        ctx.fillRect(0, 0, width, height);
+        updateAndDraw();
+      }
+    } else {
+      // Normal frame: trail fade then one update
+      ctx.fillStyle = `rgba(0,0,0,${1 - trailLength})`;
+      ctx.fillRect(0, 0, width, height);
+      updateAndDraw();
     }
 
     // ── Draw attractor orbs on top ────────────────────────────────────────
