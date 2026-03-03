@@ -42,7 +42,7 @@ function initBrain(seed: number, size: number, density: number, ON: number) {
 // ---------------------------------------------------------------------------
 function stepBrain(
   grid: Uint8Array, next: Uint8Array, size: number,
-  ON: number, ds: number, useVN: boolean,
+  ON: number, ds: number,
 ): void {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -53,17 +53,10 @@ function stepBrain(
         next[y * size + x] = s < ds ? s + 1 : 0;
       } else {
         let count = 0;
-        if (useVN) {
-          if (grid[((y - 1 + size) % size) * size + x] === ON) count++;
-          if (grid[((y + 1)        % size) * size + x] === ON) count++;
-          if (grid[y * size + ((x - 1 + size) % size)] === ON) count++;
-          if (grid[y * size + ((x + 1)        % size)] === ON) count++;
-        } else {
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              if (!dx && !dy) continue;
-              if (grid[((y + dy + size) % size) * size + ((x + dx + size) % size)] === ON) count++;
-            }
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            if (grid[((y + dy + size) % size) * size + ((x + dx + size) % size)] === ON) count++;
           }
         }
         next[y * size + x] = count === 2 ? ON : 0;
@@ -132,14 +125,6 @@ const parameterSchema: ParameterSchema = {
     help: "Number of intermediate dying states before a cell resets to OFF. 1 = classic Brian's Brain (fast bullet gliders). 2–4 = longer refractory period → slower waves, visible spiral arms and rotating structures.",
     group: 'Geometry',
   },
-  neighborhood: {
-    name: 'Neighbourhood',
-    type: 'select',
-    options: ['moore', 'von-neumann'],
-    default: 'moore',
-    help: 'moore: 8-cell (classic — diagonal + cardinal) | von-neumann: 4-cell cardinal only — produces diamond-shaped wavefronts and different glider families',
-    group: 'Geometry',
-  },
   stepsPerFrame: {
     name: 'Steps / Frame',
     type: 'number', min: 1, max: 10, step: 1, default: 1,
@@ -165,7 +150,7 @@ export const briansBrain: Generator = {
   parameterSchema,
   defaultParams: {
     gridSize: 128, initialDensity: 0.25, warmupSteps: 30,
-    dyingStates: 1, neighborhood: 'moore',
+    dyingStates: 1,
     stepsPerFrame: 1, colorMode: 'classic',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
@@ -175,24 +160,23 @@ export const briansBrain: Generator = {
     const density = params.initialDensity ?? 0.25;
     const ds    = Math.max(1, Math.min(4, (params.dyingStates ?? 1) | 0));
     const ON    = ds + 1;
-    const useVN = (params.neighborhood || 'moore') === 'von-neumann';
     const colorMode = params.colorMode || 'classic';
 
     if (time === 0) {
       const { grid, next } = initBrain(seed, size, density, ON);
       const warmup = Math.max(0, (params.warmupSteps ?? 30) | 0);
-      for (let s = 0; s < warmup; s++) stepBrain(grid, next, size, ON, ds, useVN);
+      for (let s = 0; s < warmup; s++) stepBrain(grid, next, size, ON, ds);
       renderBrain(ctx, grid, size, ON, colorMode, palette);
       return;
     }
 
-    const key = `${seed}|${size}|${density}|${ds}|${useVN}`;
+    const key = `${seed}|${size}|${density}|${ds}`;
     if (!_brainAnim || _brainAnim.key !== key) {
       const { grid, next } = initBrain(seed, size, density, ON);
       _brainAnim = { key, grid, next, size };
     }
     const spf = Math.max(1, (params.stepsPerFrame ?? 1) | 0);
-    for (let s = 0; s < spf; s++) stepBrain(_brainAnim.grid, _brainAnim.next, _brainAnim.size, ON, ds, useVN);
+    for (let s = 0; s < spf; s++) stepBrain(_brainAnim.grid, _brainAnim.next, _brainAnim.size, ON, ds);
     renderBrain(ctx, _brainAnim.grid, _brainAnim.size, ON, colorMode, palette);
   },
 
