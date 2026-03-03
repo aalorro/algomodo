@@ -172,7 +172,7 @@ export interface AppState {
   selectPreset: (presetId: string) => void;
   updateParam: (key: string, value: any) => void;
   resetParams: () => void;
-  randomizeParams: (schema: ParameterSchema) => void;
+  randomizeParams: (schema: ParameterSchema, lockedKeys?: ReadonlySet<string>) => void;
   setPalette: (palette: Palette) => void;
   setTheme: (theme: 'dark' | 'light') => void;
   setInteractionEnabled: (enabled: boolean) => void;

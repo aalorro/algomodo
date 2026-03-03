@@ -151,10 +151,15 @@ export const useStore = create<AppState>()(
         });
       },
 
-      randomizeParams: (schema: ParameterSchema) => {
+      randomizeParams: (schema: ParameterSchema, lockedKeys?: ReadonlySet<string>) => {
         const state = get();
         const randomized: Record<string, any> = {};
         for (const [key, param] of Object.entries(schema)) {
+          if (lockedKeys?.has(key)) {
+            // Preserve current value for locked params
+            randomized[key] = state.params[key] ?? param.default;
+            continue;
+          }
           if (param.type === 'number') {
             const min = param.min ?? 0, max = param.max ?? 1, step = param.step ?? 1;
             const steps = Math.round((max - min) / step);
