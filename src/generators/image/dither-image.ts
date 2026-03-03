@@ -1,19 +1,29 @@
 import type { Generator, Palette, ParameterSchema } from '../../types';
 
+// ─── Source image pixel cache (at reduced scale resolution) ───────────────────
+const _imgCache = new WeakMap<HTMLImageElement, Map<string, Uint8ClampedArray>>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  let sizeMap = _imgCache.get(img);
+  if (!sizeMap) { sizeMap = new Map(); _imgCache.set(img, sizeMap); }
+  const key = `${w}_${h}`;
+  const cached = sizeMap.get(key);
+  if (cached) return cached;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  sizeMap.set(key, data);
+  return data;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function nearestPaletteColor(r: number, g: number, b: number, palette: Palette): [number, number, number] {
-  let best = hexToRgb(palette.colors[0]);
-  let bestDist = Infinity;
-  for (const c of palette.colors) {
-    const [pr, pg, pb] = hexToRgb(c);
-    const d = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
-    if (d < bestDist) { bestDist = d; best = [pr, pg, pb]; }
-  }
-  return best;
 }
 
 // Bayer matrix 8×8 (normalized 0–1)
@@ -27,6 +37,8 @@ const BAYER8: number[] = [
   15, 47,  7, 39, 13, 45,  5, 37,
   63, 31, 55, 23, 61, 29, 53, 21,
 ].map(v => v / 64);
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
 
 const parameterSchema: ParameterSchema = {
   algorithm: {
@@ -64,6 +76,16 @@ const parameterSchema: ParameterSchema = {
     help: 'Scales the error or threshold spread (>1 = more aggressive)',
     group: 'Texture',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 0.8,
+    help: 'For Bayer modes: scrolls the threshold matrix. For error-diffusion: oscillates strength.',
+    group: 'Flow/Motion',
+  },
 };
 
 export const ditherImage: Generator = {
@@ -71,19 +93,20 @@ export const ditherImage: Generator = {
   family: 'image',
   styleName: 'Dither',
   definition: 'Applies classic dithering algorithms to the source image, snapping colours to the active palette',
-  algorithmNotes: 'Floyd-Steinberg and Atkinson use error diffusion; Bayer and ordered-dot use threshold matrices. All algorithms work at reduced resolution (Pixel Scale) then upscale.',
+  algorithmNotes: 'Floyd-Steinberg and Atkinson use error diffusion; Bayer and ordered-dot use threshold matrices. All algorithms work at reduced resolution (Pixel Scale) then upscale. During animation, Bayer/ordered modes scroll the threshold matrix diagonally for a shimmering moiré; error-diffusion modes oscillate dither strength.',
   parameterSchema,
   defaultParams: {
     algorithm: 'floyd-steinberg',
     colorMode: 'palette',
     scale: 2,
     strength: 1.0,
+    animSpeed: 0.8,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, _seed, palette, _quality) {
+  renderCanvas2D(ctx, params, _seed, palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
@@ -104,33 +127,28 @@ export const ditherImage: Generator = {
       return;
     }
 
-    const { algorithm, colorMode, scale, strength } = params;
-    const ps = Math.max(1, scale | 0);
+    const { algorithm, colorMode } = params;
+    const ps = Math.max(1, (params.scale | 0) || 2);
+    const animSpeed = params.animSpeed ?? 0.8;
+    const t = time * animSpeed;
 
     // Work at reduced resolution
     const sw = Math.max(1, (w / ps) | 0);
     const sh = Math.max(1, (h / ps) | 0);
 
-    const off = document.createElement('canvas');
-    off.width = sw; off.height = sh;
-    const offCtx = off.getContext('2d')!;
-    const imgScale = Math.max(sw / img.naturalWidth, sh / img.naturalHeight);
-    const dw = img.naturalWidth * imgScale;
-    const dh = img.naturalHeight * imgScale;
-    offCtx.drawImage(img, (sw - dw) / 2, (sh - dh) / 2, dw, dh);
-    const src = offCtx.getImageData(0, 0, sw, sh).data;
+    // Source pixels at reduced resolution (cached per img + size)
+    const srcRaw = getSourcePixels(img, sw, sh);
 
-    // Working float buffers (R, G, B)
+    // Working float buffers
     const fr = new Float32Array(sw * sh);
     const fg = new Float32Array(sw * sh);
     const fb = new Float32Array(sw * sh);
     for (let i = 0; i < sw * sh; i++) {
-      fr[i] = src[i * 4];
-      fg[i] = src[i * 4 + 1];
-      fb[i] = src[i * 4 + 2];
+      fr[i] = srcRaw[i * 4];
+      fg[i] = srcRaw[i * 4 + 1];
+      fb[i] = srcRaw[i * 4 + 2];
     }
 
-    // Build quantisation target list
     type RGB = [number, number, number];
     let targets: RGB[];
     if (colorMode === 'monochrome-2') {
@@ -144,23 +162,33 @@ export const ditherImage: Generator = {
     const quantize = (r: number, g: number, b: number): RGB => {
       let best = targets[0];
       let bestDist = Infinity;
-      for (const t of targets) {
-        const d = (r - t[0]) ** 2 + (g - t[1]) ** 2 + (b - t[2]) ** 2;
-        if (d < bestDist) { bestDist = d; best = t; }
+      for (const tgt of targets) {
+        const d = (r - tgt[0]) ** 2 + (g - tgt[1]) ** 2 + (b - tgt[2]) ** 2;
+        if (d < bestDist) { bestDist = d; best = tgt; }
       }
       return best;
     };
 
     const out = new Uint8ClampedArray(sw * sh * 4);
 
-    const addError = (idx: number, er: number, eg: number, eb: number, w_: number) => {
+    const addError = (idx: number, er: number, eg: number, eb: number, wt: number) => {
       if (idx < 0 || idx >= sw * sh) return;
-      fr[idx] += er * w_;
-      fg[idx] += eg * w_;
-      fb[idx] += eb * w_;
+      fr[idx] += er * wt;
+      fg[idx] += eg * wt;
+      fb[idx] += eb * wt;
     };
 
-    const s = strength ?? 1;
+    const isBayer = algorithm === 'bayer-2' || algorithm === 'bayer-4'
+                 || algorithm === 'bayer-8' || algorithm === 'ordered-dot';
+
+    // Bayer/ordered modes: scroll the pattern diagonally over time
+    const tOff = isBayer ? (Math.floor(t * 6) | 0) : 0;
+
+    // Error-diffusion modes: oscillate strength for a shimmering effect
+    const baseStrength = params.strength ?? 1;
+    const s = isBayer
+      ? baseStrength
+      : baseStrength * (0.8 + 0.2 * Math.abs(Math.sin(t * 1.1)));
 
     for (let y = 0; y < sh; y++) {
       for (let x = 0; x < sw; x++) {
@@ -171,8 +199,11 @@ export const ditherImage: Generator = {
 
         let qr: number, qg: number, qb: number;
 
-        if (algorithm === 'bayer-2' || algorithm === 'bayer-4' || algorithm === 'bayer-8' || algorithm === 'ordered-dot') {
+        if (isBayer) {
           let threshold: number;
+          const bx = (x + tOff) & 7;  // wrapping shift for animation
+          const by = (y + tOff) & 7;
+
           if (algorithm === 'bayer-2') {
             const mat = [0, 0.5, 0.75, 0.25];
             threshold = mat[(y % 2) * 2 + (x % 2)] * s;
@@ -181,21 +212,17 @@ export const ditherImage: Generator = {
             const bayer4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => v / 16);
             threshold = bayer4[idx4] * s;
           } else if (algorithm === 'ordered-dot') {
-            // Radial ordered dither — brighter center
             const cx = x % 4 - 1.5, cy = y % 4 - 1.5;
             const dist = Math.sqrt(cx * cx + cy * cy) / 2.12;
             threshold = dist * s;
           } else {
-            threshold = BAYER8[(y % 8) * 8 + (x % 8)] * s;
+            threshold = BAYER8[by * 8 + bx] * s;
           }
-          // Apply threshold per channel
           qr = r / 255 + threshold - 0.5 > 0.5 ? 255 : 0;
           qg = g / 255 + threshold - 0.5 > 0.5 ? 255 : 0;
           qb = b / 255 + threshold - 0.5 > 0.5 ? 255 : 0;
-          // Snap to nearest palette/target
           [qr, qg, qb] = quantize(qr, qg, qb);
         } else {
-          // Error diffusion
           [qr, qg, qb] = quantize(r, g, b);
           const er = (r - qr) * s;
           const eg = (g - qg) * s;
@@ -207,7 +234,6 @@ export const ditherImage: Generator = {
             addError(i + sw,         er * 5 / 16, eg * 5 / 16, eb * 5 / 16, 1);
             addError(i + sw + 1,     er * 1 / 16, eg * 1 / 16, eb * 1 / 16, 1);
           } else if (algorithm === 'atkinson') {
-            // Atkinson: distributes only 6/8 of error (creates stronger contrast)
             const f = 1 / 8;
             addError(i + 1,      er * f, eg * f, eb * f, 1);
             addError(i + 2,      er * f, eg * f, eb * f, 1);
@@ -225,7 +251,6 @@ export const ditherImage: Generator = {
       }
     }
 
-    // Upscale back to full canvas
     const small = new ImageData(out, sw, sh);
     const smallCanvas = document.createElement('canvas');
     smallCanvas.width = sw; smallCanvas.height = sh;

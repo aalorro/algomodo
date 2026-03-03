@@ -1,6 +1,24 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 
+// ─── Source image pixel cache ─────────────────────────────────────────────────
+const _imgCache = new WeakMap<HTMLImageElement, { w: number; h: number; data: Uint8ClampedArray }>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  const c = _imgCache.get(img);
+  if (c && c.w === w && c.h === h) return c.data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  _imgCache.set(img, { w, h, data });
+  return data;
+}
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
+
 const parameterSchema: ParameterSchema = {
   blockSize: {
     name: 'Block Size',
@@ -59,8 +77,18 @@ const parameterSchema: ParameterSchema = {
     max: 20,
     step: 1,
     default: 6,
-    help: 'Number of horizontal bands with large displacement, spread across the full image',
+    help: 'Number of horizontal bands with large displacement',
     group: 'Composition',
+  },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 1,
+    help: 'Controls how rapidly the glitch pattern mutates and how fast jitter waves scroll',
+    group: 'Flow/Motion',
   },
 };
 
@@ -69,7 +97,7 @@ export const dataMosh: Generator = {
   family: 'image',
   styleName: 'Data Mosh',
   definition: 'Simulates video codec corruption via macro-block scrambling, RGB channel separation, and scan-line displacement',
-  algorithmNotes: 'Every block is independently tested against the corruption probability for uniform full-image coverage. Channel shift is expressed as % of canvas width. Glitch bands are evenly seeded across the full image height.',
+  algorithmNotes: 'Every block is independently tested against the corruption probability for uniform full-image coverage. Channel shift is expressed as % of canvas width. During animation the frame-seed advances at ~15 ticks/s so the block-scramble map mutates continuously, channel shift oscillates sinusoidally, and row-jitter gets an additional vertically-scrolling sine wave.',
   parameterSchema,
   defaultParams: {
     blockSize: 32,
@@ -78,12 +106,13 @@ export const dataMosh: Generator = {
     rowJitter: 2,
     jitterDensity: 0.08,
     glitchBands: 6,
+    animSpeed: 1,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, _palette, _quality) {
+  renderCanvas2D(ctx, params, seed, _palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
@@ -104,19 +133,16 @@ export const dataMosh: Generator = {
       return;
     }
 
-    const rng = new SeededRNG(seed);
     const { blockSize, corruption, channelShift, rowJitter, jitterDensity, glitchBands } = params;
+    const animSpeed = params.animSpeed ?? 1;
+    const t = time * animSpeed;
+
+    // Advance RNG seed per-frame so the glitch pattern mutates
+    const frameSeed = seed + (Math.floor(t * 15) | 0);
+    const rng = new SeededRNG(frameSeed);
     const bs = Math.max(4, blockSize | 0);
 
-    // Draw source image to offscreen
-    const off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    const offCtx = off.getContext('2d')!;
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
-    offCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    const src = offCtx.getImageData(0, 0, w, h).data;
+    const src = getSourcePixels(img, w, h);
 
     const sampleChannel = (x: number, y: number, ch: number) => {
       const sx = Math.max(0, Math.min(w - 1, x | 0));
@@ -124,8 +150,6 @@ export const dataMosh: Generator = {
       return src[(sy * w + sx) * 4 + ch];
     };
 
-    // Block map — iterate EVERY block and apply corruption probability independently
-    // This guarantees uniform coverage across the whole image (no birthday-paradox gaps)
     const blockCols = Math.ceil(w / bs);
     const blockRows = Math.ceil(h / bs);
     const totalBlocks = blockCols * blockRows;
@@ -136,27 +160,25 @@ export const dataMosh: Generator = {
         : i;
     }
 
-    // Channel shift as % of canvas width → scales with any canvas resolution
-    const shiftR = Math.round(rng.range(channelShift * 0.5, channelShift) * 0.01 * w);
-    const shiftB = -Math.round(rng.range(channelShift * 0.5, channelShift) * 0.01 * w);
+    // Channel shift oscillates sinusoidally during animation
+    const shiftMag = channelShift * 0.01 * w;
+    const shiftR = Math.round(Math.sin(t * 1.3) * shiftMag);
+    const shiftB = Math.round(-Math.cos(t * 0.9) * shiftMag);
 
-    // Row jitter — scan-line horizontal offsets (also % of width)
     const maxJitterPx = rowJitter * 0.01 * w;
     const rowJitterArr = new Float32Array(h);
     for (let y = 0; y < h; y++) {
       if (rng.random() < jitterDensity) {
         rowJitterArr[y] = rng.range(-maxJitterPx, maxJitterPx);
       }
+      // Add a vertically-scrolling sine wave for living motion
+      rowJitterArr[y] += Math.sin(t * 2.2 + y * 0.07) * maxJitterPx * 0.4;
     }
 
-    // Glitch bands — large horizontal sweeps evenly spread across the full height
-    // Each band occupies a contiguous strip and shifts every row in it by the same large amount
     const numBands = Math.max(0, glitchBands | 0);
     if (numBands > 0) {
       const bandHeight = Math.max(bs, Math.round(h * rng.range(0.02, 0.06)));
-      // Spread band start positions uniformly across full image height
       for (let b = 0; b < numBands; b++) {
-        // Evenly distribute + small jitter so bands cover top AND bottom
         const baseY = Math.round((b / numBands) * (h - bandHeight));
         const startY = Math.max(0, Math.min(h - 1, baseY + Math.round(rng.range(-bandHeight * 0.5, bandHeight * 0.5))));
         const endY = Math.min(h, startY + bandHeight);
@@ -167,7 +189,6 @@ export const dataMosh: Generator = {
       }
     }
 
-    // Build output
     const out = new Uint8ClampedArray(w * h * 4);
 
     for (let y = 0; y < h; y++) {

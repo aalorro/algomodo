@@ -1,5 +1,23 @@
 import type { Generator, Palette, ParameterSchema } from '../../types';
 
+// ─── Source image pixel cache ─────────────────────────────────────────────────
+const _imgCache = new WeakMap<HTMLImageElement, { w: number; h: number; data: Uint8ClampedArray }>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  const c = _imgCache.get(img);
+  if (c && c.w === w && c.h === h) return c.data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  _imgCache.set(img, { w, h, data });
+  return data;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -15,6 +33,8 @@ function nearestPaletteColor(r: number, g: number, b: number, palette: Palette):
   }
   return best;
 }
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
 
 const parameterSchema: ParameterSchema = {
   cellSize: {
@@ -62,6 +82,16 @@ const parameterSchema: ParameterSchema = {
     help: 'How much to shift toward the palette color (palette-blend mode)',
     group: 'Color',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 0.8,
+    help: 'Speed of the brightness ripple wave that expands from the canvas centre',
+    group: 'Flow/Motion',
+  },
 };
 
 export const mosaic: Generator = {
@@ -69,7 +99,7 @@ export const mosaic: Generator = {
   family: 'image',
   styleName: 'Mosaic',
   definition: 'Pixelates the source image into a grid of tiles, optionally mapping colors to the active palette',
-  algorithmNotes: 'Samples average RGB per grid cell, then renders each cell as square/circle/diamond. Nearest-neighbour palette mapping via Euclidean RGB distance.',
+  algorithmNotes: 'Samples average RGB per grid cell, then renders each cell as square/circle/diamond. Nearest-neighbour palette mapping via Euclidean RGB distance. During animation a radial sinusoidal ripple expands from the canvas centre, modulating each tile\'s brightness to create a pulsing mosaic wave.',
   parameterSchema,
   defaultParams: {
     cellSize: 16,
@@ -77,12 +107,13 @@ export const mosaic: Generator = {
     shape: 'square',
     colorMode: 'palette',
     blendStrength: 0.7,
+    animSpeed: 0.8,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, _seed, palette, _quality) {
+  renderCanvas2D(ctx, params, _seed, palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
@@ -103,18 +134,10 @@ export const mosaic: Generator = {
       return;
     }
 
-    // Draw image to offscreen for pixel sampling
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    const offCtx = off.getContext('2d')!;
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
-    offCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-
-    const srcData = offCtx.getImageData(0, 0, w, h).data;
+    const srcData = getSourcePixels(img, w, h);
     const { cellSize, gap, shape, colorMode, blendStrength } = params;
+    const animSpeed = params.animSpeed ?? 0.8;
+    const t = time * animSpeed;
     const tileInner = cellSize - gap;
     if (tileInner <= 0) return;
 
@@ -123,7 +146,6 @@ export const mosaic: Generator = {
 
     for (let ty = 0; ty < h; ty += cellSize) {
       for (let tx = 0; tx < w; tx += cellSize) {
-        // Average color over this cell
         let sumR = 0, sumG = 0, sumB = 0, count = 0;
         for (let py = ty; py < ty + cellSize && py < h; py++) {
           for (let px = tx; px < tx + cellSize && px < w; px++) {
@@ -137,19 +159,27 @@ export const mosaic: Generator = {
         if (count === 0) continue;
         let r = sumR / count, g = sumG / count, b = sumB / count;
 
+        // Radial brightness ripple expanding from canvas centre
+        const dcx = (tx + cellSize / 2) - w / 2;
+        const dcy = (ty + cellSize / 2) - h / 2;
+        const dist = Math.sqrt(dcx * dcx + dcy * dcy);
+        const wave = Math.sin(t * 2.2 - dist / cellSize * 0.45) * 0.14;
+        r = Math.max(0, Math.min(255, r * (1 + wave)));
+        g = Math.max(0, Math.min(255, g * (1 + wave)));
+        b = Math.max(0, Math.min(255, b * (1 + wave)));
+
         let fillColor: string;
         if (colorMode === 'original') {
           fillColor = `rgb(${r | 0},${g | 0},${b | 0})`;
         } else if (colorMode === 'palette') {
           fillColor = nearestPaletteColor(r, g, b, palette);
         } else {
-          // palette-blend
           const pal = nearestPaletteColor(r, g, b, palette);
           const [pr, pg, pb] = hexToRgb(pal);
-          const t = blendStrength ?? 0.7;
-          r = r * (1 - t) + pr * t;
-          g = g * (1 - t) + pg * t;
-          b = b * (1 - t) + pb * t;
+          const blend = blendStrength ?? 0.7;
+          r = r * (1 - blend) + pr * blend;
+          g = g * (1 - blend) + pg * blend;
+          b = b * (1 - blend) + pb * blend;
           fillColor = `rgb(${r | 0},${g | 0},${b | 0})`;
         }
 
