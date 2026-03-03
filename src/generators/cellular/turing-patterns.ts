@@ -16,24 +16,41 @@ let _turingAnim: {
   nU: Float32Array;
   nV: Float32Array;
   size: number;
+  animTime: number; // internal step counter for parameter drift
 } | null = null;
 
 // ---------------------------------------------------------------------------
-// Schnakenberg activator-inhibitor model:
+// Constants
+// ---------------------------------------------------------------------------
+const DT_SCHNAKENBERG = 0.01;
+const DT_GRAY_SCOTT   = 1.0;
+
+// ---------------------------------------------------------------------------
+// Laplacian helper — 5-point or 9-point isotropic stencil
+//
+// 9-point weights: cardinal = 0.2, diagonal = 0.05, center = -1.0
+// (sum = 4×0.2 + 4×0.05 − 1 = 0  ✓  isotropic to O(h⁴))
+// ---------------------------------------------------------------------------
+function laplacian5(
+  F: Float32Array, idx: number,
+  xp: number, xm: number, yp_row: number, ym_row: number, yc_row: number,
+): number {
+  return F[yc_row + xp] + F[yc_row + xm] + F[yp_row + (idx % (Math.sqrt(F.length) | 0))]
+    + F[ym_row + (idx % (Math.sqrt(F.length) | 0))] - 4 * F[idx];
+}
+
+// We inline the 5/9-point choice inside each step function for performance.
+
+// ---------------------------------------------------------------------------
+// Schnakenberg model:
 //   ∂u/∂t = Du·∇²u + γ(a − u + u²v)
 //   ∂v/∂t = Dv·∇²v + γ(b − u²v)
-// Steady state: u₀ = a+b, v₀ = b/(a+b)²
-// Turing instability requires Dv/Du > threshold and b > a.
 // ---------------------------------------------------------------------------
-const DT = 0.01;
-
-function initTuring(seed: number, size: number, a: number, b: number) {
+function initSchnakenberg(seed: number, size: number, a: number, b: number) {
   const rng = new SeededRNG(seed);
   const N = size * size;
-  const U = new Float32Array(N);
-  const V = new Float32Array(N);
-  const u0 = a + b;
-  const v0 = b / (u0 * u0);
+  const U = new Float32Array(N), V = new Float32Array(N);
+  const u0 = a + b, v0 = b / (u0 * u0);
   for (let i = 0; i < N; i++) {
     U[i] = Math.max(0, u0 + (rng.random() - 0.5) * 0.1);
     V[i] = Math.max(0, v0 + (rng.random() - 0.5) * 0.1);
@@ -41,36 +58,139 @@ function initTuring(seed: number, size: number, a: number, b: number) {
   return { U, V, nU: new Float32Array(N), nV: new Float32Array(N) };
 }
 
-function stepTuring(
+function stepSchnakenberg(
   U: Float32Array, V: Float32Array,
   nU: Float32Array, nV: Float32Array,
   size: number,
   Du: number, Dv: number, gamma: number, a: number, b: number,
+  stencil9: boolean, paramGradient: number, animTime: number, paramDrift: number,
 ): void {
   for (let y = 0; y < size; y++) {
     const yp = ((y + 1) % size) * size;
     const ym = ((y - 1 + size) % size) * size;
     const yc = y * size;
     for (let x = 0; x < size; x++) {
-      const xp = (x + 1) % size;
-      const xm = (x - 1 + size) % size;
+      const xp = (x + 1) % size, xm = (x - 1 + size) % size;
       const idx = yc + x;
       const u = U[idx], v = V[idx];
-      const lapU = U[yc+xp] + U[yc+xm] + U[yp+x] + U[ym+x] - 4 * u;
-      const lapV = V[yc+xp] + V[yc+xm] + V[yp+x] + V[ym+x] - 4 * v;
+
+      let lapU: number, lapV: number;
+      if (stencil9) {
+        const xpp = (x + 1) % size, xmm = (x - 1 + size) % size;
+        const ypp = ((y + 1) % size) * size, ymm = ((y - 1 + size) % size) * size;
+        lapU = 0.2 * (U[yc + xpp] + U[yc + xmm] + U[ypp + x] + U[ymm + x])
+             + 0.05 * (U[ypp + xpp] + U[ypp + xmm] + U[ymm + xpp] + U[ymm + xmm])
+             - U[idx];
+        lapV = 0.2 * (V[yc + xpp] + V[yc + xmm] + V[ypp + x] + V[ymm + x])
+             + 0.05 * (V[ypp + xpp] + V[ypp + xmm] + V[ymm + xpp] + V[ymm + xmm])
+             - V[idx];
+      } else {
+        lapU = U[yc + xp] + U[yc + xm] + U[yp + x] + U[ym + x] - 4 * u;
+        lapV = V[yc + xp] + V[yc + xm] + V[yp + x] + V[ym + x] - 4 * v;
+      }
+
       const uvv = u * u * v;
-      nU[idx] = Math.max(0, u + DT * (Du * lapU + gamma * (a - u + uvv)));
-      nV[idx] = Math.max(0, v + DT * (Dv * lapV + gamma * (b - uvv)));
+      // Spatial gradient: vary 'a' across x-axis (low a → stripes, high a → spots)
+      const localA = a * (1 + paramGradient * (x / (size - 1) - 0.5) * 2);
+      // Slow parameter drift: oscillate 'b' during animation
+      const driftB = b + paramDrift * b * Math.sin(animTime * 0.0005);
+
+      nU[idx] = Math.max(0, u + DT_SCHNAKENBERG * (Du * lapU + gamma * (localA - u + uvv)));
+      nV[idx] = Math.max(0, v + DT_SCHNAKENBERG * (Dv * lapV + gamma * (driftB - uvv)));
     }
   }
-  U.set(nU);
-  V.set(nV);
+  U.set(nU); V.set(nV);
 }
 
+// ---------------------------------------------------------------------------
+// Gray-Scott model:
+//   ∂u/∂t = Du·∇²u − u·v² + F·(1−u)
+//   ∂v/∂t = Dv·∇²v + u·v² − (F+k)·v
+//
+// Canonical parameter ranges (Pearson 1993):
+//   solitons:  F≈0.037, k≈0.060
+//   worms:     F≈0.035, k≈0.065
+//   spots:     F≈0.025, k≈0.050
+//   rings:     F≈0.039, k≈0.058
+// ---------------------------------------------------------------------------
+function initGrayScott(seed: number, size: number) {
+  const rng = new SeededRNG(seed);
+  const N = size * size;
+  const U = new Float32Array(N).fill(1);
+  const V = new Float32Array(N);
+  // Seed small random patches of V
+  const numPatches = 4 + (rng.random() * 8) | 0;
+  for (let p = 0; p < numPatches; p++) {
+    const cx = (rng.random() * size) | 0;
+    const cy = (rng.random() * size) | 0;
+    const r = 2 + (rng.random() * 5) | 0;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy <= r * r) {
+          const nx = ((cx + dx) % size + size) % size;
+          const ny = ((cy + dy) % size + size) % size;
+          U[ny * size + nx] = 0.5 + (rng.random() - 0.5) * 0.1;
+          V[ny * size + nx] = 0.25 + (rng.random() - 0.5) * 0.05;
+        }
+      }
+    }
+  }
+  return { U, V, nU: new Float32Array(N), nV: new Float32Array(N) };
+}
+
+function stepGrayScott(
+  U: Float32Array, V: Float32Array,
+  nU: Float32Array, nV: Float32Array,
+  size: number,
+  Du: number, Dv: number, F: number, k: number,
+  stencil9: boolean, paramGradient: number, animTime: number, paramDrift: number,
+): void {
+  for (let y = 0; y < size; y++) {
+    const yp = ((y + 1) % size) * size;
+    const ym = ((y - 1 + size) % size) * size;
+    const yc = y * size;
+    for (let x = 0; x < size; x++) {
+      const xp = (x + 1) % size, xm = (x - 1 + size) % size;
+      const idx = yc + x;
+      const u = U[idx], v = V[idx];
+
+      let lapU: number, lapV: number;
+      if (stencil9) {
+        const xpp = (x + 1) % size, xmm = (x - 1 + size) % size;
+        const ypp = ((y + 1) % size) * size, ymm = ((y - 1 + size) % size) * size;
+        lapU = 0.2 * (U[yc + xpp] + U[yc + xmm] + U[ypp + x] + U[ymm + x])
+             + 0.05 * (U[ypp + xpp] + U[ypp + xmm] + U[ymm + xpp] + U[ymm + xmm])
+             - U[idx];
+        lapV = 0.2 * (V[yc + xpp] + V[yc + xmm] + V[ypp + x] + V[ymm + x])
+             + 0.05 * (V[ypp + xpp] + V[ypp + xmm] + V[ymm + xpp] + V[ymm + xmm])
+             - V[idx];
+      } else {
+        lapU = U[yc + xp] + U[yc + xm] + U[yp + x] + U[ym + x] - 4 * u;
+        lapV = V[yc + xp] + V[yc + xm] + V[yp + x] + V[ym + x] - 4 * v;
+      }
+
+      const uvv = u * v * v;
+      // Spatial gradient: vary k across x-axis (left = low k = spots/solitons, right = high k = decay)
+      const localK = k * (1 + paramGradient * (x / (size - 1) - 0.5) * 1.4);
+      // Slow drift: oscillate F (feed rate) during animation to evolve pattern morphology
+      const driftF = F + paramDrift * F * Math.sin(animTime * 0.0003);
+
+      nU[idx] = Math.max(0, Math.min(1, u + DT_GRAY_SCOTT * (Du * lapU - uvv + driftF * (1 - u))));
+      nV[idx] = Math.max(0, Math.min(1, v + DT_GRAY_SCOTT * (Dv * lapV + uvv - (driftF + localK) * v)));
+    }
+  }
+  U.set(nU); V.set(nV);
+}
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
 function renderTuring(
   ctx: CanvasRenderingContext2D,
-  U: Float32Array, size: number,
-  a: number, b: number,
+  U: Float32Array, V: Float32Array,
+  size: number,
+  a: number, b: number, F: number,
+  model: string,
   palette: { colors: string[] }, colorMode: string,
 ): void {
   const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -78,13 +198,17 @@ function renderTuring(
   const d = img.data;
   const cw = w / size, ch = h / size;
   const colors = palette.colors.map(hexToRgb);
-  // Map [0, 2·u₀] → [0, 1]; peaks sit at 2·u₀, troughs near 0
-  const uMax = 2 * (a + b);
+
+  // For Schnakenberg: map U ∈ [0, 2·u₀] → [0,1]
+  // For Gray-Scott: map V ∈ [0, 0.5] → [0,1] (V shows the spots)
+  const isGS = model === 'gray-scott';
+  const field = isGS ? V : U;
+  const fieldMax = isGS ? 0.5 : 2 * (a + b);
 
   for (let cy = 0; cy < size; cy++) {
     const y0 = Math.floor(cy * ch), y1 = Math.floor((cy + 1) * ch);
     for (let cx = 0; cx < size; cx++) {
-      const raw = Math.min(1, Math.max(0, U[cy * size + cx] / uMax));
+      const raw = Math.min(1, Math.max(0, field[cy * size + cx] / fieldMax));
       const t = colorMode === 'binary' ? (raw > 0.5 ? 1 : 0) : raw;
 
       const scaled = t * (colors.length - 1);
@@ -99,7 +223,7 @@ function renderTuring(
       for (let py = y0; py < y1; py++) {
         for (let px = x0; px < x1; px++) {
           const i = (py * w + px) * 4;
-          d[i] = r; d[i+1] = g; d[i+2] = b2; d[i+3] = 255;
+          d[i] = r; d[i + 1] = g; d[i + 2] = b2; d[i + 3] = 255;
         }
       }
     }
@@ -116,40 +240,80 @@ const parameterSchema: ParameterSchema = {
     type: 'number', min: 32, max: 256, step: 16, default: 128,
     group: 'Composition',
   },
+  model: {
+    name: 'Model',
+    type: 'select',
+    options: ['schnakenberg', 'gray-scott'],
+    default: 'schnakenberg',
+    help: 'schnakenberg: activator-inhibitor, produces spots/stripes/labyrinths | gray-scott: substrate-catalyst, produces solitons, worms, annular rings, coral-like growths',
+    group: 'Composition',
+  },
   a: {
     name: 'Source a',
     type: 'number', min: 0.01, max: 0.5, step: 0.01, default: 0.1,
-    help: 'Activator source — must be smaller than b for Turing instability; very low a → stripes',
+    help: 'Schnakenberg: activator source — low a → stripes, higher a → spots',
     group: 'Composition',
   },
   b: {
     name: 'Source b',
     type: 'number', min: 0.3, max: 1.8, step: 0.05, default: 0.9,
-    help: 'Inhibitor source — higher b relative to a pushes toward isolated spots',
+    help: 'Schnakenberg: inhibitor source — higher b relative to a pushes toward isolated spots',
     group: 'Composition',
   },
   gamma: {
     name: 'Reaction Rate γ',
     type: 'number', min: 20, max: 300, step: 10, default: 100,
-    help: 'Overall reaction speed — higher γ produces finer, denser patterns',
+    help: 'Schnakenberg: overall reaction speed — higher γ produces finer, denser patterns',
+    group: 'Composition',
+  },
+  F: {
+    name: 'Feed Rate F',
+    type: 'number', min: 0.010, max: 0.080, step: 0.001, default: 0.037,
+    help: 'Gray-Scott: feed rate of substrate U — F≈0.037 → solitons, F≈0.035 → worms, F≈0.025 → spots',
+    group: 'Composition',
+  },
+  k: {
+    name: 'Kill Rate k',
+    type: 'number', min: 0.040, max: 0.075, step: 0.001, default: 0.060,
+    help: 'Gray-Scott: kill rate of catalyst V — k≈0.060 → solitons, k≈0.065 → worms, k≈0.050 → spots',
     group: 'Composition',
   },
   Du: {
     name: 'Diffusion u',
-    type: 'number', min: 0.005, max: 0.1, step: 0.005, default: 0.02,
-    help: 'Activator diffusion — must be much smaller than Dv to maintain Turing instability',
+    type: 'number', min: 0.005, max: 0.3, step: 0.005, default: 0.02,
+    help: 'Activator/substrate diffusion — Schnakenberg: keep ≪ Dv (target ≥10× ratio); Gray-Scott: typical 0.16–0.20',
     group: 'Texture',
   },
   Dv: {
     name: 'Diffusion v',
-    type: 'number', min: 0.1, max: 2.0, step: 0.1, default: 0.5,
-    help: 'Inhibitor diffusion — the Dv/Du ratio drives pattern formation (target ratio ≥ 10)',
+    type: 'number', min: 0.05, max: 2.0, step: 0.05, default: 0.5,
+    help: 'Inhibitor/catalyst diffusion — Schnakenberg: Dv/Du ratio drives instability; Gray-Scott: typical 0.08–0.10',
     group: 'Texture',
+  },
+  stencil: {
+    name: 'Laplacian Stencil',
+    type: 'select',
+    options: ['9-point', '5-point'],
+    default: '9-point',
+    help: '9-point isotropic (cardinal 0.2, diagonal 0.05): rounder spots, less grid artefacts | 5-point (standard): slightly faster',
+    group: 'Texture',
+  },
+  paramGradient: {
+    name: 'Param Gradient',
+    type: 'number', min: 0, max: 0.8, step: 0.05, default: 0.0,
+    help: 'Linearly varies the reaction parameter across the canvas (a for Schnakenberg, k for Gray-Scott) — creates a smooth morphological transition from spots to stripes or solitons to waves',
+    group: 'Composition',
+  },
+  paramDrift: {
+    name: 'Param Drift',
+    type: 'number', min: 0, max: 0.5, step: 0.05, default: 0.0,
+    help: 'Slowly oscillates the reaction parameter during animation, driving the pattern to continuously morph between morphologies',
+    group: 'Flow/Motion',
   },
   warmupSteps: {
     name: 'Warm-up Steps',
-    type: 'number', min: 50, max: 1200, step: 50, default: 400,
-    help: 'Steps computed before the static render — more steps → more fully-developed patterns',
+    type: 'number', min: 50, max: 2000, step: 50, default: 500,
+    help: 'Steps before the static render — Schnakenberg: 400–800; Gray-Scott needs 800–2000 for developed patterns',
     group: 'Composition',
   },
   stepsPerFrame: {
@@ -163,7 +327,7 @@ const parameterSchema: ParameterSchema = {
     type: 'select',
     options: ['palette', 'binary'],
     default: 'palette',
-    help: 'palette: smooth gradient across activator concentration | binary: hard threshold at midpoint for a two-tone animal-coat look',
+    help: 'palette: smooth gradient across activator/catalyst concentration | binary: hard threshold for two-tone animal-coat look',
     group: 'Color',
   },
 };
@@ -176,48 +340,72 @@ export const turingPatterns: Generator = {
   family: 'cellular',
   styleName: 'Turing Patterns',
   definition:
-    "Alan Turing's 1952 reaction-diffusion morphogenesis — an activator-inhibitor system that spontaneously self-organizes into animal coat spots, stripes, and labyrinthine mazes",
+    "Alan Turing's 1952 reaction-diffusion morphogenesis — choose between the Schnakenberg activator-inhibitor model (spots, stripes, labyrinths) or the Gray-Scott model (solitons, worms, annular rings). A spatial parameter gradient creates morphological transitions across the canvas, and slow parameter drift makes patterns continuously evolve during animation.",
   algorithmNotes:
-    'Implements the Schnakenberg activator-inhibitor model: ∂u/∂t = Du·∇²u + γ(a − u + u²v), ∂v/∂t = Dv·∇²v + γ(b − u²v). The grid is seeded near the spatially uniform steady state (u₀ = a+b, v₀ = b/(a+b)²) with small random perturbations. When Dv/Du is large (≥10) and b > a, the steady state is unstable to spatially periodic perturbations (Turing instability), producing self-organised patterns whose wavelength scales as ∝1/√γ. Low a/b ratio (≈0.05/1.0) produces parallel stripes; near-equal a and b produces spots; intermediate ratios produce mixed morphologies. Periodic boundaries are used throughout; dt = 0.01 fixed.',
+    'Schnakenberg model: ∂u/∂t = Du·∇²u + γ(a−u+u²v), ∂v/∂t = Dv·∇²v + γ(b−u²v). Seeded near the uniform steady state (u₀=a+b, v₀=b/(a+b)²). Turing instability requires Dv/Du≥10 and b>a; pattern wavelength ∝ 1/√γ. Gray-Scott model: ∂u/∂t = Du·∇²u − uv²+F(1−u), ∂v/∂t = Dv·∇²v + uv² − (F+k)v. Seeded with small random patches of v≈0.25; DT=1.0. Both models support a 9-point isotropic Laplacian (cardinal weight 0.2, diagonal 0.05) for rounder, more biological spots. Spatial parameter gradient (a or k varied linearly across x-axis) creates a transition between spot, stripe, and labyrinthine morphologies in a single render. Slow parameter drift (paramDrift>0) continuously oscillates the parameter during animation, driving the pattern to morph over time.',
   parameterSchema,
   defaultParams: {
-    gridSize: 128, a: 0.1, b: 0.9, gamma: 100,
-    Du: 0.02, Dv: 0.5, warmupSteps: 400, stepsPerFrame: 5, colorMode: 'palette',
+    gridSize: 128,
+    model: 'schnakenberg', a: 0.1, b: 0.9, gamma: 100,
+    F: 0.037, k: 0.060,
+    Du: 0.02, Dv: 0.5,
+    stencil: '9-point',
+    paramGradient: 0.0, paramDrift: 0.0,
+    warmupSteps: 500, stepsPerFrame: 5, colorMode: 'palette',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const size  = Math.max(16, (params.gridSize ?? 128) | 0);
-    const a     = params.a     ?? 0.1;
-    const b     = params.b     ?? 0.9;
-    const gamma = params.gamma ?? 100;
-    const Du    = params.Du    ?? 0.02;
-    const Dv    = params.Dv    ?? 0.5;
+    const size    = Math.max(16, (params.gridSize ?? 128) | 0);
+    const model   = params.model ?? 'schnakenberg';
+    const a       = params.a     ?? 0.1;
+    const b       = params.b     ?? 0.9;
+    const gamma   = params.gamma ?? 100;
+    const F       = params.F     ?? 0.037;
+    const k       = params.k     ?? 0.060;
+    const Du      = params.Du    ?? 0.02;
+    const Dv      = params.Dv    ?? 0.5;
+    const stencil9 = (params.stencil ?? '9-point') === '9-point';
+    const paramGradient = params.paramGradient ?? 0;
+    const paramDrift    = params.paramDrift    ?? 0;
     const colorMode = params.colorMode ?? 'palette';
+    const isGS = model === 'gray-scott';
+
+    const stepFn = isGS
+      ? (U: Float32Array, V: Float32Array, nU: Float32Array, nV: Float32Array, aTime: number) =>
+          stepGrayScott(U, V, nU, nV, size, Du, Dv, F, k, stencil9, paramGradient, aTime, paramDrift)
+      : (U: Float32Array, V: Float32Array, nU: Float32Array, nV: Float32Array, aTime: number) =>
+          stepSchnakenberg(U, V, nU, nV, size, Du, Dv, gamma, a, b, stencil9, paramGradient, aTime, paramDrift);
 
     if (time === 0) {
-      const { U, V, nU, nV } = initTuring(seed, size, a, b);
-      const steps = Math.max(1, (params.warmupSteps ?? 400) | 0);
-      for (let s = 0; s < steps; s++) stepTuring(U, V, nU, nV, size, Du, Dv, gamma, a, b);
-      renderTuring(ctx, U, size, a, b, palette, colorMode);
+      const { U, V, nU, nV } = isGS
+        ? initGrayScott(seed, size)
+        : initSchnakenberg(seed, size, a, b);
+      const steps = Math.max(1, (params.warmupSteps ?? 500) | 0);
+      for (let s = 0; s < steps; s++) stepFn(U, V, nU, nV, s);
+      renderTuring(ctx, U, V, size, a, b, F, model, palette, colorMode);
       return;
     }
 
-    const key = `${seed}|${size}|${a}|${b}`;
+    const key = `${seed}|${size}|${model}|${a}|${b}|${F}|${k}`;
     if (!_turingAnim || _turingAnim.key !== key) {
-      const { U, V, nU, nV } = initTuring(seed, size, a, b);
-      _turingAnim = { key, U, V, nU, nV, size };
+      const { U, V, nU, nV } = isGS
+        ? initGrayScott(seed, size)
+        : initSchnakenberg(seed, size, a, b);
+      _turingAnim = { key, U, V, nU, nV, size, animTime: 0 };
     }
+
     const spf = Math.max(1, (params.stepsPerFrame ?? 5) | 0);
     for (let s = 0; s < spf; s++) {
-      stepTuring(_turingAnim.U, _turingAnim.V, _turingAnim.nU, _turingAnim.nV,
-        _turingAnim.size, Du, Dv, gamma, a, b);
+      stepFn(_turingAnim.U, _turingAnim.V, _turingAnim.nU, _turingAnim.nV, _turingAnim.animTime);
+      _turingAnim.animTime++;
     }
-    renderTuring(ctx, _turingAnim.U, _turingAnim.size, a, b, palette, colorMode);
+    renderTuring(ctx, _turingAnim.U, _turingAnim.V, _turingAnim.size, a, b, F, model, palette, colorMode);
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
   estimateCost(params) {
-    return (((params.gridSize ?? 128) ** 2) * (params.warmupSteps ?? 400) * 0.002) | 0;
+    const isGS = (params.model ?? 'schnakenberg') === 'gray-scott';
+    return (((params.gridSize ?? 128) ** 2) * (params.warmupSteps ?? 500) * (isGS ? 0.001 : 0.002)) | 0;
   },
 };
