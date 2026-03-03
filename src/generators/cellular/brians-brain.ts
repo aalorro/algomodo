@@ -6,11 +6,8 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Cell state encoding:
-//   0          = OFF
-//   1..ds      = DYING  (1 = freshest refractory state)
-//   ds + 1     = ON
-// where ds = dyingStates param (default 1 → classic Brian's Brain).
+// Cell states: 0 = OFF, 1 = DYING, 2 = ON
+const OFF = 0, DYING = 1, ON = 2;
 
 // ---------------------------------------------------------------------------
 // Persistent animation state
@@ -22,35 +19,27 @@ let _brainAnim: {
   size: number;
 } | null = null;
 
-function initBrain(seed: number, size: number, density: number, ON: number) {
+function initBrain(seed: number, size: number, density: number) {
   const rng = new SeededRNG(seed);
   const N = size * size;
   const grid = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     const r = rng.random();
-    if (r < density)           grid[i] = ON;  // ON
-    else if (r < density * 2)  grid[i] = 1;   // DYING (state 1)
+    if (r < density)           grid[i] = ON;
+    else if (r < density * 2)  grid[i] = DYING;
   }
   return { grid, next: new Uint8Array(N) };
 }
 
-// ---------------------------------------------------------------------------
-// Step
-//   ON      → DYING(1)
-//   DYING(k)→ DYING(k+1)  …  DYING(ds) → OFF
-//   OFF     → ON  iff exactly 2 Moore (or VN) neighbours are ON
-// ---------------------------------------------------------------------------
-function stepBrain(
-  grid: Uint8Array, next: Uint8Array, size: number,
-  ON: number, ds: number,
-): void {
+// ON → DYING → OFF → ON (iff exactly 2 Moore neighbours are ON)
+function stepBrain(grid: Uint8Array, next: Uint8Array, size: number): void {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const s = grid[y * size + x];
       if (s === ON) {
-        next[y * size + x] = 1;
-      } else if (s > 0) {
-        next[y * size + x] = s < ds ? s + 1 : 0;
+        next[y * size + x] = DYING;
+      } else if (s === DYING) {
+        next[y * size + x] = OFF;
       } else {
         let count = 0;
         for (let dy = -1; dy <= 1; dy++) {
@@ -59,7 +48,7 @@ function stepBrain(
             if (grid[((y + dy + size) % size) * size + ((x + dx + size) % size)] === ON) count++;
           }
         }
-        next[y * size + x] = count === 2 ? ON : 0;
+        next[y * size + x] = count === 2 ? ON : OFF;
       }
     }
   }
@@ -68,7 +57,7 @@ function stepBrain(
 
 function renderBrain(
   ctx: CanvasRenderingContext2D,
-  grid: Uint8Array, size: number, ON: number,
+  grid: Uint8Array, size: number,
   colorMode: string, palette: { colors: string[] },
 ): void {
   const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -109,7 +98,7 @@ const parameterSchema: ParameterSchema = {
   },
   initialDensity: {
     name: 'Initial ON Density',
-    type: 'number', min: 0.05, max: 0.45, step: 0.05, default: 0.25,
+    type: 'number', min: 0.05, max: 0.20, step: 0.05, default: 0.15,
     help: 'Fraction of cells starting ON (an equal fraction start DYING)',
     group: 'Composition',
   },
@@ -118,12 +107,6 @@ const parameterSchema: ParameterSchema = {
     type: 'number', min: 0, max: 200, step: 5, default: 30,
     help: 'Steps run before the static render snapshot',
     group: 'Composition',
-  },
-  dyingStates: {
-    name: 'Refractory States',
-    type: 'number', min: 1, max: 4, step: 1, default: 1,
-    help: "Number of intermediate dying states before a cell resets to OFF. 1 = classic Brian's Brain (fast bullet gliders). 2–4 = longer refractory period → slower waves, visible spiral arms and rotating structures.",
-    group: 'Geometry',
   },
   stepsPerFrame: {
     name: 'Steps / Frame',
@@ -149,35 +132,32 @@ export const briansBrain: Generator = {
     "Three or more states: ON → DYING(1) → … → DYING(ds) → OFF → ON (iff exactly 2 ON neighbours). Classic ds=1 with Moore neighbourhood is Brian's Brain: the strict two-neighbour birth rule means no still lifes — every structure must move or die, producing a universe of bullet gliders and compound oscillators. Increasing ds to 2–3 lengthens the refractory period, slowing wave propagation and allowing wave fronts to curve into stable spirals. Von Neumann (4-cell cardinal) neighbourhood changes the glider family: bullets travel only along axes, and wavefronts are diamond rather than circular.",
   parameterSchema,
   defaultParams: {
-    gridSize: 128, initialDensity: 0.25, warmupSteps: 30,
-    dyingStates: 1,
+    gridSize: 128, initialDensity: 0.15, warmupSteps: 30,
     stepsPerFrame: 1, colorMode: 'classic',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const size  = Math.max(16, (params.gridSize ?? 128) | 0);
-    const density = params.initialDensity ?? 0.25;
-    const ds    = Math.max(1, Math.min(4, (params.dyingStates ?? 1) | 0));
-    const ON    = ds + 1;
+    const size      = Math.max(16, (params.gridSize ?? 128) | 0);
+    const density   = Math.min(0.20, params.initialDensity ?? 0.15);
     const colorMode = params.colorMode || 'classic';
 
     if (time === 0) {
-      const { grid, next } = initBrain(seed, size, density, ON);
+      const { grid, next } = initBrain(seed, size, density);
       const warmup = Math.max(0, (params.warmupSteps ?? 30) | 0);
-      for (let s = 0; s < warmup; s++) stepBrain(grid, next, size, ON, ds);
-      renderBrain(ctx, grid, size, ON, colorMode, palette);
+      for (let s = 0; s < warmup; s++) stepBrain(grid, next, size);
+      renderBrain(ctx, grid, size, colorMode, palette);
       return;
     }
 
-    const key = `${seed}|${size}|${density}|${ds}`;
+    const key = `${seed}|${size}|${density}`;
     if (!_brainAnim || _brainAnim.key !== key) {
-      const { grid, next } = initBrain(seed, size, density, ON);
+      const { grid, next } = initBrain(seed, size, density);
       _brainAnim = { key, grid, next, size };
     }
     const spf = Math.max(1, (params.stepsPerFrame ?? 1) | 0);
-    for (let s = 0; s < spf; s++) stepBrain(_brainAnim.grid, _brainAnim.next, _brainAnim.size, ON, ds);
-    renderBrain(ctx, _brainAnim.grid, _brainAnim.size, ON, colorMode, palette);
+    for (let s = 0; s < spf; s++) stepBrain(_brainAnim.grid, _brainAnim.next, _brainAnim.size);
+    renderBrain(ctx, _brainAnim.grid, _brainAnim.size, colorMode, palette);
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0.06, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
