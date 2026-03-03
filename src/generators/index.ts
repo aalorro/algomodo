@@ -46,7 +46,6 @@ import { forestFire } from './cellular/forest-fire';
 import { edenGrowth } from './cellular/eden-growth';
 import { percolation } from './cellular/percolation';
 import { sandpile } from './cellular/sandpile';
-import { fluidLite } from './cellular/fluid-lite';
 import { cyclicCA } from './cellular/cyclic-ca';
 import { briansBrain } from './cellular/brians-brain';
 import { ageTrails } from './cellular/age-trails';
@@ -122,7 +121,6 @@ export function initializeGenerators() {
   registerGenerator(edenGrowth);
   registerGenerator(percolation);
   registerGenerator(sandpile);
-  registerGenerator(fluidLite);
   registerGenerator(cyclicCA);
   registerGenerator(briansBrain);
   registerGenerator(ageTrails);
@@ -160,7 +158,7 @@ export {
   stippling, hatching, contourTopo, contourLines, streamlines, tspArt, circlePacking, offsetPaths,
   guilloche, halftoneDots, phyllotaxis, meanderMaze, scribbleShading, bezierRibbonWeaves,
   gameOfLife, reactionDiffusion,
-  forestFire, edenGrowth, percolation, sandpile, fluidLite,
+  forestFire, edenGrowth, percolation, sandpile,
   cyclicCA, briansBrain, ageTrails, turingPatterns, crystalGrowth, dla, elementaryCA,
   orbital, flowingParticles, flowFieldInk, attractorTrails, curlFluid, plasmaFeedback,
   kaleidoscope, waveInterference,
