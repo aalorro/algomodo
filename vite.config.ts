@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/algomodo/',
+  base: '/',
   build: {
     target: 'esnext',
     minify: 'terser',
