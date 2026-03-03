@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: 
 
-Sitemap: https://aalorro.github.io/algomodo/sitemap.xml
+Sitemap: https://www.algomodo.work/sitemap.xml
