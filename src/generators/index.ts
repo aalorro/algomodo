@@ -43,7 +43,6 @@ import { bezierRibbonWeaves } from './plotter/bezier-ribbon-weaves';
 import { gameOfLife } from './cellular/game-of-life';
 import { reactionDiffusion } from './cellular/reaction-diffusion';
 import { forestFire } from './cellular/forest-fire';
-import { isingModel } from './cellular/ising-model';
 import { edenGrowth } from './cellular/eden-growth';
 import { percolation } from './cellular/percolation';
 import { sandpile } from './cellular/sandpile';
@@ -120,7 +119,6 @@ export function initializeGenerators() {
   registerGenerator(gameOfLife);
   registerGenerator(reactionDiffusion);
   registerGenerator(forestFire);
-  registerGenerator(isingModel);
   registerGenerator(edenGrowth);
   registerGenerator(percolation);
   registerGenerator(sandpile);
@@ -162,7 +160,7 @@ export {
   stippling, hatching, contourTopo, contourLines, streamlines, tspArt, circlePacking, offsetPaths,
   guilloche, halftoneDots, phyllotaxis, meanderMaze, scribbleShading, bezierRibbonWeaves,
   gameOfLife, reactionDiffusion,
-  forestFire, isingModel, edenGrowth, percolation, sandpile, fluidLite,
+  forestFire, edenGrowth, percolation, sandpile, fluidLite,
   cyclicCA, briansBrain, ageTrails, turingPatterns, crystalGrowth, dla, elementaryCA,
   orbital, flowingParticles, flowFieldInk, attractorTrails, curlFluid, plasmaFeedback,
   kaleidoscope, waveInterference,

@@ -7,6 +7,71 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 // ---------------------------------------------------------------------------
+// Union-Find (Disjoint Set Union) for fast cluster detection
+// ---------------------------------------------------------------------------
+class UnionFind {
+  parent: Int32Array;
+  size: Int32Array;
+
+  constructor(n: number) {
+    this.parent = new Int32Array(n);
+    this.size = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      this.parent[i] = i;
+      this.size[i] = 1;
+    }
+  }
+
+  find(x: number): number {
+    if (this.parent[x] !== x) {
+      this.parent[x] = this.find(this.parent[x]);
+    }
+    return this.parent[x];
+  }
+
+  union(x: number, y: number): void {
+    const px = this.find(x);
+    const py = this.find(y);
+    if (px === py) return;
+
+    if (this.size[px] < this.size[py]) {
+      this.parent[px] = py;
+      this.size[py] += this.size[px];
+    } else {
+      this.parent[py] = px;
+      this.size[px] += this.size[py];
+    }
+  }
+
+  getClusterSizes(): { labels: Int32Array; clusterSizes: Uint32Array; maxSize: number } {
+    const cluster_map = new Map<number, number>();
+    let clustering = -1;
+    const labels = new Int32Array(this.parent.length);
+
+    for (let i = 0; i < this.parent.length; i++) {
+      const root = this.find(i);
+      if (!cluster_map.has(root)) {
+        cluster_map.set(root, ++clustering);
+      }
+      labels[i] = cluster_map.get(root)!;
+    }
+
+    const num_clusters = cluster_map.size;
+    const clusterSizes = new Uint32Array(num_clusters);
+    for (let i = 0; i < labels.length; i++) {
+      clusterSizes[labels[i]]++;
+    }
+
+    let maxSize = 0;
+    for (let i = 0; i < clusterSizes.length; i++) {
+      if (clusterSizes[i] > maxSize) maxSize = clusterSizes[i];
+    }
+
+    return { labels, clusterSizes, maxSize };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Persistent animation state
 // ---------------------------------------------------------------------------
 let _percAnim: {
@@ -17,55 +82,15 @@ let _percAnim: {
   direction: number;          // +1 or -1
 } | null = null;
 
-// BFS union-find-less cluster labeling, returns { labels, clusterSizes, maxSize }
-function labelClusters(occupied: Uint8Array, size: number): {
-  labels: Int32Array;
-  clusterSizes: Uint32Array;
-  maxSize: number;
-} {
-  const N = size * size;
-  const labels = new Int32Array(N).fill(-1);
-  const clusterSizes: number[] = [];
-  const queue: number[] = [];
-  let labelId = 0;
-
-  for (let start = 0; start < N; start++) {
-    if (!occupied[start] || labels[start] !== -1) continue;
-    labels[start] = labelId;
-    queue.length = 0;
-    queue.push(start);
-    let head = 0, size2 = 1;
-    while (head < queue.length) {
-      const cur = queue[head++];
-      const x = cur % size, y = (cur / size) | 0;
-      const nbrs = [
-        y > 0        ? (y - 1) * size + x : -1,
-        y < size - 1 ? (y + 1) * size + x : -1,
-        x > 0        ? y * size + (x - 1) : -1,
-        x < size - 1 ? y * size + (x + 1) : -1,
-      ];
-      for (const ni of nbrs) {
-        if (ni >= 0 && occupied[ni] && labels[ni] === -1) {
-          labels[ni] = labelId;
-          queue.push(ni);
-          size2++;
-        }
-      }
-    }
-    clusterSizes.push(size2);
-    labelId++;
-  }
-
-  const sizesArr = new Uint32Array(clusterSizes);
-  let maxSize = 0;
-  for (let i = 0; i < sizesArr.length; i++) if (sizesArr[i] > maxSize) maxSize = sizesArr[i];
-  return { labels, clusterSizes: sizesArr, maxSize };
-}
-
 function renderPercolation(
   ctx: CanvasRenderingContext2D,
-  occupied: Uint8Array, labels: Int32Array, clusterSizes: Uint32Array, maxSize: number,
-  size: number, colorMode: string, palette: { colors: string[] },
+  occupied: Uint8Array,
+  labels: Int32Array,
+  clusterSizes: Uint32Array,
+  maxSize: number,
+  size: number,
+  colorMode: string,
+  palette: { colors: string[] },
 ): void {
   const w = ctx.canvas.width, h = ctx.canvas.height;
   const colors = palette.colors.map(hexToRgb);
@@ -117,6 +142,37 @@ function renderPercolation(
   ctx.putImageData(img, 0, 0);
 }
 
+// Fast cluster detection using Union-Find
+function detectClusters(occupied: Uint8Array, size: number): {
+  labels: Int32Array;
+  clusterSizes: Uint32Array;
+  maxSize: number;
+} {
+  const N = size * size;
+  const uf = new UnionFind(N);
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = y * size + x;
+      if (!occupied[idx]) continue;
+
+      // Union with right neighbor
+      if (x < size - 1) {
+        const ri = y * size + (x + 1);
+        if (occupied[ri]) uf.union(idx, ri);
+      }
+
+      // Union with bottom neighbor
+      if (y < size - 1) {
+        const bi = (y + 1) * size + x;
+        if (occupied[bi]) uf.union(idx, bi);
+      }
+    }
+  }
+
+  return uf.getClusterSizes();
+}
+
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
@@ -158,9 +214,9 @@ export const percolation: Generator = {
   id: 'cellular-percolation',
   family: 'cellular',
   styleName: 'Percolation',
-  definition: 'Site percolation on a square lattice with BFS cluster labeling — giant connected cluster emerges at the critical threshold p_c ≈ 0.593',
+  definition: 'Site percolation on a square lattice with Union-Find cluster detection — giant connected cluster emerges at the critical threshold p_c ≈ 0.593',
   algorithmNotes:
-    'Each site is independently occupied with probability p. Connected clusters are identified via BFS. Below p_c all clusters are finite; at p_c cluster sizes follow a power-law; above p_c a system-spanning "giant" cluster appears. In animation mode p sweeps sinusoidally through the critical point so you can watch the phase transition live — the giant cluster snaps in and out of existence.',
+    'Each site is independently occupied with probability p. Connected clusters are identified via Union-Find with path compression (O(N·α(N)) for N sites). Below p_c all clusters are finite; at p_c cluster sizes follow a power-law; above p_c a system-spanning "giant" cluster appears. In animation mode p sweeps sinusoidally through the critical point so you can watch the phase transition live — the giant cluster snaps in and out of existence.',
   parameterSchema,
   defaultParams: {
     gridSize: 128, occupancyP: 0.593, sweepSpeed: 0.5, sweepAmp: 0.2, colorMode: 'cluster-size',
@@ -177,7 +233,7 @@ export const percolation: Generator = {
       const rng = new SeededRNG(seed);
       const occupied = new Uint8Array(N);
       for (let i = 0; i < N; i++) occupied[i] = rng.random() < p ? 1 : 0;
-      const { labels, clusterSizes, maxSize } = labelClusters(occupied, size);
+      const { labels, clusterSizes, maxSize } = detectClusters(occupied, size);
       renderPercolation(ctx, occupied, labels, clusterSizes, maxSize, size, colorMode, palette);
       return;
     }
@@ -198,7 +254,7 @@ export const percolation: Generator = {
 
     const occupied = new Uint8Array(N);
     for (let i = 0; i < N; i++) occupied[i] = _percAnim.siteValues[i] < p ? 1 : 0;
-    const { labels, clusterSizes, maxSize } = labelClusters(occupied, size);
+    const { labels, clusterSizes, maxSize } = detectClusters(occupied, size);
     renderPercolation(ctx, occupied, labels, clusterSizes, maxSize, size, colorMode, palette);
   },
 

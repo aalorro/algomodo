@@ -10,7 +10,7 @@ MIT License · v1.1.0 · © 2026 ArtMondo
 
 | Feature | Details |
 |---|---|
-| **74 generators** | Across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image |
+| **73 generators** | Across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image |
 | **Live animation** | requestAnimationFrame loop with persistent simulation state; per-generator steps/frame control |
 | **Seeded RNG** | xorshift128+ — every output is fully reproducible from its integer seed |
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
@@ -27,7 +27,7 @@ MIT License · v1.1.0 · © 2026 ArtMondo
 
 ## Generators
 
-### Cellular (15)
+### Cellular (14)
 
 Simulation-based automata and physics models. All support live animation with persistent state between frames.
 
@@ -36,7 +36,6 @@ Simulation-based automata and physics models. All support live animation with pe
 | **Game of Life** | Conway's rules with binary, age-gradient, and fading-trail colour modes; configurable steps/frame |
 | **Reaction Diffusion** | Gray-Scott model (dU/dt = Du·∇²U − UV² + f·(1−U)); tunable feed/kill rates produce spots, stripes, and mazes |
 | **Forest Fire** | Drossel-Schwabl 3-state CA (empty / tree / burning) — self-organised criticality when lightning rate ≪ growth rate |
-| **Ising Model** | Metropolis–Hastings spin-lattice; precomputed acceptance for ΔE ∈ {4, 8}; fractal domain walls near Tc ≈ 2.27 |
 | **Eden Growth** | Random frontier growth (Eden Model A) — compact organic blobs coloured by birth order, revealing concentric growth rings |
 | **Percolation** | BFS cluster labeling; animation sweeps occupancy p through the critical threshold pc ≈ 0.593 to show the phase transition live |
 | **Sandpile** | Abelian BTW model — grains topple outward from centre producing a self-similar fractal with exact four-fold symmetry |
