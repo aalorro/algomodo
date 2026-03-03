@@ -1,5 +1,25 @@
 import type { Generator, ParameterSchema } from '../../types';
 
+// ─── Source image pixel cache ─────────────────────────────────────────────────
+const _imgCache = new WeakMap<HTMLImageElement, { w: number; h: number; data: Uint8ClampedArray }>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  const c = _imgCache.get(img);
+  if (c && c.w === w && c.h === h) return c.data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  offCtx.fillStyle = '#111';
+  offCtx.fillRect(0, 0, w, h);
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  _imgCache.set(img, { w, h, data });
+  return data;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function luminance(r: number, g: number, b: number) {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
@@ -18,6 +38,8 @@ function saturation(r: number, g: number, b: number) {
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   return max === 0 ? 0 : (max - min) / max;
 }
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
 
 const parameterSchema: ParameterSchema = {
   direction: {
@@ -60,6 +82,16 @@ const parameterSchema: ParameterSchema = {
     default: false,
     group: 'Composition',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 0.8,
+    help: 'Speed at which sort thresholds oscillate during animation',
+    group: 'Flow/Motion',
+  },
 };
 
 function getValue(sortBy: string, r: number, g: number, b: number): number {
@@ -81,7 +113,6 @@ function sortLine(
     const v = getValue(sortBy, data[indices[i] * 4], data[indices[i] * 4 + 1], data[indices[i] * 4 + 2]);
     if (v < lo) { i++; continue; }
 
-    // Find end of interval (pixels below hi threshold)
     let j = i;
     while (j < indices.length) {
       const vj = getValue(sortBy, data[indices[j] * 4], data[indices[j] * 4 + 1], data[indices[j] * 4 + 2]);
@@ -90,7 +121,6 @@ function sortLine(
     }
 
     if (j > i + 1) {
-      // Copy pixels in this interval
       const pixels: [number, number, number, number, number][] = [];
       for (let k = i; k < j; k++) {
         const b = indices[k] * 4;
@@ -116,7 +146,7 @@ export const pixelSort: Generator = {
   family: 'image',
   styleName: 'Pixel Sort',
   definition: 'Sorts pixel columns or rows by luminance, hue, or saturation creating streaked glitch aesthetics',
-  algorithmNotes: 'Threshold-interval sorting: pixels are grouped into intervals based on value thresholds, then sorted within each interval',
+  algorithmNotes: 'Threshold-interval sorting: pixels are grouped into intervals based on value thresholds, then sorted within each interval. During animation both thresholds oscillate independently via sin/cos producing a breathing sort that reveals and hides structure.',
   parameterSchema,
   defaultParams: {
     direction: 'vertical',
@@ -124,12 +154,13 @@ export const pixelSort: Generator = {
     lowerThreshold: 0.2,
     upperThreshold: 0.8,
     reverse: false,
+    animSpeed: 0.8,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, _seed, _palette, _quality) {
+  renderCanvas2D(ctx, params, _seed, _palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
@@ -150,34 +181,32 @@ export const pixelSort: Generator = {
       return;
     }
 
-    // Draw image to offscreen canvas scaled to fill
-    const off = document.createElement('canvas');
-    off.width = w;
-    off.height = h;
-    const offCtx = off.getContext('2d')!;
-    offCtx.fillStyle = '#111';
-    offCtx.fillRect(0, 0, w, h);
+    const { direction, sortBy, reverse } = params;
+    const animSpeed = params.animSpeed ?? 0.8;
+    const t = time * animSpeed;
 
-    // Cover-fit
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
-    offCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    // Thresholds oscillate over time — lower and upper drift independently
+    const baseLo = params.lowerThreshold ?? 0.2;
+    const baseHi = params.upperThreshold ?? 0.8;
+    const lo = Math.max(0, Math.min(0.9, baseLo + Math.sin(t * 0.8) * 0.12));
+    const hi = Math.max(lo + 0.05, Math.min(1, baseHi + Math.cos(t * 0.55) * 0.1));
 
-    const imageData = offCtx.getImageData(0, 0, w, h);
+    // Copy cached source into a writable buffer (sort mutates in place)
+    const srcData = getSourcePixels(img, w, h);
+    const imageData = ctx.createImageData(w, h);
+    imageData.data.set(srcData);
     const data = imageData.data;
-    const { direction, sortBy, lowerThreshold, upperThreshold, reverse } = params;
 
     if (direction === 'vertical' || direction === 'both') {
       for (let x = 0; x < w; x++) {
         const col = Array.from({ length: h }, (_, y) => y * w + x);
-        sortLine(data, col, sortBy, lowerThreshold, upperThreshold, reverse);
+        sortLine(data, col, sortBy, lo, hi, reverse);
       }
     }
     if (direction === 'horizontal' || direction === 'both') {
       for (let y = 0; y < h; y++) {
         const row = Array.from({ length: w }, (_, x) => y * w + x);
-        sortLine(data, row, sortBy, lowerThreshold, upperThreshold, reverse);
+        sortLine(data, row, sortBy, lo, hi, reverse);
       }
     }
 

@@ -1,5 +1,23 @@
 import type { Generator, Palette, ParameterSchema } from '../../types';
 
+// ─── Source image pixel cache ─────────────────────────────────────────────────
+const _imgCache = new WeakMap<HTMLImageElement, { w: number; h: number; data: Uint8ClampedArray }>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  const c = _imgCache.get(img);
+  if (c && c.w === w && c.h === h) return c.data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  _imgCache.set(img, { w, h, data });
+  return data;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -13,6 +31,8 @@ const RAMPS: Record<string, string> = {
   'binary':    ' 0',
   'braille':   ' ⠂⠆⠇⠧⠿',
 };
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
 
 const parameterSchema: ParameterSchema = {
   charSet: {
@@ -59,6 +79,16 @@ const parameterSchema: ParameterSchema = {
     default: 'monospace',
     group: 'Texture',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 0.8,
+    help: 'Speed of the luminance ripple wave that sweeps across characters',
+    group: 'Flow/Motion',
+  },
 };
 
 export const asciiArt: Generator = {
@@ -66,7 +96,7 @@ export const asciiArt: Generator = {
   family: 'image',
   styleName: 'ASCII',
   definition: 'Renders the source image as a grid of ASCII (or block) characters sized by local luminance',
-  algorithmNotes: 'Averages luminance over each character cell, maps it to a character in a density ramp, and draws that character in the cell center. Color is sampled from the image or snapped to the active palette.',
+  algorithmNotes: 'Averages luminance over each character cell, maps it to a character in a density ramp, and draws that character in the cell center. During animation a sinusoidal luminance ripple wave sweeps diagonally across the grid, causing cells to morph through denser and sparser characters — producing a flowing, living text effect.',
   parameterSchema,
   defaultParams: {
     charSet: 'standard',
@@ -75,17 +105,17 @@ export const asciiArt: Generator = {
     bgColor: 'black',
     bold: false,
     fontFamily: 'monospace',
+    animSpeed: 0.8,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, _seed, palette, _quality) {
+  renderCanvas2D(ctx, params, _seed, palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
 
-    // Background
     const bgColorStr = (() => {
       if (params.bgColor === 'white') return '#ffffff';
       if (params.bgColor === 'palette-last') return palette.colors[palette.colors.length - 1] ?? '#000000';
@@ -109,20 +139,13 @@ export const asciiArt: Generator = {
     }
 
     const { charSet, cellSize, colorMode, bold, fontFamily } = params;
+    const animSpeed = params.animSpeed ?? 0.8;
+    const t = time * animSpeed;
     const cs = Math.max(4, cellSize | 0);
     const ramp = RAMPS[charSet] ?? RAMPS['standard'];
 
-    // Draw image to offscreen at canvas resolution
-    const off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    const offCtx = off.getContext('2d')!;
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
-    offCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    const src = offCtx.getImageData(0, 0, w, h).data;
+    const src = getSourcePixels(img, w, h);
 
-    // Font: use ~80% of cell height, roughly square character cells
     const fontSize = Math.round(cs * 0.9);
     ctx.font = `${bold ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
     ctx.textBaseline = 'middle';
@@ -133,7 +156,6 @@ export const asciiArt: Generator = {
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
-        // Sample region bounds
         const x0 = col * cs;
         const y0 = row * cs;
         const x1 = Math.min(w, x0 + cs);
@@ -154,22 +176,24 @@ export const asciiArt: Generator = {
         const avgR = sumR / count;
         const avgG = sumG / count;
         const avgB = sumB / count;
-        const lum = sumL / count / 255; // 0–1
+        const lum = sumL / count / 255;
 
-        // Map luminance to character
-        const charIdx = Math.floor(lum * (ramp.length - 1));
+        // Luminance ripple: diagonal wave sweeps across the character grid
+        const ripple = Math.sin(t * 2.2 + col * 0.22 + row * 0.18) * 0.18;
+        const animLum = Math.max(0, Math.min(1, lum + ripple));
+
+        const charIdx = Math.floor(animLum * (ramp.length - 1));
         const char = ramp[charIdx];
         if (!char || char === ' ') continue;
 
-        // Pick fill color
         if (colorMode === 'original') {
           ctx.fillStyle = `rgb(${avgR | 0},${avgG | 0},${avgB | 0})`;
         } else if (colorMode === 'monochrome') {
-          const v = (lum * 255) | 0;
+          const v = (animLum * 255) | 0;
           ctx.fillStyle = `rgb(${v},${v},${v})`;
         } else {
           const [pr, pg, pb] = hexToRgb(
-            palette.colors[Math.floor(lum * (palette.colors.length - 1))] ?? palette.colors[0]
+            palette.colors[Math.floor(animLum * (palette.colors.length - 1))] ?? palette.colors[0]
           );
           ctx.fillStyle = `rgb(${pr},${pg},${pb})`;
         }

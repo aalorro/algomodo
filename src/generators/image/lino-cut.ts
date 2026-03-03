@@ -1,9 +1,40 @@
 import type { Generator, Palette, ParameterSchema } from '../../types';
 
+// ─── Source image pixel cache ─────────────────────────────────────────────────
+const _imgCache = new WeakMap<HTMLImageElement, { w: number; h: number; data: Uint8ClampedArray }>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  const c = _imgCache.get(img);
+  if (c && c.w === w && c.h === h) return c.data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  _imgCache.set(img, { w, h, data });
+  return data;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
+
+const CREAM = '#f5f0e8';
+
+function resolveColor(mode: string, palette: Palette): string {
+  if (mode === 'black') return '#000000';
+  if (mode === 'white') return '#ffffff';
+  if (mode === 'cream') return CREAM;
+  if (mode === 'palette-first') return palette.colors[0] ?? '#000000';
+  if (mode === 'palette-last') return palette.colors[palette.colors.length - 1] ?? '#ffffff';
+  return '#000000';
+}
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
 
 const parameterSchema: ParameterSchema = {
   threshold: {
@@ -67,25 +98,24 @@ const parameterSchema: ParameterSchema = {
     help: 'Adds subtle noise texture to simulate printing on rough paper',
     group: 'Texture',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 0.8,
+    help: 'Controls grain flicker rate and threshold oscillation speed',
+    group: 'Flow/Motion',
+  },
 };
-
-const CREAM = '#f5f0e8';
-
-function resolveColor(mode: string, palette: Palette): string {
-  if (mode === 'black') return '#000000';
-  if (mode === 'white') return '#ffffff';
-  if (mode === 'cream') return CREAM;
-  if (mode === 'palette-first') return palette.colors[0] ?? '#000000';
-  if (mode === 'palette-last') return palette.colors[palette.colors.length - 1] ?? '#ffffff';
-  return '#000000';
-}
 
 export const linoCut: Generator = {
   id: 'lino-cut',
   family: 'image',
   styleName: 'Lino Cut',
   definition: 'Converts the source image to a two-tone linocut / woodblock print using luminance thresholding and edge detection',
-  algorithmNotes: 'Computes per-pixel luminance; a Sobel-blended threshold separates ink from paper. Optional grain noise simulates the texture of hand-pressed lino printing.',
+  algorithmNotes: 'Computes per-pixel luminance; a Sobel-blended threshold separates ink from paper. During animation the grain noise seed changes each frame to simulate a living film-grain texture, and the threshold subtly oscillates, making edge regions breathe between ink and paper.',
   parameterSchema,
   defaultParams: {
     threshold: 0.45,
@@ -95,12 +125,13 @@ export const linoCut: Generator = {
     edgeMix: 0.5,
     invert: false,
     grain: 0.03,
+    animSpeed: 0.8,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, palette, _quality) {
+  renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
@@ -121,19 +152,16 @@ export const linoCut: Generator = {
       return;
     }
 
-    const { threshold, inkColor, paperColor, edgeWidth, edgeMix, invert, grain } = params;
+    const { inkColor, paperColor, edgeWidth, edgeMix, invert, grain } = params;
+    const animSpeed = params.animSpeed ?? 0.8;
+    const t = time * animSpeed;
 
-    // Draw source to offscreen
-    const off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    const offCtx = off.getContext('2d')!;
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
-    offCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    const src = offCtx.getImageData(0, 0, w, h).data;
+    // Threshold gently oscillates around the base value
+    const baseThreshold = params.threshold ?? 0.45;
+    const threshold = baseThreshold + Math.sin(t * 0.65) * 0.04;
 
-    // Build luminance map
+    const src = getSourcePixels(img, w, h);
+
     const lum = new Float32Array(w * h);
     for (let i = 0; i < w * h; i++) {
       const b = i * 4;
@@ -143,17 +171,16 @@ export const linoCut: Generator = {
     const lumAt = (x: number, y: number) =>
       lum[Math.max(0, Math.min(h - 1, y | 0)) * w + Math.max(0, Math.min(w - 1, x | 0))];
 
-    // Resolve ink/paper RGB
     const [ir, ig, ib] = hexToRgb(resolveColor(inkColor, palette));
     const [pr, pg, pb] = hexToRgb(resolveColor(paperColor, palette));
 
     const ew = Math.max(1, edgeWidth | 0);
     const grainAmt = grain ?? 0;
 
-    // Seeded noise (simple deterministic hash)
-    const noiseSeed = seed ^ 0xdeadbeef;
+    // Grain seed advances with time for film-grain flicker (~24 unique frames/s)
+    const frameSeed = seed ^ ((Math.floor(t * 24) | 0) * 2654435761 >>> 0);
     const noiseAt = (x: number, y: number) => {
-      const n = Math.sin(x * 127.1 + y * 311.7 + noiseSeed) * 43758.5453;
+      const n = Math.sin(x * 127.1 + y * 311.7 + frameSeed) * 43758.5453;
       return n - Math.floor(n);
     };
 
@@ -163,7 +190,6 @@ export const linoCut: Generator = {
       for (let x = 0; x < w; x++) {
         const l = lumAt(x, y);
 
-        // Sobel edge magnitude
         const gx =
           -lumAt(x - ew, y - ew) + lumAt(x + ew, y - ew) +
           -2 * lumAt(x - ew, y) + 2 * lumAt(x + ew, y) +
@@ -173,14 +199,12 @@ export const linoCut: Generator = {
           lumAt(x - ew, y + ew) + 2 * lumAt(x, y + ew) + lumAt(x + ew, y + ew);
         const edge = Math.min(1, Math.sqrt(gx * gx + gy * gy));
 
-        // Blend flat threshold with edge (edge pulls toward ink at boundaries)
         const blended = l * (1 - edgeMix) + (l - edge * 0.5) * edgeMix;
 
         let isInk = invert ? blended > threshold : blended <= threshold;
 
-        // Grain: flip borderline pixels randomly
         if (grainAmt > 0) {
-          const n = noiseAt(x, y) * 2 - 1; // [-1, 1]
+          const n = noiseAt(x, y) * 2 - 1;
           isInk = invert
             ? blended + n * grainAmt > threshold
             : blended + n * grainAmt <= threshold;

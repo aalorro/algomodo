@@ -1,20 +1,26 @@
 import type { Generator, Palette, ParameterSchema } from '../../types';
 
+// ─── Source image pixel cache ─────────────────────────────────────────────────
+const _imgCache = new WeakMap<HTMLImageElement, { w: number; h: number; data: Uint8ClampedArray }>();
+function getSourcePixels(img: HTMLImageElement, w: number, h: number): Uint8ClampedArray {
+  const c = _imgCache.get(img);
+  if (c && c.w === w && c.h === h) return c.data;
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d')!;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  offCtx.drawImage(img, (w - img.naturalWidth * scale) / 2, (h - img.naturalHeight * scale) / 2,
+    img.naturalWidth * scale, img.naturalHeight * scale);
+  const data = new Uint8ClampedArray(offCtx.getImageData(0, 0, w, h).data);
+  _imgCache.set(img, { w, h, data });
+  return data;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function paletteColorByAngle(angle: number, palette: Palette): string {
-  // Map angle [0, 2π] → palette index
-  const t = (angle / (Math.PI * 2) + 1) % 1;
-  const idx = Math.floor(t * palette.colors.length) % palette.colors.length;
-  return palette.colors[idx];
-}
-
-function paletteColorByMagnitude(t: number, palette: Palette): string {
-  const idx = Math.floor(Math.min(0.999, t) * palette.colors.length);
-  return palette.colors[idx];
 }
 
 function lerpHex(hexA: string, hexB: string, t: number): string {
@@ -25,6 +31,8 @@ function lerpHex(hexA: string, hexB: string, t: number): string {
   const b = (ab + (bb - ab) * t) | 0;
   return `rgb(${r},${g},${b})`;
 }
+
+// ─── Parameter schema ─────────────────────────────────────────────────────────
 
 const parameterSchema: ParameterSchema = {
   gridSpacing: {
@@ -98,6 +106,16 @@ const parameterSchema: ParameterSchema = {
     help: 'Minimum gradient magnitude to draw a line',
     group: 'Texture',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number',
+    min: 0.1,
+    max: 3,
+    step: 0.1,
+    default: 1,
+    help: 'Speed at which flow indicators travel along gradient vectors',
+    group: 'Flow/Motion',
+  },
 };
 
 export const opticalFlow: Generator = {
@@ -105,7 +123,7 @@ export const opticalFlow: Generator = {
   family: 'image',
   styleName: 'Optical Flow',
   definition: 'Visualises image gradients as a vector flow field — each line points along the strongest brightness change at that location',
-  algorithmNotes: 'Computes per-pixel Sobel gradients (∂L/∂x, ∂L/∂y) from the luminance channel, samples on a regular grid, and draws oriented lines/arrows whose angle encodes gradient direction and length encodes magnitude.',
+  algorithmNotes: 'Computes per-pixel Sobel gradients (∂L/∂x, ∂L/∂y) from the luminance channel, samples on a regular grid, and draws oriented lines/arrows whose angle encodes gradient direction and length encodes magnitude. During animation each flow indicator is drawn as a traveling segment that marches along its gradient vector, creating the illusion of motion through the image.',
   parameterSchema,
   defaultParams: {
     gridSpacing: 16,
@@ -116,12 +134,13 @@ export const opticalFlow: Generator = {
     showSource: true,
     sourceDim: 0.25,
     threshold: 0.05,
+    animSpeed: 1,
   },
   supportsVector: false,
   supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, _seed, palette, _quality) {
+  renderCanvas2D(ctx, params, _seed, palette, _quality, time = 0) {
     const img: HTMLImageElement | undefined = params._sourceImage;
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
@@ -143,16 +162,10 @@ export const opticalFlow: Generator = {
     }
 
     const { gridSpacing, flowLength, lineWidth, displayMode, colorMode, showSource, sourceDim, threshold } = params;
+    const animSpeed = params.animSpeed ?? 1;
+    const t = time * animSpeed;
 
-    // Draw image to offscreen
-    const off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    const offCtx = off.getContext('2d')!;
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
-    offCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    const src = offCtx.getImageData(0, 0, w, h).data;
+    const src = getSourcePixels(img, w, h);
 
     // Compute luminance channel
     const lum = new Float32Array(w * h);
@@ -167,8 +180,15 @@ export const opticalFlow: Generator = {
       return lum[yi * w + xi];
     };
 
-    // Optional: draw source image dimmed
+    // Optional source image dim
     if (showSource && sourceDim > 0) {
+      const off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      const offCtx = off.getContext('2d')!;
+      const imgScale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+      offCtx.drawImage(img,
+        (w - img.naturalWidth * imgScale) / 2, (h - img.naturalHeight * imgScale) / 2,
+        img.naturalWidth * imgScale, img.naturalHeight * imgScale);
       ctx.globalAlpha = sourceDim;
       ctx.drawImage(off, 0, 0);
       ctx.globalAlpha = 1;
@@ -178,14 +198,12 @@ export const opticalFlow: Generator = {
     const halfGs = gs / 2;
     ctx.lineWidth = lineWidth;
 
-    // Track max magnitude for normalisation pass
     type FlowPoint = { x: number; y: number; dx: number; dy: number; mag: number; angle: number };
     const points: FlowPoint[] = [];
     let maxMag = 0;
 
     for (let gy = halfGs; gy < h; gy += gs) {
       for (let gx = halfGs; gx < w; gx += gs) {
-        // Sobel gradient at this point
         const dx =
           -lumAt(gx - 1, gy - 1) + lumAt(gx + 1, gy - 1) +
           -2 * lumAt(gx - 1, gy) + 2 * lumAt(gx + 1, gy) +
@@ -204,65 +222,41 @@ export const opticalFlow: Generator = {
 
     if (maxMag === 0) return;
 
+    // Traveling phase: each indicator marches along its vector
+    const phase = (t * 0.5) % 1;
+
     for (const { x, y, dx, dy, mag, angle } of points) {
       const normMag = mag / maxMag;
       if (normMag < threshold) continue;
 
-      const len = normMag * gs * flowLength;
+      const fullLen = normMag * gs * flowLength;
       const nx = dx / mag;
       const ny = dy / mag;
 
-      // Pick color
       let color: string;
       if (colorMode === 'direction') {
-        // HSL: hue by angle
-        const hue = ((angle / (Math.PI * 2)) * 360 + 360) % 360;
+        const hueVal = ((angle / (Math.PI * 2)) * 360 + 360) % 360;
         const lightness = 40 + normMag * 40;
-        color = `hsl(${hue | 0},80%,${lightness | 0}%)`;
+        color = `hsl(${hueVal | 0},80%,${lightness | 0}%)`;
       } else if (colorMode === 'magnitude') {
         const v = (normMag * 255) | 0;
         color = `rgb(${v},${v},${v})`;
       } else {
-        // palette-blend: interpolate between two palette colors by angle
-        const t = ((angle / (Math.PI * 2)) + 1) % 1;
-        const idx0 = Math.floor(t * palette.colors.length) % palette.colors.length;
+        const tVal = ((angle / (Math.PI * 2)) + 1) % 1;
+        const idx0 = Math.floor(tVal * palette.colors.length) % palette.colors.length;
         const idx1 = (idx0 + 1) % palette.colors.length;
-        const frac = (t * palette.colors.length) % 1;
+        const frac = (tVal * palette.colors.length) % 1;
         color = lerpHex(palette.colors[idx0], palette.colors[idx1], frac);
       }
 
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
 
-      const ex = x + nx * len;
-      const ey = y + ny * len;
-
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-
-      if (displayMode === 'arrows') {
-        // Arrowhead
-        const headLen = Math.max(3, len * 0.35);
-        const headAngle = 0.45;
-        ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(
-          ex - headLen * Math.cos(angle - headAngle),
-          ey - headLen * Math.sin(angle - headAngle),
-        );
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(
-          ex - headLen * Math.cos(angle + headAngle),
-          ey - headLen * Math.sin(angle + headAngle),
-        );
-        ctx.stroke();
-      } else if (displayMode === 'streamlines') {
-        // Trace a short streamline by walking along the gradient field
+      if (displayMode === 'streamlines') {
+        // Streamlines trace along the gradient field
         let cx = x, cy = y;
         const steps = 4;
-        const stepLen = len / steps;
+        const stepLen = fullLen / steps;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         for (let s = 0; s < steps; s++) {
@@ -281,6 +275,32 @@ export const opticalFlow: Generator = {
           ctx.lineTo(cx, cy);
         }
         ctx.stroke();
+      } else {
+        // Lines / arrows: draw traveling segment that walks along the vector
+        const segLen = fullLen * 0.55;
+        const startFrac = phase;
+        const endFrac = Math.min(1, phase + segLen / fullLen);
+
+        const sx = x + nx * fullLen * startFrac;
+        const sy = y + ny * fullLen * startFrac;
+        const ex = x + nx * fullLen * endFrac;
+        const ey = y + ny * fullLen * endFrac;
+
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+
+        if (displayMode === 'arrows') {
+          const headLen = Math.max(3, segLen * 0.35);
+          const headAngle = 0.45;
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(ex - headLen * Math.cos(angle - headAngle), ey - headLen * Math.sin(angle - headAngle));
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(ex - headLen * Math.cos(angle + headAngle), ey - headLen * Math.sin(angle + headAngle));
+          ctx.stroke();
+        }
       }
     }
   },
