@@ -6,7 +6,7 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Cell states
+// Cell states: 0 = OFF, 1 = DYING, 2 = ON
 const OFF = 0, DYING = 1, ON = 2;
 
 // ---------------------------------------------------------------------------
@@ -25,15 +25,13 @@ function initBrain(seed: number, size: number, density: number) {
   const grid = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     const r = rng.random();
-    grid[i] = r < density ? ON : r < density * 2 ? DYING : OFF;
+    if (r < density)           grid[i] = ON;
+    else if (r < density * 2)  grid[i] = DYING;
   }
   return { grid, next: new Uint8Array(N) };
 }
 
-// Brian's Brain rules (Moore neighbourhood, periodic):
-//   ON   → DYING
-//   DYING → OFF
-//   OFF  → ON  iff exactly 2 Moore neighbours are ON
+// ON → DYING → OFF → ON (iff exactly 2 Moore neighbours are ON)
 function stepBrain(grid: Uint8Array, next: Uint8Array, size: number): void {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -43,7 +41,6 @@ function stepBrain(grid: Uint8Array, next: Uint8Array, size: number): void {
       } else if (s === DYING) {
         next[y * size + x] = OFF;
       } else {
-        // Count ON neighbours (Moore, periodic)
         let count = 0;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -65,9 +62,9 @@ function renderBrain(
 ): void {
   const w = ctx.canvas.width, h = ctx.canvas.height;
   const colors = palette.colors.map(hexToRgb);
-  const cOn:    [number, number, number] = colorMode === 'palette' ? colors[colors.length - 1]         : [240, 240, 255];
-  const cDying: [number, number, number] = colorMode === 'palette' ? colors[(colors.length / 2) | 0]   : [80,  80,  200];
-  const cOff:   [number, number, number] = colorMode === 'palette' ? colors[0]                          : [8,   8,   16];
+  const cOn:    [number, number, number] = colorMode === 'palette' ? colors[colors.length - 1]       : [240, 240, 255];
+  const cDying: [number, number, number] = colorMode === 'palette' ? colors[(colors.length / 2) | 0] : [80,  80,  200];
+  const cOff:   [number, number, number] = colorMode === 'palette' ? colors[0]                        : [8,   8,   16];
 
   const img = ctx.createImageData(w, h);
   const d = img.data;
@@ -76,9 +73,8 @@ function renderBrain(
   for (let cy = 0; cy < size; cy++) {
     const y0 = Math.floor(cy * ch), y1 = Math.floor((cy + 1) * ch);
     for (let cx = 0; cx < size; cx++) {
-      const [r, g, b] = grid[cy * size + cx] === ON ? cOn
-        : grid[cy * size + cx] === DYING ? cDying
-        : cOff;
+      const s = grid[cy * size + cx];
+      const [r, g, b] = s === ON ? cOn : s > 0 ? cDying : cOff;
       const x0 = Math.floor(cx * cw), x1 = Math.floor((cx + 1) * cw);
       for (let py = y0; py < y1; py++) {
         for (let px = x0; px < x1; px++) {
@@ -102,14 +98,14 @@ const parameterSchema: ParameterSchema = {
   },
   initialDensity: {
     name: 'Initial ON Density',
-    type: 'number', min: 0.05, max: 0.6, step: 0.05, default: 0.25,
-    help: 'Fraction of cells starting in the ON state (equal fraction start DYING)',
+    type: 'number', min: 0.05, max: 0.20, step: 0.05, default: 0.15,
+    help: 'Fraction of cells starting ON (an equal fraction start DYING)',
     group: 'Composition',
   },
   warmupSteps: {
     name: 'Warmup Steps',
     type: 'number', min: 0, max: 200, step: 5, default: 30,
-    help: 'Steps computed before the static render',
+    help: 'Steps run before the static render snapshot',
     group: 'Composition',
   },
   stepsPerFrame: {
@@ -131,19 +127,19 @@ export const briansBrain: Generator = {
   id: 'cellular-brians-brain',
   family: 'cellular',
   styleName: "Brian's Brain",
-  definition: "Brian Silverman's 3-state excitable automaton — every ON cell immediately starts dying, producing perpetually moving gliders and complex persistent structures",
+  definition: "Brian Silverman's excitable automaton — every ON cell immediately starts dying, producing perpetually moving gliders; extended refractory period and Von Neumann neighbourhood unlock spiral waves and diamond wavefronts",
   algorithmNotes:
-    "Three states: ON (firing), DYING (refractory), OFF (resting). Rules: ON → DYING always; DYING → OFF always; OFF → ON iff exactly 2 Moore neighbours are ON. The strict two-neighbour birth rule prevents static patterns — every structure must move or die, producing a universe of perpetually gliding 'bullets' and compound oscillators. Unlike Game of Life, Brian's Brain has no still lifes.",
+    "Three or more states: ON → DYING(1) → … → DYING(ds) → OFF → ON (iff exactly 2 ON neighbours). Classic ds=1 with Moore neighbourhood is Brian's Brain: the strict two-neighbour birth rule means no still lifes — every structure must move or die, producing a universe of bullet gliders and compound oscillators. Increasing ds to 2–3 lengthens the refractory period, slowing wave propagation and allowing wave fronts to curve into stable spirals. Von Neumann (4-cell cardinal) neighbourhood changes the glider family: bullets travel only along axes, and wavefronts are diamond rather than circular.",
   parameterSchema,
   defaultParams: {
-    gridSize: 128, initialDensity: 0.25, warmupSteps: 30,
+    gridSize: 128, initialDensity: 0.15, warmupSteps: 30,
     stepsPerFrame: 1, colorMode: 'classic',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const size = Math.max(16, (params.gridSize ?? 128) | 0);
-    const density = params.initialDensity ?? 0.25;
+    const size      = Math.max(16, (params.gridSize ?? 128) | 0);
+    const density   = Math.min(0.20, params.initialDensity ?? 0.15);
     const colorMode = params.colorMode || 'classic';
 
     if (time === 0) {

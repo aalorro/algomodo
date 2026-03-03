@@ -1,6 +1,5 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
-import { drawRect, clearCanvas } from '../../renderers/canvas2d/utils';
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
@@ -8,33 +7,50 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 // ---------------------------------------------------------------------------
-// Persistent animation state (survives between RAF frames)
+// Rule sets — encode as bitmasks over neighbour count 0–8
+// birth[n] = 1 means a dead cell with n ON neighbours is born
+// survive[n] = 1 means a live cell with n ON neighbours survives
+// ---------------------------------------------------------------------------
+type RuleMask = { birth: number; survive: number }; // bits 0–8
+
+function parseRuleSet(name: string): RuleMask {
+  switch (name) {
+    case 'highlife':    return { birth: (1<<3)|(1<<6),               survive: (1<<2)|(1<<3) };
+    case 'day-night':   return { birth: (1<<3)|(1<<6)|(1<<7)|(1<<8), survive: (1<<3)|(1<<4)|(1<<6)|(1<<7)|(1<<8) };
+    case 'seeds':       return { birth: (1<<2),                      survive: 0 };
+    case 'maze':        return { birth: (1<<3),                      survive: (1<<1)|(1<<2)|(1<<3)|(1<<4)|(1<<5) };
+    case 'morley':      return { birth: (1<<3)|(1<<6)|(1<<8),        survive: (1<<2)|(1<<4)|(1<<5) };
+    default:            return { birth: (1<<3),                      survive: (1<<2)|(1<<3) }; // Conway
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Persistent animation state
 // ---------------------------------------------------------------------------
 let _anim: {
   key: string;
   grid: Uint8Array;
+  next: Uint8Array;
   // positive = consecutive frames alive; negative = frames since death (trail)
   age: Int16Array;
   size: number;
 } | null = null;
 
-function animKey(seed: number, size: number, density: number, wrap: boolean): string {
-  return `${seed}|${size}|${density}|${wrap}`;
-}
-
 function initGrid(seed: number, size: number, density: number) {
   const rng = new SeededRNG(seed);
   const n = size * size;
   const grid = new Uint8Array(n);
-  const age = new Int16Array(n);
+  const age  = new Int16Array(n);
   for (let i = 0; i < n; i++) {
     if (rng.random() < density) { grid[i] = 1; age[i] = 1; }
   }
-  return { grid, age };
+  return { grid, next: new Uint8Array(n), age };
 }
 
-function stepGrid(grid: Uint8Array, age: Int16Array, size: number, wrap: boolean): void {
-  const next = new Uint8Array(size * size);
+function stepGrid(
+  grid: Uint8Array, next: Uint8Array, age: Int16Array,
+  size: number, wrap: boolean, rule: RuleMask,
+): void {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let n = 0;
@@ -52,10 +68,11 @@ function stepGrid(grid: Uint8Array, age: Int16Array, size: number, wrap: boolean
         }
       }
       const alive = grid[y * size + x];
-      next[y * size + x] = alive ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 ? 1 : 0);
+      next[y * size + x] = alive
+        ? ((rule.survive >> n) & 1)
+        : ((rule.birth   >> n) & 1);
     }
   }
-  // Update grid and age in-place from next
   for (let i = 0; i < size * size; i++) {
     if (next[i]) {
       age[i] = age[i] <= 0 ? 1 : Math.min(age[i] + 1, 32767);
@@ -64,6 +81,97 @@ function stepGrid(grid: Uint8Array, age: Int16Array, size: number, wrap: boolean
     }
     grid[i] = next[i];
   }
+}
+
+// ---------------------------------------------------------------------------
+// Perturb — randomly flip a small fraction of cells to prevent stagnation
+// ---------------------------------------------------------------------------
+function perturbGrid(grid: Uint8Array, age: Int16Array, rng: SeededRNG, rate: number): void {
+  const n = grid.length;
+  const count = (n * rate) | 0;
+  for (let i = 0; i < count; i++) {
+    const idx = (rng.random() * n) | 0;
+    grid[idx] ^= 1;
+    age[idx] = grid[idx] ? 1 : -1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Render
+// ---------------------------------------------------------------------------
+function renderGoL(
+  ctx: CanvasRenderingContext2D,
+  grid: Uint8Array, age: Int16Array, size: number,
+  colorMode: string, palette: { colors: string[] },
+): void {
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  const colors = palette.colors.map(hexToRgb);
+  const aliveColor = colors[Math.min(1, colors.length - 1)];
+  const img = ctx.createImageData(w, h);
+  const d = img.data;
+  const cw = w / size, ch = h / size;
+
+  for (let cy = 0; cy < size; cy++) {
+    const y0 = Math.floor(cy * ch), y1 = Math.floor((cy + 1) * ch);
+    for (let cx = 0; cx < size; cx++) {
+      const idx = cy * size + cx;
+      const alive = grid[idx];
+      const a = age[idx];
+      let r: number, g: number, b: number;
+
+      if (colorMode === 'age') {
+        if (alive) {
+          const t = Math.min(1, a / 120);
+          const ci = t * (colors.length - 1);
+          const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
+          const f = ci - i0;
+          r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
+          g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
+          b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
+        } else { r = 8; g = 8; b = 8; }
+      } else if (colorMode === 'trails') {
+        if (alive) {
+          [r, g, b] = aliveColor;
+        } else if (a < 0) {
+          const t = Math.max(0, 1 + a / 30);
+          r = (8 + (aliveColor[0] - 8) * t) | 0;
+          g = (8 + (aliveColor[1] - 8) * t) | 0;
+          b = (8 + (aliveColor[2] - 8) * t) | 0;
+        } else { r = 8; g = 8; b = 8; }
+      } else if (colorMode === 'entropy') {
+        // Color by local ON density in Moore neighbourhood (0–8 → palette gradient)
+        let count = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const ny = (cy + dy + size) % size;
+            const nx = (cx + dx + size) % size;
+            count += grid[ny * size + nx];
+          }
+        }
+        const t = count / 8;
+        const ci = t * (colors.length - 1);
+        const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
+        const f = ci - i0;
+        r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
+        g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
+        b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
+        if (!alive) { r = (r * 0.3) | 0; g = (g * 0.3) | 0; b = (b * 0.3) | 0; }
+      } else {
+        // binary
+        if (alive) [r, g, b] = aliveColor; else { r = 8; g = 8; b = 8; }
+      }
+
+      const x0 = Math.floor(cx * cw), x1 = Math.floor((cx + 1) * cw);
+      for (let py = y0; py < y1; py++) {
+        for (let px = x0; px < x1; px++) {
+          const i = (py * w + px) * 4;
+          d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,14 +186,22 @@ const parameterSchema: ParameterSchema = {
   },
   density: {
     name: 'Initial Density',
-    type: 'number', min: 0, max: 1, step: 0.1, default: 0.3,
+    type: 'number', min: 0, max: 1, step: 0.05, default: 0.3,
     help: 'Proportion of cells alive at start',
     group: 'Composition',
   },
   iterations: {
-    name: 'Iterations',
+    name: 'Iterations (static)',
     type: 'number', min: 1, max: 500, step: 1, default: 100,
-    help: 'Simulation steps (static / non-animated render only)',
+    help: 'Simulation steps for the static (non-animated) render',
+    group: 'Composition',
+  },
+  ruleSet: {
+    name: 'Rule Set',
+    type: 'select',
+    options: ['conway', 'highlife', 'day-night', 'seeds', 'maze', 'morley'],
+    default: 'conway',
+    help: 'conway: B3/S23 (classic) | highlife: B36/S23 (replicators) | day-night: B3678/S34678 (day/night symmetry) | seeds: B2/S (explosive) | maze: B3/S12345 (grows mazes) | morley: B368/S245 (complex gliders)',
     group: 'Composition',
   },
   wrapEdges: {
@@ -94,19 +210,25 @@ const parameterSchema: ParameterSchema = {
     help: 'Torus topology — edges wrap around',
     group: 'Geometry',
   },
-  colorMode: {
-    name: 'Color Mode',
-    type: 'select',
-    options: ['binary', 'age', 'trails'],
-    default: 'binary',
-    help: 'binary: two-colour | age: alive cells coloured by how long they have lived | trails: dying cells leave a fading afterimage',
-    group: 'Color',
+  perturbRate: {
+    name: 'Perturb Rate',
+    type: 'number', min: 0, max: 0.02, step: 0.001, default: 0.0,
+    help: 'Fraction of cells randomly flipped each frame — prevents stagnation and continuously seeds new activity into stable regions',
+    group: 'Flow/Motion',
   },
   stepsPerFrame: {
     name: 'Steps / Frame',
     type: 'number', min: 1, max: 10, step: 1, default: 1,
-    help: 'GoL steps advanced per animation frame — higher = faster simulation',
+    help: 'GoL steps per animation frame — higher = faster simulation',
     group: 'Flow/Motion',
+  },
+  colorMode: {
+    name: 'Color Mode',
+    type: 'select',
+    options: ['binary', 'age', 'trails', 'entropy'],
+    default: 'binary',
+    help: 'binary: two-colour | age: alive cells coloured by longevity | trails: dying cells leave a fading afterimage | entropy: cells coloured by local neighbourhood density — reveals activity gradients',
+    group: 'Color',
   },
 };
 
@@ -117,137 +239,52 @@ export const gameOfLife: Generator = {
   id: 'game-of-life',
   family: 'cellular',
   styleName: 'Game of Life',
-  definition: "Conway's Game of Life cellular automaton with emergent patterns and live animation",
+  definition: "Conway's Game of Life and related outer-totalistic automata — six rule sets, configurable perturbation to prevent stagnation, and four colour modes including entropy neighbourhood colouring",
   algorithmNotes:
-    'Each cell is alive or dead. Rules: a live cell with 2–3 neighbours survives; a dead cell with exactly 3 neighbours is born. In animation mode the grid evolves continuously with persistent state. The "age" colour mode tints long-lived stable structures differently from newborn cells; "trails" leaves a fading glow wherever cells have died.',
+    'Outer-totalistic rules encoded as birth/survival bitmasks over Moore neighbourhood count (0–8). Rule sets: Conway B3/S23 (classic balance of creation and destruction); Highlife B36/S23 (adds replicators that copy themselves diagonally); Day & Night B3678/S34678 (live and dead regions are symmetric — inverting the grid gives the same evolution); Seeds B2/S (every cell dies immediately but explosively births new ones — rapid space-filling); Maze B3/S12345 (live cells rarely die, growing dense labyrinthine corridors); Morley B368/S245 (rich glider ecosystem). Perturb rate randomly flips a fraction of cells each frame, continuously seeding new activity and preventing eventual heat death. Entropy colour mode maps the 8-neighbour ON count to the palette gradient regardless of cell state, revealing clusters and wavefronts as continuous colour fields.',
   parameterSchema,
   defaultParams: {
-    gridSize: 128, density: 0.3, iterations: 100, wrapEdges: true,
-    colorMode: 'binary', stepsPerFrame: 1,
+    gridSize: 128, density: 0.3, iterations: 100,
+    ruleSet: 'conway', wrapEdges: true,
+    perturbRate: 0.0, stepsPerFrame: 1, colorMode: 'binary',
   },
   supportsVector: false,
   supportsWebGPU: false,
   supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
-    const { gridSize, density, wrapEdges } = params;
-    const width = ctx.canvas.width;
-    const height = ctx.canvas.height;
+  renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
+    const size     = Math.max(16, (params.gridSize ?? 128) | 0);
+    const density  = params.density  ?? 0.3;
+    const wrap     = params.wrapEdges ?? true;
+    const colorMode = params.colorMode || 'binary';
+    const rule     = parseRuleSet(params.ruleSet || 'conway');
 
-    // ── Static render (original batch path) ────────────────────────────────
+    // ── Static render ────────────────────────────────────────────────────────
     if (time === 0) {
-      const cellSize = Math.max(1, Math.floor(width / gridSize));
-      clearCanvas(ctx, width, height, '#000000');
-      const rng = new SeededRNG(seed);
-      const grid = Array(gridSize).fill(0).map(() =>
-        Array(gridSize).fill(0).map(() => (rng.random() < density ? 1 : 0)),
-      );
-      for (let iter = 0; iter < params.iterations; iter++) {
-        const newGrid = grid.map(row => [...row]);
-        for (let y = 0; y < gridSize; y++) {
-          for (let x = 0; x < gridSize; x++) {
-            let neighbors = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                let ny = y + dy, nx = x + dx;
-                if (wrapEdges) {
-                  ny = (ny + gridSize) % gridSize;
-                  nx = (nx + gridSize) % gridSize;
-                } else {
-                  if (ny < 0 || ny >= gridSize || nx < 0 || nx >= gridSize) continue;
-                }
-                neighbors += grid[ny][nx];
-              }
-            }
-            newGrid[y][x] = grid[y][x]
-              ? (neighbors === 2 || neighbors === 3 ? 1 : 0)
-              : (neighbors === 3 ? 1 : 0);
-          }
-        }
-        grid.splice(0, grid.length, ...newGrid);
-      }
-      const color1 = palette.colors[1] || '#ffffff';
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          if (grid[y][x]) drawRect(ctx, x * cellSize, y * cellSize, cellSize, cellSize, color1);
-        }
-      }
+      const { grid, next, age } = initGrid(seed, size, density);
+      const iters = Math.max(1, (params.iterations ?? 100) | 0);
+      for (let i = 0; i < iters; i++) stepGrid(grid, next, age, size, wrap, rule);
+      renderGoL(ctx, grid, age, size, colorMode, palette);
       return;
     }
 
-    // ── Animation mode: persistent state ───────────────────────────────────
-    const key = animKey(seed, gridSize, density, wrapEdges);
+    // ── Animation mode ────────────────────────────────────────────────────────
+    const key = `${seed}|${size}|${density}|${wrap}|${params.ruleSet ?? 'conway'}`;
     if (!_anim || _anim.key !== key) {
-      const { grid, age } = initGrid(seed, gridSize, density);
-      _anim = { key, grid, age, size: gridSize };
+      const { grid, next, age } = initGrid(seed, size, density);
+      _anim = { key, grid, next, age, size };
     }
 
-    const stepsPerFrame = Math.max(1, (params.stepsPerFrame ?? 1) | 0);
-    for (let s = 0; s < stepsPerFrame; s++) {
-      stepGrid(_anim.grid, _anim.age, _anim.size, wrapEdges);
+    const spf         = Math.max(1, (params.stepsPerFrame  ?? 1)   | 0);
+    const perturbRate = params.perturbRate ?? 0;
+    const perturbRng  = new SeededRNG(seed ^ (time | 0));
+
+    for (let s = 0; s < spf; s++) {
+      if (perturbRate > 0) perturbGrid(_anim.grid, _anim.age, perturbRng, perturbRate);
+      stepGrid(_anim.grid, _anim.next, _anim.age, _anim.size, wrap, rule);
     }
 
-    // Render via ImageData for performance
-    const colors = palette.colors.map(hexToRgb);
-    const aliveColor = colors[Math.min(1, colors.length - 1)];
-    const colorMode = params.colorMode || 'binary';
-    const { grid, age, size } = _anim;
-    const cellW = width / size;
-    const cellH = height / size;
-
-    const imageData = ctx.createImageData(width, height);
-    const data = imageData.data;
-
-    for (let cy = 0; cy < size; cy++) {
-      const y0 = Math.floor(cy * cellH);
-      const y1 = Math.floor((cy + 1) * cellH);
-      for (let cx = 0; cx < size; cx++) {
-        const i = cy * size + cx;
-        const a = age[i];
-        const alive = grid[i];
-        let r: number, g: number, b: number;
-
-        if (colorMode === 'binary') {
-          if (alive) { [r, g, b] = aliveColor; }
-          else { r = 8; g = 8; b = 8; }
-        } else if (colorMode === 'age') {
-          if (alive) {
-            // Young = first palette color, old = last palette color
-            const t = Math.min(1, a / 120);
-            const ci = t * (colors.length - 1);
-            const i0 = Math.floor(ci);
-            const i1 = Math.min(colors.length - 1, i0 + 1);
-            const f = ci - i0;
-            r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
-            g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
-            b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
-          } else { r = 8; g = 8; b = 8; }
-        } else {
-          // trails
-          if (alive) {
-            [r, g, b] = aliveColor;
-          } else if (a < 0) {
-            // Fade from alive color to dark over 30 frames
-            const t = Math.max(0, 1 + a / 30);
-            r = (8 + (aliveColor[0] - 8) * t) | 0;
-            g = (8 + (aliveColor[1] - 8) * t) | 0;
-            b = (8 + (aliveColor[2] - 8) * t) | 0;
-          } else { r = 8; g = 8; b = 8; }
-        }
-
-        const x0 = Math.floor(cx * cellW);
-        const x1 = Math.floor((cx + 1) * cellW);
-        for (let py = y0; py < y1; py++) {
-          for (let px = x0; px < x1; px++) {
-            const idx = (py * width + px) * 4;
-            data[idx] = r; data[idx + 1] = g; data[idx + 2] = b; data[idx + 3] = 255;
-          }
-        }
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
+    renderGoL(ctx, _anim.grid, _anim.age, _anim.size, colorMode, palette);
   },
 
   renderWebGL2(gl) {
@@ -256,6 +293,6 @@ export const gameOfLife: Generator = {
   },
 
   estimateCost(params) {
-    return (params.gridSize * params.gridSize) / (4 - params.density * 2);
+    return (params.gridSize * params.gridSize) / (4 - (params.density ?? 0.3) * 2);
   },
 };
