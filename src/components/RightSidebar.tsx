@@ -44,6 +44,8 @@ export const RightSidebar: React.FC = () => {
     deletePreset,
     sourceImage,
     setSourceImage,
+    recordingDuration,
+    setRecordingDuration,
   } = useStore();
 
   const generator = getGenerator(selectedGeneratorId);
@@ -53,7 +55,6 @@ export const RightSidebar: React.FC = () => {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInputValue, setUrlInputValue] = useState('');
   const recorderRef = useRef<CanvasRecorder | null>(null);
-  const [recordingDuration, setRecordingDuration] = useState(5);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingProgress, setRecordingProgress] = useState(0);
   const [imageFileName, setImageFileName] = useState('');
@@ -586,16 +587,23 @@ export const RightSidebar: React.FC = () => {
                 <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2">Enable animation in Settings first</p>
               )}
               <div className="mb-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Duration (sec)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={recordingDuration}
-                  onChange={(e) => setRecordingDuration(Math.max(1, Math.min(30, parseInt(e.target.value) || 5)))}
-                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent"
-                  disabled={isRecording || !isAnimating}
-                />
+                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Duration</label>
+                <div className="flex gap-1">
+                  {[3, 5, 8].map((sec) => (
+                    <button
+                      key={sec}
+                      onClick={() => setRecordingDuration(sec)}
+                      disabled={isRecording || !isAnimating}
+                      className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
+                        recordingDuration === sec
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      } disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                      {sec}s
+                    </button>
+                  ))}
+                </div>
               </div>
               <button
                 onClick={handleExportGIF}

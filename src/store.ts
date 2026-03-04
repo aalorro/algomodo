@@ -64,6 +64,7 @@ export const useStore = create<AppState>()(
       interactionEnabled: false,
       isAnimating: false,
       animationFps: 24,
+      recordingDuration: 5,
       openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | null,
 
       // PostFX
@@ -238,6 +239,8 @@ export const useStore = create<AppState>()(
       setAnimating: (animating) => set({ isAnimating: animating }),
 
       setAnimationFps: (fps) => set({ animationFps: fps }),
+
+      setRecordingDuration: (duration) => set({ recordingDuration: duration }),
 
       updatePostFX: (key, value) =>
         set((state) => ({

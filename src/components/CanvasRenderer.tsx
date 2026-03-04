@@ -25,6 +25,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const lastFrameTimeRef = useRef(0);
   const mouseRef = useRef({ x: 0.5, y: 0.5, inside: false });
   const ripplesRef = useRef<Ripple[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const {
     canvasSettings,
@@ -42,6 +44,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     sourceImage,
     setSourceImage,
     interactionEnabled,
+    recordingDuration,
   } = useStore();
 
   // Decode source image data-URL → HTMLImageElement
@@ -357,6 +360,70 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     };
   }, [interactionEnabled]);
 
+  const handleSave = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    if (!isAnimating) {
+      // Static: save PNG
+      const link = document.createElement('a');
+      link.download = `algomodo-${timestamp}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      return;
+    }
+
+    // Animating: record WebM directly from the live canvas stream
+    const mimeTypes = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ];
+    const mimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t));
+    if (!mimeType) {
+      alert('Your browser does not support WebM video recording.');
+      return;
+    }
+
+    setIsSaving(true);
+    const chunks: Blob[] = [];
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 5_000_000,
+    });
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `algomodo-${timestamp}.webm`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+      mediaRecorderRef.current = null;
+      setIsSaving(false);
+    };
+
+    recorder.onerror = () => {
+      console.error('MediaRecorder error');
+      mediaRecorderRef.current = null;
+      setIsSaving(false);
+    };
+
+    recorder.start(100); // collect data every 100ms
+    setTimeout(() => {
+      if (recorder.state === 'recording') recorder.stop();
+    }, recordingDuration * 1000);
+  };
+
   return (
     <div
       ref={containerRef}
@@ -419,16 +486,25 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             🎲 RANDOM
           </button>
         </div>
-        <button
-          onClick={() => {
-            const all = getAllGenerators().filter(g => g.family !== 'image');
-            const pick = all[Math.floor(Math.random() * all.length)];
-            if (pick) selectGenerator(pick.id);
-          }}
-          className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
-        >
-          ✨ SURPRISE ME
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              const all = getAllGenerators().filter(g => g.family !== 'image');
+              const pick = all[Math.floor(Math.random() * all.length)];
+              if (pick) selectGenerator(pick.id);
+            }}
+            className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+          >
+            ✨ SURPRISE ME
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-5 py-2 bg-green-500/60 hover:bg-green-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? '💾 SAVING...' : '💾 SAVE'}
+          </button>
+        </div>
       </div>
 
     </div>
