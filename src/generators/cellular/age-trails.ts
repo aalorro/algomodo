@@ -138,8 +138,8 @@ const parameterSchema: ParameterSchema = {
   },
   density: {
     name: 'Initial Density',
-    type: 'number', min: 0.1, max: 0.7, step: 0.05, default: 0.35,
-    help: 'Fraction of cells alive at start',
+    type: 'number', min: 0.1, max: 0.40, step: 0.05, default: 0.35,
+    help: 'Fraction of cells alive at start — above 0.40 the initial density is too high for patterns to emerge',
     group: 'Composition',
   },
   rule: {
@@ -212,7 +212,7 @@ export const ageTrails: Generator = {
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const size    = Math.max(16, (params.gridSize   ?? 128)  | 0);
-    const density = params.density   ?? 0.35;
+    const density = Math.min(0.40, params.density ?? 0.35);
     const ruleKey = params.rule      ?? 'life';
     const { birth, survive } = RULE_DEFS[ruleKey] ?? RULE_DEFS.life;
     const decay    = Math.max(0.5, Math.min(0.999, params.decay    ?? 0.95));
