@@ -434,11 +434,12 @@ export const RightSidebar: React.FC = () => {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 px-1 py-2 text-xs font-semibold transition ${
+            className={`flex-1 px-1 text-xs font-semibold transition ${
               activeTab === tab
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             }`}
+            style={{ paddingTop: 14, paddingBottom: 14 }}
           >
             {tab}
           </button>

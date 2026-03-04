@@ -40,6 +40,18 @@ const parameterSchema: ParameterSchema = {
     type: 'number', min: 0.2, max: 0.8, step: 0.05, default: 0.5,
     group: 'Texture',
   },
+  veinSharpness: {
+    name: 'Vein Sharpness',
+    type: 'number', min: 0.5, max: 4.0, step: 0.1, default: 1.0,
+    help: '>1 = thinner sharper veins, <1 = wider softer veins',
+    group: 'Texture',
+  },
+  turbulence: {
+    name: 'Turbulence',
+    type: 'boolean', default: false,
+    help: 'Use absolute-value noise for chaotic turbulent patterns',
+    group: 'Texture',
+  },
   doubleWarp: {
     name: 'Double Warp',
     type: 'boolean', default: true,
@@ -69,7 +81,7 @@ export const domainWarpMarble: Generator = {
   definition: 'Layered domain warping creates organic marble-like veining and turbulent flow structures',
   algorithmNotes: 'Two-pass domain warping displaces noise coordinates using another fBm field. Sine bands applied to the final value create marble striations. Colors interpolated across palette.',
   parameterSchema,
-  defaultParams: { scale: 2.5, warpStrength: 1.2, warpScale: 2.0, bands: 6, octaves: 5, gain: 0.5, doubleWarp: true, animMode: 'flow', speed: 0.5 },
+  defaultParams: { scale: 2.5, warpStrength: 1.2, warpScale: 2.0, bands: 6, octaves: 5, gain: 0.5, veinSharpness: 1.0, turbulence: false, doubleWarp: true, animMode: 'flow', speed: 0.5 },
   supportsVector: false,
   supportsWebGPU: false,
   supportsAnimation: true,
@@ -79,7 +91,8 @@ export const domainWarpMarble: Generator = {
     const noise2 = new SimplexNoise(seed + 1337);
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const { scale, warpScale, bands, octaves, gain, doubleWarp } = params;
+    const { scale, warpScale, bands, octaves, gain, doubleWarp, turbulence } = params;
+    const veinSharpness = params.veinSharpness ?? 1.0;
 
     const animMode    = params.animMode    ?? 'flow';
     const speed       = params.speed       ?? 0.5;
@@ -109,9 +122,15 @@ export const domainWarpMarble: Generator = {
         const f2x = animMode === 'flow' ? t * 0.019 : 0;
         const f2y = animMode === 'flow' ? t * 0.013 : 0;
 
+        // Noise helper — turbulence uses abs() for chaotic patterns
+        const noiseFn = (sn: SimplexNoise, a: number, b: number) => {
+          const raw = sn.fbm(a, b, octaves, 2.0, gain);
+          return turbulence ? Math.abs(raw) : raw;
+        };
+
         // First warp pass
-        const wx1 = noise.fbm(nx       + f1x, ny       + f1y, octaves, 2.0, gain);
-        const wy1 = noise.fbm(nx + 5.2 + f2x, ny + 1.3 - f2y, octaves, 2.0, gain);
+        const wx1 = noiseFn(noise, nx       + f1x, ny       + f1y);
+        const wy1 = noiseFn(noise, nx + 5.2 + f2x, ny + 1.3 - f2y);
 
         let finalX = nx + warpStrength * wx1;
         let finalY = ny + warpStrength * wy1;
@@ -120,16 +139,17 @@ export const domainWarpMarble: Generator = {
         if (doubleWarp) {
           const f3x = animMode === 'flow' ? t * 0.008 : 0;
           const f3y = animMode === 'flow' ? t * 0.012 : 0;
-          const wx2 = noise2.fbm(nx + warpScale * wx1 + 1.7 - f3x, ny + warpScale * wy1 + 9.2 + f3y, octaves, 2.0, gain);
-          const wy2 = noise2.fbm(nx + warpScale * wx1 + 8.3 + f3y, ny + warpScale * wy1 + 2.8 - f3x, octaves, 2.0, gain);
+          const wx2 = noiseFn(noise2, nx + warpScale * wx1 + 1.7 - f3x, ny + warpScale * wy1 + 9.2 + f3y);
+          const wy2 = noiseFn(noise2, nx + warpScale * wx1 + 8.3 + f3y, ny + warpScale * wy1 + 2.8 - f3x);
           finalX = nx + warpStrength * wx2;
           finalY = ny + warpStrength * wy2;
         }
 
-        const n = noise.fbm(finalX, finalY, octaves, 2.0, gain);
+        const n = noiseFn(noise, finalX, finalY);
 
-        // Marble sine bands
-        const bandT = Math.sin(n * Math.PI * bands) * 0.5 + 0.5;
+        // Marble sine bands with sharpness control
+        let bandT = Math.sin(n * Math.PI * bands) * 0.5 + 0.5;
+        bandT = Math.pow(bandT, veinSharpness);
 
         // Palette interpolation
         const ci = bandT * (palette.colors.length - 1);
