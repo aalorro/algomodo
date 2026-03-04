@@ -40,6 +40,16 @@ const parameterSchema: ParameterSchema = {
     help: 'Ridge height offset — 1.0 = sharp peaks; lower = softer rounded ridges; higher = rarer but taller ridges',
     group: 'Texture',
   },
+  sharpness: {
+    name: 'Sharpness', type: 'number', min: 1.0, max: 5.0, step: 0.5, default: 2.0,
+    help: 'Exponent on ridge signal — 2 = standard, higher = knife-edge ridges with deeper valleys',
+    group: 'Texture',
+  },
+  warpAmount: {
+    name: 'Warp Amount', type: 'number', min: 0, max: 2, step: 0.1, default: 0,
+    help: 'Domain warping for more organic ridge shapes — 0 = off',
+    group: 'Composition',
+  },
   colorMode: {
     name: 'Color Mode', type: 'select', options: ['palette', 'bands', 'peaks'], default: 'palette',
     help: 'palette: smooth gradient | bands: hard contour steps | peaks: ridges colored, valleys dark',
@@ -51,8 +61,8 @@ const parameterSchema: ParameterSchema = {
     group: 'Color',
   },
   animMode: {
-    name: 'Anim Mode', type: 'select', options: ['drift', 'sculpt'], default: 'drift',
-    help: 'drift: pan through the field | sculpt: ridge offset oscillates over time — ridges grow and dissolve',
+    name: 'Anim Mode', type: 'select', options: ['drift', 'rotate', 'sculpt'], default: 'drift',
+    help: 'drift: pan through the field | rotate: spin sample coordinates | sculpt: ridge offset oscillates — ridges grow and dissolve',
     group: 'Flow/Motion',
   },
   speed: {
@@ -70,30 +80,34 @@ export const noiseRidged: Generator = {
     'At each octave: signal = max(0, offset − |noise|)², then signal is weighted by the previous octave\'s signal (cascade). The cascade forces high ridges to suppress fine-scale detail in adjacent valleys, creating the characteristic appearance of geological strata. With gain = 0.5 the octave amplitudes follow a geometric decay summing to ≤ 1; result is clamped to [0, 1]. The "sculpt" animation mode slowly oscillates the ridge offset, causing ridges to periodically sharpen to knife-edge peaks and then broaden into rolling hills.',
   parameterSchema,
   defaultParams: {
-    scale: 2, octaves: 6, lacunarity: 2.0, gain: 0.5, offset: 1.0,
+    scale: 2, octaves: 6, lacunarity: 2.0, gain: 0.5, offset: 1.0, sharpness: 2.0, warpAmount: 0,
     colorMode: 'palette', bandCount: 8, animMode: 'drift', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noise      = new SimplexNoise(seed);
+    const warpNoise  = new SimplexNoise(seed + 89);
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const colors     = palette.colors.map(hexToRgb);
     const scale      = params.scale      ?? 2;
     const octaves    = Math.max(1, Math.min(10, (params.octaves ?? 6) | 0));
     const lacunarity = params.lacunarity ?? 2.0;
     const gain       = params.gain       ?? 0.5;
+    const sharpness  = params.sharpness  ?? 2.0;
+    const warpAmount = params.warpAmount ?? 0;
     const colorMode  = params.colorMode  ?? 'palette';
     const bandCount  = Math.max(2, (params.bandCount ?? 8) | 0);
     const t          = time * (params.speed ?? 0.5);
     const animMode   = params.animMode ?? 'drift';
+    const nCenter    = 2 * scale;
+    const rotAngle   = animMode === 'rotate' ? t * 0.08 : 0;
+    const rotCos     = Math.cos(rotAngle), rotSin = Math.sin(rotAngle);
 
     // 'sculpt': offset oscillates between tight and broad ridges
     const offset = (params.offset ?? 1.0) *
       (animMode === 'sculpt' ? 1 + 0.35 * Math.sin(t * 0.4) : 1);
 
-    // Normalisation: max sum of amplitudes = 1 / (1 - gain) for infinite octaves
-    // Multiply result by (1 - gain) to normalise to ≈ [0, 1]
     const normFactor = 1 - gain;
 
     const step = quality === 'draft' ? 2 : 1;
@@ -105,13 +119,26 @@ export const noiseRidged: Generator = {
         let nx = (x / w) * 4 * scale;
         let ny = (y / h) * 4 * scale;
         if (animMode === 'drift') { nx += t * 0.04; ny += t * 0.027; }
+        else if (animMode === 'rotate') {
+          const dx = nx - nCenter, dy = ny - nCenter;
+          nx = nCenter + dx * rotCos - dy * rotSin;
+          ny = nCenter + dx * rotSin + dy * rotCos;
+        }
 
-        // Ridged multifractal (Musgrave)
+        // Domain warping
+        if (warpAmount > 0) {
+          const wx = warpNoise.fbm(nx, ny, 3, 2.0, 0.5);
+          const wy = warpNoise.fbm(nx + 5.2, ny + 1.3, 3, 2.0, 0.5);
+          nx += warpAmount * wx;
+          ny += warpAmount * wy;
+        }
+
+        // Ridged multifractal (Musgrave) with configurable sharpness exponent
         let value = 0, weight = 1, amp = 1, freq = 1;
         for (let oct = 0; oct < octaves; oct++) {
           let s = Math.abs(noise.noise2D(nx * freq, ny * freq));
           s = Math.max(0, offset - s);
-          s *= s;
+          s = Math.pow(s, sharpness);
           s *= weight;
           weight = Math.min(1, s * gain);
           value += s * amp;

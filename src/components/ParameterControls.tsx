@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useStore } from '../store';
 import type { Generator, Parameter } from '../types';
 
@@ -7,26 +7,11 @@ interface ParameterControlsProps {
 }
 
 export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator }) => {
-  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating } = useStore();
+  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating, lockedParams: rawLocked, toggleLockedParam } = useStore();
+  const lockedParams = Array.isArray(rawLocked) ? rawLocked : [];
   const canUndo = historyPast.length > 0;
   const canRedo = historyFuture.length > 0;
   const supportsAnim = generator?.supportsAnimation ?? false;
-
-  const [lockedParams, setLockedParams] = useState<Set<string>>(new Set());
-
-  // Clear all locks whenever the generator changes
-  useEffect(() => {
-    setLockedParams(new Set());
-  }, [generator?.id]);
-
-  const toggleLock = (key: string) => {
-    setLockedParams(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   if (!generator) {
     return <div className="p-4 text-gray-400 dark:text-gray-500">Select a generator</div>;
@@ -77,7 +62,7 @@ export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator 
           Animate
         </button>
         <button
-          onClick={() => randomizeParams(generator.parameterSchema, lockedParams)}
+          onClick={() => randomizeParams(generator.parameterSchema)}
           className="flex-1 px-3 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded"
         >
           Rand
@@ -95,15 +80,15 @@ export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator 
                 <div className="flex justify-between items-center text-sm mb-1">
                   <span className="flex items-center gap-1">
                     <button
-                      onClick={() => toggleLock(param.key)}
-                      title={lockedParams.has(param.key) ? 'Locked — Rand skips this param. Click to unlock.' : 'Unlocked — click to lock and keep value during Rand'}
+                      onClick={() => toggleLockedParam(param.key)}
+                      title={lockedParams.includes(param.key) ? 'Locked — Rand skips this param. Click to unlock.' : 'Unlocked — click to lock and keep value during Rand'}
                       className={`w-4 h-4 flex items-center justify-center rounded transition-opacity text-xs leading-none ${
-                        lockedParams.has(param.key)
+                        lockedParams.includes(param.key)
                           ? 'text-amber-400 opacity-100'
                           : 'text-gray-400 opacity-0 group-hover:opacity-50 hover:!opacity-100'
                       }`}
                     >
-                      {lockedParams.has(param.key) ? '🔒' : '🔓'}
+                      {lockedParams.includes(param.key) ? '🔒' : '🔓'}
                     </button>
                     <span className="text-gray-700 dark:text-gray-200">{param.name}</span>
                   </span>

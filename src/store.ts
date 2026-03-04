@@ -43,6 +43,7 @@ export const useStore = create<AppState>()(
 
       // Parameters
       params: {},
+      lockedParams: [] as string[],
       palette: defaultPalette,
 
       // Source image (not persisted — too large for localStorage)
@@ -130,6 +131,7 @@ export const useStore = create<AppState>()(
           selectedPresetId: undefined,
           params: randomized,
           palette: randomPalette,
+          lockedParams: [],
           ...(state.seedLocked ? {} : { seed: Math.floor(Math.random() * 1000000) }),
           historyPast: [...state.historyPast.slice(-49), captureSnapshot(state)],
           historyFuture: [],
@@ -157,11 +159,21 @@ export const useStore = create<AppState>()(
         });
       },
 
-      randomizeParams: (schema: ParameterSchema, lockedKeys?: ReadonlySet<string>) => {
+      toggleLockedParam: (key: string) => {
         const state = get();
+        const arr = Array.isArray(state.lockedParams) ? state.lockedParams : [];
+        const has = arr.includes(key);
+        set({ lockedParams: has ? arr.filter(k => k !== key) : [...arr, key] });
+      },
+
+      clearLockedParams: () => set({ lockedParams: [] }),
+
+      randomizeParams: (schema: ParameterSchema) => {
+        const state = get();
+        const locked = Array.isArray(state.lockedParams) ? state.lockedParams : [];
         const randomized: Record<string, any> = {};
         for (const [key, param] of Object.entries(schema)) {
-          if (lockedKeys?.has(key)) {
+          if (locked.includes(key)) {
             // Preserve current value for locked params
             randomized[key] = state.params[key] ?? param.default;
             continue;

@@ -22,6 +22,41 @@ function sdRect(px: number, py: number, cx: number, cy: number, hw: number, hh: 
   return Math.sqrt(ox * ox + oy * oy) + Math.min(Math.max(qx, qy), 0);
 }
 
+/** Signed distance to a regular polygon (n sides, centred at cx,cy, radius r, rotation rot) */
+function sdRegularPoly(px: number, py: number, cx: number, cy: number, r: number, n: number, rot: number): number {
+  const dx = px - cx, dy = py - cy;
+  // Rotate point to align with polygon
+  const cosR = Math.cos(-rot), sinR = Math.sin(-rot);
+  const rx = dx * cosR - dy * sinR;
+  const ry = dx * sinR + dy * cosR;
+  // Angle quantization
+  const angle = Math.atan2(ry, rx);
+  const sector = Math.PI * 2 / n;
+  const halfSector = sector / 2;
+  const a = ((angle % sector) + sector) % sector - halfSector;
+  const dist = Math.sqrt(rx * rx + ry * ry);
+  const d = dist * Math.cos(a) - r * Math.cos(halfSector);
+  return d;
+}
+
+/** Signed distance to a 5-pointed star */
+function sdStar(px: number, py: number, cx: number, cy: number, outerR: number, rot: number): number {
+  const innerR = outerR * 0.38;
+  const dx = px - cx, dy = py - cy;
+  const cosR = Math.cos(-rot), sinR = Math.sin(-rot);
+  const rx = dx * cosR - dy * sinR;
+  const ry = dx * sinR + dy * cosR;
+  const angle = Math.atan2(ry, rx);
+  const sector = Math.PI * 2 / 5;
+  const halfSector = sector / 2;
+  const a = ((angle % sector) + sector) % sector - halfSector;
+  const dist = Math.sqrt(rx * rx + ry * ry);
+  // Interpolate between inner and outer radius based on angle
+  const t = Math.abs(a) / halfSector; // 0 at tip, 1 at valley
+  const edgeR = outerR * (1 - t) + innerR * t;
+  return dist - edgeR;
+}
+
 /** Union of two SDFs */
 function sdUnion(a: number, b: number): number { return Math.min(a, b); }
 
@@ -47,7 +82,7 @@ const parameterSchema: ParameterSchema = {
   shapeType: {
     name: 'Shape Type',
     type: 'select',
-    options: ['circles', 'rectangles', 'mixed', 'blobs'],
+    options: ['circles', 'rectangles', 'mixed', 'blobs', 'triangles', 'stars'],
     default: 'circles',
     group: 'Composition',
   },
@@ -68,6 +103,12 @@ const parameterSchema: ParameterSchema = {
     help: 'Spatial frequency of the wobble noise',
     group: 'Texture',
   },
+  fillBands: {
+    name: 'Fill Bands',
+    type: 'boolean', default: false,
+    help: 'Fill the space between rings with color for a topographic map look',
+    group: 'Texture',
+  },
   colorMode: {
     name: 'Color Mode',
     type: 'select',
@@ -83,6 +124,12 @@ const parameterSchema: ParameterSchema = {
     default: 'cream',
     group: 'Color',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number', min: 0, max: 1, step: 0.05, default: 0.1,
+    help: 'Speed of wobble field drift — 0 = static',
+    group: 'Flow/Motion',
+  },
 };
 
 export const offsetPaths: Generator = {
@@ -90,16 +137,17 @@ export const offsetPaths: Generator = {
   family: 'plotter',
   styleName: 'Offset Paths',
   definition: 'Draws concentric iso-distance rings around randomly placed seed shapes, using a per-pixel signed-distance field to locate ring boundaries',
-  algorithmNotes: 'Seed shapes (circles, rectangles, or noise-warped blobs) are placed with a jittered grid. For every pixel the global SDF is evaluated as the union of all shape SDFs, then perturbed with FBM noise for a hand-drawn look. Ring boundaries are detected where the perturbed SDF crosses multiples of the spacing value, and drawn as a single marching scanline pass with sub-pixel anti-aliasing.',
+  algorithmNotes: 'Seed shapes (circles, rectangles, triangles, stars, or noise-warped blobs) are placed with a jittered grid. For every pixel the global SDF is evaluated as the union of all shape SDFs, then perturbed with FBM noise for a hand-drawn look. Ring boundaries are detected where the perturbed SDF crosses multiples of the spacing value, and drawn as a single marching scanline pass with sub-pixel anti-aliasing. Fill bands option colors the space between rings for a topographic map effect.',
   parameterSchema,
   defaultParams: {
     ringCount: 16, ringSpacing: 14, shapeCount: 4,
     shapeType: 'circles', lineWidth: 0.8, wobble: 1.0, wobbleScale: 2.0,
-    colorMode: 'palette-rings', background: 'cream',
+    fillBands: false, colorMode: 'palette-rings', background: 'cream',
+    animSpeed: 0.1,
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: false,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, palette) {
+  renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
     ctx.fillStyle = BG[params.background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
@@ -113,14 +161,17 @@ export const offsetPaths: Generator = {
     const shapeType = params.shapeType || 'circles';
     const wobble = params.wobble ?? 1.0;
     const wobbleScale = params.wobbleScale ?? 2.0;
+    const fillBands = params.fillBands ?? false;
     const isDark = params.background === 'dark';
+    const animSpeed = params.animSpeed ?? 0.1;
+    const tOff = time * animSpeed * 0.3;
 
     // Place seed shapes with jittered grid
     const cols = Math.ceil(Math.sqrt(shapeCount * (w / h)));
     const rows = Math.ceil(shapeCount / cols);
     const cw = w / cols, ch = h / rows;
 
-    type Shape = { type: 'circle' | 'rect'; cx: number; cy: number; r: number; hw: number; hh: number };
+    type Shape = { type: string; cx: number; cy: number; r: number; hw: number; hh: number; rot: number };
     const shapes: Shape[] = [];
     const minDim = Math.min(w, h);
 
@@ -129,12 +180,26 @@ export const offsetPaths: Generator = {
         const cx = (c + 0.2 + rng.random() * 0.6) * cw;
         const cy = (r + 0.2 + rng.random() * 0.6) * ch;
         const baseR = (0.12 + rng.random() * 0.14) * minDim;
-        let type: 'circle' | 'rect';
+        const rot = rng.random() * Math.PI * 2;
+
+        let type: string;
         if (shapeType === 'circles') type = 'circle';
         else if (shapeType === 'rectangles') type = 'rect';
-        else type = rng.random() > 0.5 ? 'circle' : 'rect'; // mixed + blobs both use these SDFs
+        else if (shapeType === 'triangles') type = 'triangle';
+        else if (shapeType === 'stars') type = 'star';
+        else if (shapeType === 'blobs') type = 'circle'; // blobs use circle SDF + extra wobble
+        else {
+          // mixed
+          const pick = rng.random();
+          if (pick < 0.25) type = 'circle';
+          else if (pick < 0.45) type = 'rect';
+          else if (pick < 0.65) type = 'triangle';
+          else if (pick < 0.85) type = 'star';
+          else type = 'circle';
+        }
+
         const aspect = 0.6 + rng.random() * 0.8;
-        shapes.push({ type, cx, cy, r: baseR, hw: baseR * aspect, hh: baseR / aspect });
+        shapes.push({ type, cx, cy, r: baseR, hw: baseR * aspect, hh: baseR / aspect, rot });
       }
     }
 
@@ -142,36 +207,55 @@ export const offsetPaths: Generator = {
     const sdf = (px: number, py: number): number => {
       let d = Infinity;
       for (const s of shapes) {
-        const raw = s.type === 'circle'
-          ? sdCircle(px, py, s.cx, s.cy, s.r)
-          : sdRect(px, py, s.cx, s.cy, s.hw, s.hh);
+        let raw: number;
+        if (s.type === 'rect') {
+          raw = sdRect(px, py, s.cx, s.cy, s.hw, s.hh);
+        } else if (s.type === 'triangle') {
+          raw = sdRegularPoly(px, py, s.cx, s.cy, s.r, 3, s.rot);
+        } else if (s.type === 'star') {
+          raw = sdStar(px, py, s.cx, s.cy, s.r, s.rot);
+        } else {
+          raw = sdCircle(px, py, s.cx, s.cy, s.r);
+        }
         d = sdUnion(d, raw);
       }
       if (wobble > 0) {
-        const wn = noise.fbm(px / w * wobbleScale, py / h * wobbleScale, 3, 2, 0.5);
-        d += wn * wobble * spacing * 0.35;
+        const wn = noise.fbm(px / w * wobbleScale + tOff, py / h * wobbleScale + tOff * 0.7, 3, 2, 0.5);
+        // Blobs get extra wobble for organic shapes
+        const wobbleMult = shapeType === 'blobs' ? 0.7 : 0.35;
+        d += wn * wobble * spacing * wobbleMult;
       }
       return d;
     };
 
     const colors = palette.colors.map(hexToRgb);
-    ctx.lineWidth = params.lineWidth ?? 0.8;
-    ctx.lineCap = 'round';
 
     const colorMode = params.colorMode || 'palette-rings';
 
-    // Draw rings 0..ringCount-1 by scanning for sign changes of (sdf - ring * spacing)
-    // Process each ring level separately: draw contour where sdf ≈ ring * spacing
-    // We use the imageData approach to detect ring crossings efficiently.
+    const getRingColor = (ringIdx: number): [number, number, number] => {
+      if (colorMode === 'alternating') {
+        return ringIdx % 2 === 0 ? colors[0] : colors[colors.length - 1];
+      } else if (colorMode === 'elevation') {
+        const t = ringIdx / Math.max(1, ringCount - 1);
+        const ci = t * (colors.length - 1);
+        const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
+        const f = ci - i0;
+        return [
+          (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
+          (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0,
+          (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
+        ];
+      } else {
+        return colors[ringIdx % colors.length];
+      }
+    };
 
     const imageData = ctx.getImageData(0, 0, w, h);
     const data = imageData.data;
 
-    // For anti-aliased ring lines we draw per-pixel by checking sdf modulo spacing
-    // A pixel belongs to ring r if floor(sdf/spacing) == r AND 0 <= sdf < ringCount*spacing
-    // We soften edges by alpha based on distance from the ring boundary
-
     const halfLW = (params.lineWidth ?? 0.8) * 0.5;
+    const bg = hexToRgb(BG[params.background] ?? BG.cream);
+    const globalAlpha = isDark ? 0.88 : 0.82;
 
     for (let py = 0; py < h; py++) {
       for (let px = 0; px < w; px++) {
@@ -179,41 +263,38 @@ export const offsetPaths: Generator = {
         if (d < 0 || d >= ringCount * spacing) continue;
 
         const ringIdx = Math.floor(d / spacing) | 0;
-        const frac = (d % spacing) / spacing; // 0→1 within ring band
-        // Distance from nearest ring boundary (0 = on boundary, 0.5 = midpoint)
+        const frac = (d % spacing) / spacing;
         const distFromEdge = Math.min(frac, 1 - frac) * spacing;
-        if (distFromEdge > halfLW + 1) continue; // outside line footprint
 
-        const alpha = Math.max(0, Math.min(1, (halfLW + 1 - distFromEdge)));
-
-        let cr: number, cg: number, cb: number;
-        if (colorMode === 'alternating') {
-          const col = ringIdx % 2 === 0 ? colors[0] : colors[colors.length - 1];
-          [cr, cg, cb] = col;
-        } else if (colorMode === 'elevation') {
-          const t = ringIdx / Math.max(1, ringCount - 1);
-          const ci = t * (colors.length - 1);
-          const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
-          const f = ci - i0;
-          cr = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
-          cg = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
-          cb = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
-        } else {
-          // palette-rings: cycle
-          [cr, cg, cb] = colors[ringIdx % colors.length];
-        }
-
-        const globalAlpha = isDark ? 0.88 : 0.82;
-        const finalAlpha = (alpha * globalAlpha * 255) | 0;
-
+        const [cr, cg, cb] = getRingColor(ringIdx);
         const idx = (py * w + px) * 4;
-        // Alpha-blend over background
-        const bg = hexToRgb(BG[params.background] ?? BG.cream);
-        const a01 = finalAlpha / 255;
-        data[idx]     = (bg[0] * (1 - a01) + cr * a01) | 0;
-        data[idx + 1] = (bg[1] * (1 - a01) + cg * a01) | 0;
-        data[idx + 2] = (bg[2] * (1 - a01) + cb * a01) | 0;
-        data[idx + 3] = 255;
+
+        if (fillBands) {
+          // Fill entire band with color, draw line borders on top
+          const bandAlpha = globalAlpha * 0.5;
+          let a01 = bandAlpha;
+
+          // Add stronger border at ring boundaries
+          if (distFromEdge < halfLW + 1) {
+            const lineAlpha = Math.max(0, Math.min(1, (halfLW + 1 - distFromEdge)));
+            a01 = bandAlpha + (globalAlpha - bandAlpha) * lineAlpha;
+          }
+
+          data[idx]     = (bg[0] * (1 - a01) + cr * a01) | 0;
+          data[idx + 1] = (bg[1] * (1 - a01) + cg * a01) | 0;
+          data[idx + 2] = (bg[2] * (1 - a01) + cb * a01) | 0;
+          data[idx + 3] = 255;
+        } else {
+          // Lines only
+          if (distFromEdge > halfLW + 1) continue;
+          const alpha = Math.max(0, Math.min(1, (halfLW + 1 - distFromEdge)));
+          const finalAlpha = (alpha * globalAlpha * 255) | 0;
+          const a01 = finalAlpha / 255;
+          data[idx]     = (bg[0] * (1 - a01) + cr * a01) | 0;
+          data[idx + 1] = (bg[1] * (1 - a01) + cg * a01) | 0;
+          data[idx + 2] = (bg[2] * (1 - a01) + cb * a01) | 0;
+          data[idx + 3] = 255;
+        }
       }
     }
 

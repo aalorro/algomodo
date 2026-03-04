@@ -36,6 +36,16 @@ const parameterSchema: ParameterSchema = {
     help: 'Amplitude multiplier per octave — 0.5 = pink noise, < 0.5 = smoother, > 0.5 = rougher',
     group: 'Geometry',
   },
+  warpAmount: {
+    name: 'Warp Amount', type: 'number', min: 0, max: 2, step: 0.1, default: 0,
+    help: 'Domain warping for organic distortion — 0 = off',
+    group: 'Composition',
+  },
+  power: {
+    name: 'Power', type: 'number', min: 0.3, max: 4.0, step: 0.1, default: 1.0,
+    help: 'Gamma curve — >1 darkens lows and sharpens highs, <1 lifts shadows',
+    group: 'Texture',
+  },
   colorMode: {
     name: 'Color Mode', type: 'select', options: ['palette', 'bands'], default: 'palette',
     group: 'Color',
@@ -46,8 +56,8 @@ const parameterSchema: ParameterSchema = {
     group: 'Color',
   },
   animMode: {
-    name: 'Anim Mode', type: 'select', options: ['drift', 'pulse'], default: 'drift',
-    help: 'drift: pan through the field | pulse: oscillate effective scale ±20 % for a breathing zoom',
+    name: 'Anim Mode', type: 'select', options: ['drift', 'rotate', 'pulse'], default: 'drift',
+    help: 'drift: pan through the field | rotate: spin sample coordinates | pulse: oscillate effective scale ±20 %',
     group: 'Flow/Motion',
   },
   speed: {
@@ -65,24 +75,30 @@ export const noiseFbm: Generator = {
     'fBm(x,y) = Σᵢ gainⁱ · noise(lacunarityⁱ · (x,y)), normalised by Σᵢ gainⁱ so the result lies in ≈[−1,1]. With lacunarity = 2 and gain = 0.5 the spectral slope is −2 (pink noise / 1/f² power spectrum), which matches the statistical character of natural terrain, clouds, and turbulent textures. Higher gain (closer to 1) produces rougher, more jagged surfaces; lower gain creates smoother, rolling fields. Output shifted to [0,1] for palette mapping.',
   parameterSchema,
   defaultParams: {
-    scale: 2, octaves: 6, lacunarity: 2.0, gain: 0.5,
+    scale: 2, octaves: 6, lacunarity: 2.0, gain: 0.5, warpAmount: 0, power: 1.0,
     colorMode: 'palette', bandCount: 8, animMode: 'drift', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noise      = new SimplexNoise(seed);
+    const warpNoise  = new SimplexNoise(seed + 61);
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const colors     = palette.colors.map(hexToRgb);
     const scale      = params.scale      ?? 2;
     const octaves    = Math.max(1, Math.min(10, (params.octaves ?? 6) | 0));
     const lacunarity = params.lacunarity ?? 2.0;
     const gain       = params.gain       ?? 0.5;
+    const warpAmount = params.warpAmount ?? 0;
+    const power      = params.power      ?? 1.0;
     const colorMode  = params.colorMode  ?? 'palette';
     const bandCount  = Math.max(2, (params.bandCount ?? 8) | 0);
     const t          = time * (params.speed ?? 0.5);
     const animMode   = params.animMode ?? 'drift';
     const pulseMul   = animMode === 'pulse' ? 1 + 0.2 * Math.sin(t * 0.4) : 1;
+    const nCenter    = 2 * scale;
+    const rotAngle   = animMode === 'rotate' ? t * 0.08 : 0;
+    const rotCos     = Math.cos(rotAngle), rotSin = Math.sin(rotAngle);
 
     const step = quality === 'draft' ? 2 : 1;
     const img  = ctx.createImageData(w, h);
@@ -93,8 +109,22 @@ export const noiseFbm: Generator = {
         let nx = (x / w) * 4 * scale * pulseMul;
         let ny = (y / h) * 4 * scale * pulseMul;
         if (animMode === 'drift') { nx += t * 0.04; ny += t * 0.027; }
+        else if (animMode === 'rotate') {
+          const dx = nx - nCenter, dy = ny - nCenter;
+          nx = nCenter + dx * rotCos - dy * rotSin;
+          ny = nCenter + dx * rotSin + dy * rotCos;
+        }
+
+        // Domain warping
+        if (warpAmount > 0) {
+          const wx = warpNoise.fbm(nx, ny, 3, 2.0, 0.5);
+          const wy = warpNoise.fbm(nx + 5.2, ny + 1.3, 3, 2.0, 0.5);
+          nx += warpAmount * wx;
+          ny += warpAmount * wy;
+        }
 
         let v = (noise.fbm(nx, ny, octaves, lacunarity, gain) + 1) * 0.5;
+        if (power !== 1) v = Math.pow(Math.max(0, v), power);
         if (colorMode === 'bands') v = Math.floor(v * bandCount) / bandCount;
 
         const [r, g, b] = paletteSample(v, colors);

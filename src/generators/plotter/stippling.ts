@@ -41,6 +41,28 @@ const parameterSchema: ParameterSchema = {
     help: 'Minimum gap between dot centres',
     group: 'Geometry',
   },
+  dotShape: {
+    name: 'Dot Shape',
+    type: 'select',
+    options: ['circle', 'square', 'diamond', 'dash', 'star'],
+    default: 'circle',
+    help: 'Shape of each stipple mark',
+    group: 'Geometry',
+  },
+  sizeVariation: {
+    name: 'Size Variation',
+    type: 'number', min: 0, max: 1, step: 0.1, default: 0,
+    help: 'Random size jitter for a more organic feel — 0 = uniform, 1 = very varied',
+    group: 'Texture',
+  },
+  densityStyle: {
+    name: 'Density Style',
+    type: 'select',
+    options: ['fbm', 'ridged', 'turbulent', 'radial'],
+    default: 'fbm',
+    help: 'Shape of the density field — fbm: standard noise | ridged: ridge lines | turbulent: creases | radial: center-focused gradient',
+    group: 'Composition',
+  },
   colorMode: {
     name: 'Color Mode',
     type: 'select',
@@ -146,7 +168,7 @@ export const stippling: Generator = {
   definition: 'Density-adaptive stippling with noise-driven dot clustering, variable size, and per-dot color mapping',
   algorithmNotes: 'Weighted Poisson disc sampling biases point placement toward dense noise regions. Dot radius inversely scales with local spacing, giving larger dots in darker areas. Color follows the noise density value mapped through the palette.',
   parameterSchema,
-  defaultParams: { pointCount: 8000, densityScale: 2.5, densityContrast: 2.0, minDotSize: 1.0, maxDotSize: 4.5, minDistance: 5, colorMode: 'palette-density', opacity: 0.85, background: 'cream' },
+  defaultParams: { pointCount: 8000, densityScale: 2.5, densityContrast: 2.0, minDotSize: 1.0, maxDotSize: 4.5, minDistance: 5, dotShape: 'circle', sizeVariation: 0, densityStyle: 'fbm', colorMode: 'palette-density', opacity: 0.85, background: 'cream' },
   supportsVector: false,
   supportsWebGPU: false,
   supportsAnimation: false,
@@ -154,7 +176,7 @@ export const stippling: Generator = {
   renderCanvas2D(ctx, params, seed, palette) {
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const { pointCount, densityScale, densityContrast, minDotSize, maxDotSize, minDistance, colorMode, opacity, background } = params;
+    const { pointCount, densityScale, densityContrast, minDotSize, maxDotSize, minDistance, dotShape, sizeVariation, densityStyle, colorMode, opacity, background } = params;
 
     ctx.fillStyle = BG[background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
@@ -163,9 +185,66 @@ export const stippling: Generator = {
     const noise = new SimplexNoise(seed);
 
     const densityFn = (x: number, y: number): number => {
-      // +5 offset keeps canvas center away from FBM origin (which is always 0)
-      const n = noise.fbm((x / w - 0.5) * densityScale + 5, (y / h - 0.5) * densityScale + 5, 5, 2.0, 0.5);
-      return Math.pow(Math.max(0, n * 0.5 + 0.5), densityContrast);
+      const nx = (x / w - 0.5) * densityScale + 5;
+      const ny = (y / h - 0.5) * densityScale + 5;
+      let n: number;
+      if (densityStyle === 'ridged') {
+        const raw = noise.fbm(nx, ny, 5, 2.0, 0.5);
+        const ridge = 1 - Math.abs(raw);
+        n = ridge * ridge;
+      } else if (densityStyle === 'turbulent') {
+        n = Math.abs(noise.fbm(nx, ny, 5, 2.0, 0.5));
+      } else if (densityStyle === 'radial') {
+        const dx = x / w - 0.5, dy = y / h - 0.5;
+        const dist = Math.sqrt(dx * dx + dy * dy) * 2;
+        const noiseVal = noise.fbm(nx, ny, 3, 2.0, 0.5) * 0.3;
+        n = Math.max(0, 1 - dist + noiseVal);
+      } else {
+        n = noise.fbm(nx, ny, 5, 2.0, 0.5) * 0.5 + 0.5;
+      }
+      return Math.pow(Math.max(0, Math.min(1, n)), densityContrast);
+    };
+
+    // Draw a single mark at (px, py) with given radius
+    const drawMark = (px: number, py: number, radius: number) => {
+      if (dotShape === 'square') {
+        ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+      } else if (dotShape === 'diamond') {
+        ctx.beginPath();
+        ctx.moveTo(px, py - radius);
+        ctx.lineTo(px + radius, py);
+        ctx.lineTo(px, py + radius);
+        ctx.lineTo(px - radius, py);
+        ctx.closePath();
+        ctx.fill();
+      } else if (dotShape === 'dash') {
+        const a = rng.random() * Math.PI;
+        const dx = Math.cos(a) * radius * 1.5;
+        const dy = Math.sin(a) * radius * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(px - dx, py - dy);
+        ctx.lineTo(px + dx, py + dy);
+        ctx.lineWidth = radius * 0.7;
+        ctx.stroke();
+      } else if (dotShape === 'star') {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const outerA = (i * 2 * Math.PI / 5) - Math.PI / 2;
+          const innerA = outerA + Math.PI / 5;
+          const ox = px + Math.cos(outerA) * radius;
+          const oy = py + Math.sin(outerA) * radius;
+          const ix = px + Math.cos(innerA) * radius * 0.4;
+          const iy = py + Math.sin(innerA) * radius * 0.4;
+          if (i === 0) ctx.moveTo(ox, oy); else ctx.lineTo(ox, oy);
+          ctx.lineTo(ix, iy);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
     };
 
     if (colorMode === 'multi-layer') {
@@ -186,11 +265,11 @@ export const stippling: Generator = {
         const [r, g, b] = hexToRgb(palette.colors[li]);
 
         for (const [px, py, density] of pts) {
-          const radius = minDotSize + (maxDotSize - minDotSize) * density;
+          let radius = minDotSize + (maxDotSize - minDotSize) * density;
+          if (sizeVariation > 0) radius *= 1 + (rng.random() - 0.5) * sizeVariation;
           ctx.fillStyle = `rgba(${r},${g},${b},${opacity * density})`;
-          ctx.beginPath();
-          ctx.arc(px, py, radius, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.strokeStyle = ctx.fillStyle;
+          drawMark(px, py, Math.max(0.5, radius));
         }
       }
       return;
@@ -200,7 +279,9 @@ export const stippling: Generator = {
     const pts = weightedPoissonDisc(w, h, minDistance, pointCount, rng, densityFn);
 
     for (const [px, py, density] of pts) {
-      const radius = minDotSize + (maxDotSize - minDotSize) * density;
+      let radius = minDotSize + (maxDotSize - minDotSize) * density;
+      if (sizeVariation > 0) radius *= 1 + (rng.random() - 0.5) * sizeVariation;
+      radius = Math.max(0.5, radius);
 
       let fillStyle: string;
       if (colorMode === 'monochrome') {
@@ -212,7 +293,6 @@ export const stippling: Generator = {
         const [r, g, b] = hexToRgb(palette.colors[ci]);
         fillStyle = `rgba(${r},${g},${b},${opacity})`;
       } else {
-        // palette-density: interpolate across palette by density
         const ci = density * (palette.colors.length - 1);
         const c0 = Math.floor(ci), c1 = Math.min(c0 + 1, palette.colors.length - 1);
         const frac = ci - c0;
@@ -225,9 +305,8 @@ export const stippling: Generator = {
       }
 
       ctx.fillStyle = fillStyle;
-      ctx.beginPath();
-      ctx.arc(px, py, radius, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.strokeStyle = fillStyle;
+      drawMark(px, py, radius);
     }
   },
 

@@ -12,9 +12,9 @@ const parameterSchema: ParameterSchema = {
   style: {
     name: 'Style',
     type: 'select',
-    options: ['parallel', 'contour', 'scribble'],
+    options: ['parallel', 'crosshatch', 'contour', 'wavy', 'scribble'],
     default: 'parallel',
-    help: 'parallel: density-driven broken lines | contour: follows noise topography | scribble: curved short strokes',
+    help: 'parallel: broken lines | crosshatch: perpendicular overlapping | contour: follows topography | wavy: sine-modulated | scribble: curved arcs',
     group: 'Composition',
   },
   layers: {
@@ -62,6 +62,12 @@ const parameterSchema: ParameterSchema = {
     type: 'number', min: 0.25, max: 3, step: 0.25, default: 0.75,
     group: 'Texture',
   },
+  taper: {
+    name: 'Taper',
+    type: 'boolean', default: false,
+    help: 'Vary line width with density — thicker in dark areas, thinner in light',
+    group: 'Texture',
+  },
   background: {
     name: 'Background',
     type: 'select',
@@ -84,7 +90,7 @@ export const hatching: Generator = {
   definition: 'Noise-driven engraving with parallel, contour-following or scribble line modes and per-segment hand-drawn wobble',
   algorithmNotes: 'A SimplexNoise density field controls where lines appear. In parallel mode lines break up in low-density areas. In contour mode short strokes follow noise iso-contours. In scribble mode short Bezier arcs are placed by rejection sampling.',
   parameterSchema,
-  defaultParams: { style: 'parallel', layers: 2, baseSpacing: 7, angle: 45, angleStep: 45, densityScale: 2.2, densityContrast: 1.8, wobble: 1.5, lineWidth: 0.75, background: 'cream', animSpeed: 0.12 },
+  defaultParams: { style: 'parallel', layers: 2, baseSpacing: 7, angle: 45, angleStep: 45, densityScale: 2.2, densityContrast: 1.8, wobble: 1.5, lineWidth: 0.75, taper: false, background: 'cream', animSpeed: 0.12 },
   supportsVector: false,
   supportsWebGPU: false,
   supportsAnimation: true,
@@ -92,7 +98,7 @@ export const hatching: Generator = {
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const { style, layers, baseSpacing, angle, angleStep, densityScale, densityContrast, wobble, lineWidth, background } = params;
+    const { style, layers, baseSpacing, angle, angleStep, densityScale, densityContrast, wobble, lineWidth, taper, background } = params;
 
     const rng = new SeededRNG(seed);
     const noise = new SimplexNoise(seed);
@@ -128,58 +134,83 @@ export const hatching: Generator = {
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
 
+    // Helper: draw parallel lines at a given angle for one layer
+    const drawParallelLayer = (layer: number, layerAngle: number, wavyAmp: number) => {
+      const cosA = Math.cos(layerAngle);
+      const sinA = Math.sin(layerAngle);
+      const cosP = Math.cos(layerAngle + Math.PI / 2);
+      const sinP = Math.sin(layerAngle + Math.PI / 2);
+
+      const col = palette.colors[layer % palette.colors.length];
+      const [r, g, b] = hexToRgb(col);
+      const alpha = isDark ? 0.85 : 0.75;
+      ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
+
+      const numLines = Math.ceil(diagonal / baseSpacing) + 2;
+      const segStep = 4;
+
+      for (let li = -numLines / 2; li <= numLines / 2; li++) {
+        const ox = w / 2 + cosP * li * baseSpacing;
+        const oy = h / 2 + sinP * li * baseSpacing;
+
+        const numSegs = Math.ceil(diagonal / segStep) + 2;
+        let drawing = false;
+
+        ctx.beginPath();
+        for (let si = 0; si <= numSegs; si++) {
+          const along = si * segStep - diagonal / 2;
+          // Wavy: sine offset perpendicular to line direction
+          const waveOff = wavyAmp > 0 ? Math.sin(along * 0.02 + li * 0.5) * wavyAmp * baseSpacing : 0;
+          const px = ox + cosA * along + cosP * waveOff;
+          const py = oy + sinA * along + sinP * waveOff;
+
+          if (px < -wobble - 5 || px > w + wobble + 5 || py < -wobble - 5 || py > h + wobble + 5) {
+            if (drawing) { ctx.stroke(); ctx.beginPath(); drawing = false; }
+            continue;
+          }
+
+          const density = sampleDensity(px, py);
+          const threshold = layer * (0.25 / Math.max(layers - 1, 1));
+          const shouldDraw = density > threshold;
+
+          if (taper) ctx.lineWidth = lineWidth * (0.3 + density * 1.4);
+
+          if (shouldDraw) {
+            if (!drawing) {
+              ctx.moveTo(px + (rng.random() - 0.5) * wobble, py + (rng.random() - 0.5) * wobble);
+              drawing = true;
+            } else {
+              drawWobblySegment(ctx, px - cosA * segStep, py - sinA * segStep, px, py);
+            }
+          } else {
+            if (drawing) { ctx.stroke(); ctx.beginPath(); drawing = false; }
+          }
+        }
+        if (drawing) ctx.stroke();
+      }
+    };
+
     // ── Parallel mode ────────────────────────────────────────────────────────────
     if (style === 'parallel') {
       for (let layer = 0; layer < layers; layer++) {
         const layerAngle = ((angle + layer * angleStep) * Math.PI) / 180;
-        const cosA = Math.cos(layerAngle);
-        const sinA = Math.sin(layerAngle);
-        const cosP = Math.cos(layerAngle + Math.PI / 2);
-        const sinP = Math.sin(layerAngle + Math.PI / 2);
+        drawParallelLayer(layer, layerAngle, 0);
+      }
 
-        const col = palette.colors[layer % palette.colors.length];
-        const [r, g, b] = hexToRgb(col);
-        const alpha = isDark ? 0.85 : 0.75;
-        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
+    // ── Crosshatch mode ──────────────────────────────────────────────────────────
+    } else if (style === 'crosshatch') {
+      // Each layer draws two perpendicular sets of lines
+      for (let layer = 0; layer < layers; layer++) {
+        const baseAngle = ((angle + layer * angleStep) * Math.PI) / 180;
+        drawParallelLayer(layer, baseAngle, 0);
+        drawParallelLayer(layer, baseAngle + Math.PI / 2, 0);
+      }
 
-        const numLines = Math.ceil(diagonal / baseSpacing) + 2;
-        const segStep = 4; // px per segment check
-
-        for (let li = -numLines / 2; li <= numLines / 2; li++) {
-          const ox = w / 2 + cosP * li * baseSpacing;
-          const oy = h / 2 + sinP * li * baseSpacing;
-
-          const numSegs = Math.ceil(diagonal / segStep) + 2;
-          let drawing = false;
-
-          ctx.beginPath();
-          for (let si = 0; si <= numSegs; si++) {
-            const px = ox + cosA * (si * segStep - diagonal / 2);
-            const py = oy + sinA * (si * segStep - diagonal / 2);
-
-            if (px < -wobble - 5 || px > w + wobble + 5 || py < -wobble - 5 || py > h + wobble + 5) {
-              if (drawing) { ctx.stroke(); ctx.beginPath(); drawing = false; }
-              continue;
-            }
-
-            const density = sampleDensity(px, py);
-            // Layer threshold: later layers need higher density
-            const threshold = layer * (0.25 / Math.max(layers - 1, 1));
-            const shouldDraw = density > threshold;
-
-            if (shouldDraw) {
-              if (!drawing) {
-                ctx.moveTo(px + (rng.random() - 0.5) * wobble, py + (rng.random() - 0.5) * wobble);
-                drawing = true;
-              } else {
-                drawWobblySegment(ctx, px - cosA * segStep, py - sinA * segStep, px, py);
-              }
-            } else {
-              if (drawing) { ctx.stroke(); ctx.beginPath(); drawing = false; }
-            }
-          }
-          if (drawing) ctx.stroke();
-        }
+    // ── Wavy mode ────────────────────────────────────────────────────────────────
+    } else if (style === 'wavy') {
+      for (let layer = 0; layer < layers; layer++) {
+        const layerAngle = ((angle + layer * angleStep) * Math.PI) / 180;
+        drawParallelLayer(layer, layerAngle, 1.5);
       }
 
     // ── Contour mode ─────────────────────────────────────────────────────────────

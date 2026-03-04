@@ -39,6 +39,16 @@ const parameterSchema: ParameterSchema = {
     help: 'Gamma / power curve applied after turbulence — > 1 darkens low-energy regions, < 1 lifts them',
     group: 'Texture',
   },
+  warpAmount: {
+    name: 'Warp Amount', type: 'number', min: 0, max: 2, step: 0.1, default: 0,
+    help: 'Domain warping for organic distortion — 0 = off',
+    group: 'Composition',
+  },
+  erosion: {
+    name: 'Erosion', type: 'number', min: 0, max: 1.0, step: 0.1, default: 0,
+    help: 'Weight each octave by the previous — creases erode into valleys',
+    group: 'Texture',
+  },
   colorMode: {
     name: 'Color Mode', type: 'select', options: ['palette', 'bands', 'heat'], default: 'palette',
     help: 'palette: smooth gradient | bands: hard contour steps | heat: fixed black → red → orange → white fire map',
@@ -50,8 +60,8 @@ const parameterSchema: ParameterSchema = {
     group: 'Color',
   },
   animMode: {
-    name: 'Anim Mode', type: 'select', options: ['drift', 'churn'], default: 'drift',
-    help: 'drift: pan through the field | churn: each octave drifts at its own rate, creating a boiling/convective effect',
+    name: 'Anim Mode', type: 'select', options: ['drift', 'rotate', 'churn'], default: 'drift',
+    help: 'drift: pan through the field | rotate: spin sample coordinates | churn: each octave drifts at its own rate for a boiling effect',
     group: 'Flow/Motion',
   },
   speed: {
@@ -70,12 +80,14 @@ export const noiseTurbulence: Generator = {
   parameterSchema,
   defaultParams: {
     scale: 2.5, octaves: 6, lacunarity: 2.0, gain: 0.5, power: 1.0,
+    warpAmount: 0, erosion: 0,
     colorMode: 'palette', bandCount: 6, animMode: 'drift', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noise      = new SimplexNoise(seed);
+    const warpNoise  = new SimplexNoise(seed + 53);
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const colors     = palette.colors.map(hexToRgb);
     const scale      = params.scale      ?? 2.5;
@@ -83,10 +95,15 @@ export const noiseTurbulence: Generator = {
     const lacunarity = params.lacunarity ?? 2.0;
     const gain       = params.gain       ?? 0.5;
     const power      = params.power      ?? 1.0;
+    const warpAmount = params.warpAmount ?? 0;
+    const erosion    = params.erosion    ?? 0;
     const colorMode  = params.colorMode  ?? 'palette';
     const bandCount  = Math.max(2, (params.bandCount ?? 6) | 0);
     const t          = time * (params.speed ?? 0.5);
     const animMode   = params.animMode ?? 'drift';
+    const nCenter    = 2 * scale;
+    const rotAngle   = animMode === 'rotate' ? t * 0.08 : 0;
+    const rotCos     = Math.cos(rotAngle), rotSin = Math.sin(rotAngle);
 
     // Normalisation constant: peak |noise2D| ≈ 0.65 for gradient noise
     const NOISE_PEAK = 0.65;
@@ -100,14 +117,32 @@ export const noiseTurbulence: Generator = {
         let nx = (x / w) * 4 * scale;
         let ny = (y / h) * 4 * scale;
         if (animMode === 'drift') { nx += t * 0.04; ny += t * 0.027; }
+        else if (animMode === 'rotate') {
+          const dx = nx - nCenter, dy = ny - nCenter;
+          nx = nCenter + dx * rotCos - dy * rotSin;
+          ny = nCenter + dx * rotSin + dy * rotCos;
+        }
 
-        // Turbulence: sum of |noise| with per-octave churn drift
-        let value = 0, amp = 1, freq = 1, maxVal = 0;
+        // Domain warping
+        if (warpAmount > 0) {
+          const wx = warpNoise.fbm(nx, ny, 3, 2.0, 0.5);
+          const wy = warpNoise.fbm(nx + 5.2, ny + 1.3, 3, 2.0, 0.5);
+          nx += warpAmount * wx;
+          ny += warpAmount * wy;
+        }
+
+        // Turbulence: sum of |noise| with per-octave churn drift and erosion weighting
+        let value = 0, amp = 1, freq = 1, maxVal = 0, weight = 1;
         for (let oct = 0; oct < octaves; oct++) {
-          // churn: high octaves drift proportionally faster than low octaves
           const cx = animMode === 'churn' ? t * 0.012 * (oct + 1) : 0;
           const cy = animMode === 'churn' ? t * 0.009 * (oct + 1) : 0;
-          value  += amp * Math.abs(noise.noise2D(nx * freq + cx, ny * freq + cy));
+          let s = Math.abs(noise.noise2D(nx * freq + cx, ny * freq + cy));
+          // Erosion: weight by previous octave signal so creases erode into valleys
+          if (erosion > 0) {
+            s *= (1 - erosion) + erosion * weight;
+            weight = Math.min(1, s * 2);
+          }
+          value  += amp * s;
           maxVal += amp;
           amp    *= gain;
           freq   *= lacunarity;

@@ -37,9 +37,14 @@ const parameterSchema: ParameterSchema = {
     group: 'Geometry',
   },
   iterations: {
-    name: 'Iterations', type: 'select', options: ['1', '2'], default: '1',
-    help: '1: f(p + g(p)) — single warp pass | 2: f(p + g(p + g(p))) — iterated double warp; much more complex structure',
+    name: 'Iterations', type: 'select', options: ['1', '2', '3'], default: '1',
+    help: '1: single warp | 2: double warp — more folded | 3: triple warp — extremely complex interlocked filaments',
     group: 'Geometry',
+  },
+  readoutStyle: {
+    name: 'Readout Style', type: 'select', options: ['smooth', 'ridged', 'turbulent'], default: 'smooth',
+    help: 'How the final noise value is shaped — smooth: standard fBm | ridged: sharp ridge lines | turbulent: abs-value creases',
+    group: 'Texture',
   },
   colorMode: {
     name: 'Color Mode', type: 'select', options: ['palette', 'bands'], default: 'palette',
@@ -51,8 +56,8 @@ const parameterSchema: ParameterSchema = {
     group: 'Color',
   },
   animMode: {
-    name: 'Anim Mode', type: 'select', options: ['drift', 'flow'], default: 'flow',
-    help: 'drift: translate all coordinates uniformly | flow: warp field phase shifts independently — the base structure stays put while the folds morph around it',
+    name: 'Anim Mode', type: 'select', options: ['drift', 'rotate', 'flow'], default: 'flow',
+    help: 'drift: translate uniformly | rotate: spin sample coordinates | flow: warp field morphs independently',
     group: 'Flow/Motion',
   },
   speed: {
@@ -71,13 +76,13 @@ export const noiseDomainWarp: Generator = {
   parameterSchema,
   defaultParams: {
     scale: 2.0, octaves: 5, warpStrength: 1.5, warpOctaves: 3,
-    iterations: '1', colorMode: 'palette', bandCount: 8, animMode: 'flow', speed: 0.5,
+    iterations: '1', readoutStyle: 'smooth', colorMode: 'palette', bandCount: 8, animMode: 'flow', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noiseBase = new SimplexNoise(seed);
-    const noiseWarp = new SimplexNoise(seed + 7919); // prime offset for independence
+    const noiseWarp = new SimplexNoise(seed + 7919);
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const colors       = palette.colors.map(hexToRgb);
     const scale        = params.scale        ?? 2.0;
@@ -85,12 +90,15 @@ export const noiseDomainWarp: Generator = {
     const warpStrength = params.warpStrength  ?? 1.5;
     const warpOctaves  = Math.max(1, Math.min(6, (params.warpOctaves ?? 3) | 0));
     const iters        = parseInt(params.iterations ?? '1', 10) || 1;
+    const readoutStyle = params.readoutStyle ?? 'smooth';
     const colorMode    = params.colorMode    ?? 'palette';
     const bandCount    = Math.max(2, (params.bandCount ?? 8) | 0);
     const t            = time * (params.speed ?? 0.5);
     const animMode     = params.animMode ?? 'flow';
+    const nCenter      = 2 * scale;
+    const rotAngle     = animMode === 'rotate' ? t * 0.08 : 0;
+    const rotCos       = Math.cos(rotAngle), rotSin = Math.sin(rotAngle);
 
-    // 'flow': warp field phase drifts independently; base coords stay put
     const flowX = animMode === 'flow' ? t * 0.022 : 0;
     const flowY = animMode === 'flow' ? t * 0.017 : 0;
 
@@ -102,16 +110,20 @@ export const noiseDomainWarp: Generator = {
       for (let x = 0; x < w; x += step) {
         let nx = (x / w) * 4 * scale;
         let ny = (y / h) * 4 * scale;
-        // 'drift': uniform translation of everything
         if (animMode === 'drift') { nx += t * 0.04; ny += t * 0.027; }
+        else if (animMode === 'rotate') {
+          const dx = nx - nCenter, dy = ny - nCenter;
+          nx = nCenter + dx * rotCos - dy * rotSin;
+          ny = nCenter + dx * rotSin + dy * rotCos;
+        }
 
         // First warp pass
-        const wx1 = noiseWarp.fbm(nx + flowX,         ny + flowY,         warpOctaves, 2.0, 0.5);
-        const wy1 = noiseWarp.fbm(nx + 5.2 + flowX,   ny + 1.3 + flowY,   warpOctaves, 2.0, 0.5);
+        const wx1 = noiseWarp.fbm(nx + flowX,       ny + flowY,       warpOctaves, 2.0, 0.5);
+        const wy1 = noiseWarp.fbm(nx + 5.2 + flowX, ny + 1.3 + flowY, warpOctaves, 2.0, 0.5);
         let px = nx + warpStrength * wx1;
         let py = ny + warpStrength * wy1;
 
-        // Optional second warp pass (iterated domain warp)
+        // Second warp pass
         if (iters >= 2) {
           const wx2 = noiseWarp.fbm(px + 8.3 + flowX * 0.7, py + 2.8 + flowY * 0.7, warpOctaves, 2.0, 0.5);
           const wy2 = noiseWarp.fbm(px + 1.7 + flowX * 0.7, py + 9.2 + flowY * 0.7, warpOctaves, 2.0, 0.5);
@@ -119,8 +131,26 @@ export const noiseDomainWarp: Generator = {
           py = ny + warpStrength * wy2;
         }
 
-        // Final readout
-        let v = (noiseBase.fbm(px, py, octaves, 2.0, 0.5) + 1) * 0.5;
+        // Third warp pass — extremely complex interlocked filaments
+        if (iters >= 3) {
+          const wx3 = noiseWarp.fbm(px + 3.1 + flowX * 0.5, py + 7.4 + flowY * 0.5, warpOctaves, 2.0, 0.5);
+          const wy3 = noiseWarp.fbm(px + 6.8 + flowX * 0.5, py + 4.5 + flowY * 0.5, warpOctaves, 2.0, 0.5);
+          px = nx + warpStrength * wx3;
+          py = ny + warpStrength * wy3;
+        }
+
+        // Final readout with style
+        let v: number;
+        const raw = noiseBase.fbm(px, py, octaves, 2.0, 0.5);
+        if (readoutStyle === 'ridged') {
+          const ridge = 1 - Math.abs(raw);
+          v = ridge * ridge;
+        } else if (readoutStyle === 'turbulent') {
+          v = Math.abs(raw);
+        } else {
+          v = (raw + 1) * 0.5;
+        }
+
         if (colorMode === 'bands') v = Math.floor(v * bandCount) / bandCount;
 
         const [r, g, b] = paletteSample(v, colors);
