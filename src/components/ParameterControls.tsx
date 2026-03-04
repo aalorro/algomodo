@@ -7,7 +7,8 @@ interface ParameterControlsProps {
 }
 
 export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator }) => {
-  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating, lockedParams, toggleLockedParam } = useStore();
+  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating, lockedParams: rawLocked, toggleLockedParam } = useStore();
+  const lockedParams = Array.isArray(rawLocked) ? rawLocked : [];
   const canUndo = historyPast.length > 0;
   const canRedo = historyFuture.length > 0;
   const supportsAnim = generator?.supportsAnimation ?? false;
@@ -80,14 +81,14 @@ export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator 
                   <span className="flex items-center gap-1">
                     <button
                       onClick={() => toggleLockedParam(param.key)}
-                      title={lockedParams.has(param.key) ? 'Locked — Rand skips this param. Click to unlock.' : 'Unlocked — click to lock and keep value during Rand'}
+                      title={lockedParams.includes(param.key) ? 'Locked — Rand skips this param. Click to unlock.' : 'Unlocked — click to lock and keep value during Rand'}
                       className={`w-4 h-4 flex items-center justify-center rounded transition-opacity text-xs leading-none ${
-                        lockedParams.has(param.key)
+                        lockedParams.includes(param.key)
                           ? 'text-amber-400 opacity-100'
                           : 'text-gray-400 opacity-0 group-hover:opacity-50 hover:!opacity-100'
                       }`}
                     >
-                      {lockedParams.has(param.key) ? '🔒' : '🔓'}
+                      {lockedParams.includes(param.key) ? '🔒' : '🔓'}
                     </button>
                     <span className="text-gray-700 dark:text-gray-200">{param.name}</span>
                   </span>

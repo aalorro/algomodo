@@ -43,7 +43,7 @@ export const useStore = create<AppState>()(
 
       // Parameters
       params: {},
-      lockedParams: new Set<string>(),
+      lockedParams: [] as string[],
       palette: defaultPalette,
 
       // Source image (not persisted — too large for localStorage)
@@ -131,7 +131,7 @@ export const useStore = create<AppState>()(
           selectedPresetId: undefined,
           params: randomized,
           palette: randomPalette,
-          lockedParams: new Set<string>(),
+          lockedParams: [],
           ...(state.seedLocked ? {} : { seed: Math.floor(Math.random() * 1000000) }),
           historyPast: [...state.historyPast.slice(-49), captureSnapshot(state)],
           historyFuture: [],
@@ -161,21 +161,19 @@ export const useStore = create<AppState>()(
 
       toggleLockedParam: (key: string) => {
         const state = get();
-        const next = new Set(state.lockedParams);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        set({ lockedParams: next });
+        const arr = Array.isArray(state.lockedParams) ? state.lockedParams : [];
+        const has = arr.includes(key);
+        set({ lockedParams: has ? arr.filter(k => k !== key) : [...arr, key] });
       },
 
-      clearLockedParams: () => set({ lockedParams: new Set<string>() }),
+      clearLockedParams: () => set({ lockedParams: [] }),
 
-      randomizeParams: (schema: ParameterSchema, lockedKeys?: ReadonlySet<string>) => {
+      randomizeParams: (schema: ParameterSchema) => {
         const state = get();
-        // Use store's lockedParams if no explicit lockedKeys passed
-        const locked = lockedKeys ?? state.lockedParams;
+        const locked = Array.isArray(state.lockedParams) ? state.lockedParams : [];
         const randomized: Record<string, any> = {};
         for (const [key, param] of Object.entries(schema)) {
-          if (locked.size > 0 && locked.has(key)) {
+          if (locked.includes(key)) {
             // Preserve current value for locked params
             randomized[key] = state.params[key] ?? param.default;
             continue;

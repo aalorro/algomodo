@@ -136,7 +136,7 @@ export interface AppState {
   
   // Parameters
   params: Record<string, any>;
-  lockedParams: Set<string>;
+  lockedParams: string[];
   palette: Palette;
   
   // UI state
@@ -177,7 +177,7 @@ export interface AppState {
   resetParams: () => void;
   toggleLockedParam: (key: string) => void;
   clearLockedParams: () => void;
-  randomizeParams: (schema: ParameterSchema, lockedKeys?: ReadonlySet<string>) => void;
+  randomizeParams: (schema: ParameterSchema) => void;
   setPalette: (palette: Palette) => void;
   setTheme: (theme: 'dark' | 'light') => void;
   setInteractionEnabled: (enabled: boolean) => void;
