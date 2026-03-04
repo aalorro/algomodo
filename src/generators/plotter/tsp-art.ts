@@ -49,7 +49,7 @@ const parameterSchema: ParameterSchema = {
   },
   lineWidth: {
     name: 'Line Width',
-    type: 'number', min: 0.25, max: 3, step: 0.25, default: 0.7,
+    type: 'number', min: 1.0, max: 3, step: 0.25, default: 1.0,
     group: 'Geometry',
   },
   lineWidthVar: {
@@ -101,7 +101,7 @@ export const tspArt: Generator = {
   parameterSchema,
   defaultParams: {
     pointCount: 600, densityScale: 1.8, densityContrast: 2.0, densityStyle: 'fbm',
-    twoOptPasses: 2, pathStyle: 'straight', lineWidth: 0.7, lineWidthVar: 0, closePath: true,
+    twoOptPasses: 2, pathStyle: 'straight', lineWidth: 1.0, lineWidthVar: 0, closePath: true,
     colorMode: 'monochrome', background: 'cream',
     drift: 15, driftSpeed: 0.1,
   },
