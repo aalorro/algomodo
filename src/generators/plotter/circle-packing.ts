@@ -111,7 +111,16 @@ export const circlePacking: Generator = {
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const bufW = ctx.canvas.width, bufH = ctx.canvas.height;
+
+    // Work in a fixed 1080-based coordinate space; scale context to fill buffer
+    const refSize = 1080;
+    const sx = bufW / refSize, sy = bufH / refSize;
+    const w = refSize, h = Math.round(bufH / sx);  // logical height
+
+    ctx.save();
+    ctx.setTransform(sx, 0, 0, sy, 0, 0);
+
     ctx.fillStyle = BG[params.background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
 
@@ -341,6 +350,8 @@ export const circlePacking: Generator = {
 
       ctx.restore();
     }
+
+    ctx.restore(); // undo setTransform
   },
 
   renderWebGL2(gl) {

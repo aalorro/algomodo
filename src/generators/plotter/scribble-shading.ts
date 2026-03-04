@@ -21,6 +21,14 @@ const parameterSchema: ParameterSchema = {
     help: 'Gap between parallel lines within each pass (px)',
     group: 'Geometry',
   },
+  strokeStyle: {
+    name: 'Stroke Style',
+    type: 'select',
+    options: ['straight', 'wavy', 'zigzag', 'loop'],
+    default: 'straight',
+    help: 'straight: wobble only | wavy: sinusoidal | zigzag: sharp angles | loop: curly scribble',
+    group: 'Texture',
+  },
   wobble: {
     name: 'Wobble',
     type: 'number', min: 0, max: 20, step: 1, default: 6,
@@ -33,21 +41,35 @@ const parameterSchema: ParameterSchema = {
     help: 'Spatial frequency of the FBM density field',
     group: 'Texture',
   },
+  densityStyle: {
+    name: 'Density Style',
+    type: 'select',
+    options: ['fbm', 'ridged', 'radial', 'turbulent'],
+    default: 'fbm',
+    help: 'fbm: smooth | ridged: sharp creases | radial: center-focused | turbulent: chaotic',
+    group: 'Texture',
+  },
   densityThreshold: {
     name: 'Density Threshold',
     type: 'number', min: 0.0, max: 0.8, step: 0.05, default: 0.3,
-    help: 'Minimum density required to draw a stroke at a sample point',
+    help: 'Minimum density to draw a stroke at a point',
     group: 'Texture',
   },
   strokeOpacity: {
     name: 'Opacity',
     type: 'number', min: 0.1, max: 1.0, step: 0.05, default: 0.65,
-    help: 'Stroke opacity per segment',
     group: 'Color',
   },
   lineWidth: {
     name: 'Line Width',
     type: 'number', min: 0.3, max: 3, step: 0.1, default: 0.7,
+    group: 'Texture',
+  },
+  variableWidth: {
+    name: 'Variable Width',
+    type: 'boolean',
+    default: false,
+    help: 'Line width varies with density — thicker in dense areas',
     group: 'Texture',
   },
   colorMode: {
@@ -65,35 +87,33 @@ const parameterSchema: ParameterSchema = {
     default: 'cream',
     group: 'Color',
   },
+  animSpeed: {
+    name: 'Anim Speed',
+    type: 'number', min: 0, max: 1, step: 0.05, default: 0,
+    help: 'Flowing density field animation — 0 = static',
+    group: 'Flow/Motion',
+  },
 };
 
 export const scribbleShading: Generator = {
   id: 'plotter-scribble-shading',
   family: 'plotter',
   styleName: 'Scribble Shading',
-  definition:
-    'Multi-pass directional hatching with FBM noise wobble — emulates organic scribble-fill pen-plotter sketch art',
+  definition: 'Multi-pass directional hatching with FBM noise wobble — emulates organic scribble-fill pen-plotter sketch art',
   algorithmNotes:
-    'Each of N passes sweeps parallel lines across the canvas at a distinct angle (evenly spaced between 0 and π). Along each sweep line, sample points where the FBM density field exceeds a threshold are grouped into stroke segments. Every sample point is perturbed laterally by a second noise layer for hand-drawn wobble. Overlapping passes at different angles produce the characteristic cross-hatch scribble texture.',
+    'Each of N passes sweeps parallel lines at a distinct angle. Stroke styles (straight, wavy, zigzag, loop) add character beyond simple wobble. Density styles (fbm, ridged, radial, turbulent) shape where strokes appear. Variable width makes strokes thicken in dense regions.',
   parameterSchema,
   defaultParams: {
-    passCount: 3,
-    lineSpacing: 8,
-    wobble: 6,
-    densityScale: 2.5,
-    densityThreshold: 0.3,
-    strokeOpacity: 0.65,
-    lineWidth: 0.7,
-    colorMode: 'palette-pass',
-    background: 'cream',
+    passCount: 3, lineSpacing: 8, strokeStyle: 'straight',
+    wobble: 6, densityScale: 2.5, densityStyle: 'fbm',
+    densityThreshold: 0.3, strokeOpacity: 0.65,
+    lineWidth: 0.7, variableWidth: false,
+    colorMode: 'palette-pass', background: 'cream', animSpeed: 0,
   },
-  supportsVector: false,
-  supportsWebGPU: false,
-  supportsAnimation: false,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, palette) {
-    const w = ctx.canvas.width;
-    const h = ctx.canvas.height;
+  renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
     ctx.fillStyle = BG[params.background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
 
@@ -105,30 +125,50 @@ export const scribbleShading: Generator = {
     const spacing = Math.max(2, params.lineSpacing ?? 8);
     const wobbleAmt = params.wobble ?? 6;
     const dScale = params.densityScale ?? 2.5;
+    const densityStyle = params.densityStyle || 'fbm';
     const threshold = params.densityThreshold ?? 0.3;
     const opacity = params.strokeOpacity ?? 0.65;
     const colorMode = params.colorMode || 'palette-pass';
+    const strokeStyle = params.strokeStyle || 'straight';
+    const variableWidth = params.variableWidth ?? false;
+    const baseLineWidth = params.lineWidth ?? 0.7;
+    const animSpeed = params.animSpeed ?? 0;
+    const timeOff = time * animSpeed * 0.3;
 
-    ctx.lineWidth = params.lineWidth ?? 0.7;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     const diagonal = Math.sqrt(w * w + h * h);
-    const cx = w / 2;
-    const cy = h / 2;
-    // Steps along each sweep line: ~4 px resolution
+    const ccx = w / 2, ccy = h / 2;
     const sweepSteps = Math.ceil(diagonal / 4) + 1;
 
-    for (let pass = 0; pass < passCount; pass++) {
-      // Angle of strokes for this pass
-      const angle = (pass / passCount) * Math.PI;
-      const cosA = Math.cos(angle);
-      const sinA = Math.sin(angle);
-      // Perpendicular direction (for sweep offset and wobble)
-      const cosPx = -sinA;
-      const sinPx = cosA;
+    // Density function with style options
+    function densityFn(bx: number, by: number, pass: number): number {
+      const nx = (bx / w - 0.5) * dScale + 7 + pass * 3.7 + timeOff;
+      const ny = (by / h - 0.5) * dScale + 7 + pass * 2.3 + timeOff * 0.7;
+      let n: number;
+      if (densityStyle === 'ridged') {
+        const raw = noise.fbm(nx, ny, 4, 2, 0.5);
+        const ridge = 1 - Math.abs(raw);
+        n = ridge * ridge;
+      } else if (densityStyle === 'turbulent') {
+        n = Math.abs(noise.fbm(nx, ny, 4, 2, 0.5));
+      } else if (densityStyle === 'radial') {
+        const dx = bx / w - 0.5, dy = by / h - 0.5;
+        const dist = Math.sqrt(dx * dx + dy * dy) * 2;
+        const nv = noise.fbm(nx, ny, 3, 2, 0.5) * 0.3;
+        n = Math.max(0, 1 - dist + nv);
+      } else {
+        n = noise.fbm(nx, ny, 4, 2, 0.5) * 0.5 + 0.5;
+      }
+      return Math.max(0, n);
+    }
 
-      // Base pass colour
+    for (let pass = 0; pass < passCount; pass++) {
+      const angle = (pass / passCount) * Math.PI;
+      const cosA = Math.cos(angle), sinA = Math.sin(angle);
+      const cosPx = -sinA, sinPx = cosA;
+
       let pr: number, pg: number, pb: number;
       if (colorMode === 'palette-pass') {
         [pr, pg, pb] = colors[pass % colors.length];
@@ -138,13 +178,10 @@ export const scribbleShading: Generator = {
         [pr, pg, pb] = [30, 30, 30];
       }
 
-      // Sweep perpendicular offsets across the full diagonal
       for (let d = -diagonal / 2; d <= diagonal / 2; d += spacing) {
-        // Origin of this sweep line
-        const lx0 = cx + cosPx * d - cosA * diagonal / 2;
-        const ly0 = cy + sinPx * d - sinA * diagonal / 2;
+        const lx0 = ccx + cosPx * d - cosA * diagonal / 2;
+        const ly0 = ccy + sinPx * d - sinA * diagonal / 2;
 
-        // Collect stroke segments along this sweep line
         const segments: [number, number][][] = [];
         let currentSeg: [number, number][] = [];
 
@@ -153,7 +190,6 @@ export const scribbleShading: Generator = {
           const bx = lx0 + cosA * diagonal * t;
           const by = ly0 + sinA * diagonal * t;
 
-          // Skip points well outside canvas
           if (bx < -wobbleAmt - 5 || bx > w + wobbleAmt + 5 ||
               by < -wobbleAmt - 5 || by > h + wobbleAmt + 5) {
             if (currentSeg.length > 1) segments.push(currentSeg);
@@ -161,21 +197,33 @@ export const scribbleShading: Generator = {
             continue;
           }
 
-          // FBM density field (offset by pass index to de-correlate passes)
-          const dn = noise.fbm(
-            (bx / w - 0.5) * dScale + 7 + pass * 3.7,
-            (by / h - 0.5) * dScale + 7 + pass * 2.3,
-            4, 2, 0.5,
-          );
-          const density = Math.max(0, dn * 0.5 + 0.5);
-
+          const density = densityFn(bx, by, pass);
           if (density > threshold) {
-            // Lateral wobble via a second noise sample
+            // Base wobble
             const wn = noise.noise2D(
               (bx / w) * dScale * 2.5 + pass * 13.1,
               (by / h) * dScale * 2.5 + pass * 9.7,
             );
-            currentSeg.push([bx + cosPx * wn * wobbleAmt, by + sinPx * wn * wobbleAmt]);
+            let offX = cosPx * wn * wobbleAmt;
+            let offY = sinPx * wn * wobbleAmt;
+
+            // Stroke style modifications
+            if (strokeStyle === 'wavy') {
+              const wave = Math.sin(t * diagonal * 0.08 + pass * 2) * spacing * 0.4;
+              offX += cosPx * wave;
+              offY += sinPx * wave;
+            } else if (strokeStyle === 'zigzag') {
+              const zig = ((s % 6) < 3 ? 1 : -1) * spacing * 0.35;
+              offX += cosPx * zig;
+              offY += sinPx * zig;
+            } else if (strokeStyle === 'loop') {
+              const loopT = t * diagonal * 0.05 + pass * 1.7;
+              const loopR = spacing * 0.5 * (0.3 + density * 0.7);
+              offX += Math.cos(loopT * 6) * loopR;
+              offY += Math.sin(loopT * 6) * loopR;
+            }
+
+            currentSeg.push([bx + offX, by + offY]);
           } else {
             if (currentSeg.length > 1) segments.push(currentSeg);
             currentSeg = [];
@@ -183,31 +231,33 @@ export const scribbleShading: Generator = {
         }
         if (currentSeg.length > 1) segments.push(currentSeg);
 
-        // Draw collected segments
         for (const seg of segments) {
           let cr = pr, cg = pg, cb = pb;
 
           if (colorMode === 'palette-density' || colorMode === 'palette-noise') {
             const mid = seg[(seg.length / 2) | 0];
-            let t: number;
+            let tc: number;
             if (colorMode === 'palette-density') {
-              const dn2 = noise.fbm(
-                (mid[0] / w - 0.5) * dScale + 7 + pass * 3.7,
-                (mid[1] / h - 0.5) * dScale + 7 + pass * 2.3,
-                4, 2, 0.5,
-              );
-              t = Math.max(0, dn2 * 0.5 + 0.5);
+              tc = densityFn(mid[0], mid[1], pass);
             } else {
               const nv = noise.noise2D(mid[0] / w * 4 + 20, mid[1] / h * 4 + 20);
-              t = Math.max(0, nv * 0.5 + 0.5);
+              tc = Math.max(0, nv * 0.5 + 0.5);
             }
-            const ci = t * (colors.length - 1);
-            const i0 = Math.floor(ci);
-            const i1 = Math.min(colors.length - 1, i0 + 1);
+            const ci = Math.min(1, tc) * (colors.length - 1);
+            const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
             const f = ci - i0;
             cr = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0;
             cg = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
             cb = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
+          }
+
+          // Variable width: thicker in denser areas
+          if (variableWidth) {
+            const mid = seg[(seg.length / 2) | 0];
+            const den = densityFn(mid[0], mid[1], pass);
+            ctx.lineWidth = baseLineWidth * (0.5 + den * 2);
+          } else {
+            ctx.lineWidth = baseLineWidth;
           }
 
           ctx.strokeStyle = `rgba(${cr},${cg},${cb},${opacity})`;
@@ -228,7 +278,6 @@ export const scribbleShading: Generator = {
   estimateCost(params) {
     const passes = params.passCount ?? 3;
     const spacing = params.lineSpacing ?? 8;
-    const linesPerPass = Math.ceil(1530 / spacing);
-    return (linesPerPass * passes * 2) | 0;
+    return (Math.ceil(1530 / spacing) * passes * 2) | 0;
   },
 };

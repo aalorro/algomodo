@@ -367,17 +367,42 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     if (!canvas) return;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const exportSize = 1080;
+
+    const generator = getGenerator(selectedGeneratorId);
+    if (!generator) return;
+    const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
 
     if (!isAnimating) {
-      // Static: save PNG
+      // Static: render at 1080x1080 on offscreen canvas, save PNG
+      const offscreen = document.createElement('canvas');
+      offscreen.width = exportSize;
+      offscreen.height = exportSize;
+      const offCtx = offscreen.getContext('2d');
+      if (!offCtx) return;
+      if (generator.renderCanvas2D) {
+        generator.renderCanvas2D(offCtx, finalParams, seed, palette, quality, 0);
+      }
+      // Apply PostFX
+      const hasPostFX =
+        postFX.grain > 0 || postFX.vignette > 0 ||
+        postFX.dither >= 2 || postFX.posterize >= 1;
+      if (hasPostFX) {
+        let imageData = offCtx.getImageData(0, 0, exportSize, exportSize);
+        if (postFX.grain > 0) imageData = applyGrain(offCtx, imageData, postFX.grain);
+        if (postFX.vignette > 0) imageData = applyVignette(offCtx, imageData, exportSize, exportSize, postFX.vignette);
+        if (postFX.dither >= 2) imageData = applyDither(offCtx, imageData, postFX.dither);
+        if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
+        offCtx.putImageData(imageData, 0, 0);
+      }
       const link = document.createElement('a');
       link.download = `algomodo-${timestamp}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = offscreen.toDataURL('image/png');
       link.click();
       return;
     }
 
-    // Animating: record WebM directly from the live canvas stream
+    // Animating: record WebM at 1080x1080 on offscreen canvas
     const mimeTypes = [
       'video/webm;codecs=vp9',
       'video/webm;codecs=vp8',
@@ -390,8 +415,15 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     }
 
     setIsSaving(true);
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = exportSize;
+    offscreen.height = exportSize;
+    const offCtx = offscreen.getContext('2d');
+    if (!offCtx) { setIsSaving(false); return; }
+
     const chunks: Blob[] = [];
-    const stream = canvas.captureStream(30);
+    const stream = offscreen.captureStream(30);
     const recorder = new MediaRecorder(stream, {
       mimeType,
       videoBitsPerSecond: 5_000_000,
@@ -403,6 +435,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     };
 
     recorder.onstop = () => {
+      cancelAnimationFrame(recordAnimId);
       const blob = new Blob(chunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -415,12 +448,29 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     };
 
     recorder.onerror = () => {
+      cancelAnimationFrame(recordAnimId);
       console.error('MediaRecorder error');
       mediaRecorderRef.current = null;
       setIsSaving(false);
     };
 
-    recorder.start(100); // collect data every 100ms
+    // Render animation loop on the offscreen canvas while recording
+    let recordAnimId = 0;
+    const fpsInterval = 1000 / 30;
+    let lastFrame = 0;
+    const renderLoop = (ts: number) => {
+      const elapsed = ts - lastFrame;
+      if (elapsed >= fpsInterval) {
+        lastFrame = ts - (elapsed % fpsInterval);
+        if (generator.renderCanvas2D) {
+          generator.renderCanvas2D(offCtx, finalParams, seed, palette, quality, ts / 1000);
+        }
+      }
+      recordAnimId = requestAnimationFrame(renderLoop);
+    };
+
+    recorder.start(100);
+    recordAnimId = requestAnimationFrame(renderLoop);
     setTimeout(() => {
       if (recorder.state === 'recording') recorder.stop();
     }, recordingDuration * 1000);
