@@ -44,8 +44,8 @@ export class CanvasRecorder {
         try {
           const sourceCtx = sourceCanvas.getContext('2d');
           if (sourceCtx) {
-            // Copy source to recording canvas
-            this.recordCtx.drawImage(sourceCanvas, 0, 0);
+            // Copy source to recording canvas (scale to fit)
+            this.recordCtx.drawImage(sourceCanvas, 0, 0, this.recordCanvas.width, this.recordCanvas.height);
             
             // Store frame as canvas
             const frameCanvas = document.createElement('canvas');
