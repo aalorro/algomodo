@@ -30,18 +30,21 @@ export const AboutModal: React.FC = () => {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Key Features</h3>
             <ul className="list-disc list-inside space-y-1">
+              <li>73 generators across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image</li>
               <li>Deterministic: Results are reproducible with the same seed</li>
               <li>Offline: Works entirely in your browser</li>
               <li>Open Source: Available under the MIT license</li>
-              <li>Multiple Generators: Cellular automata, noise, geometry, voronoi, and more</li>
-              <li>High Quality: Export at various resolutions</li>
+              <li>SURPRISE ME: One-click randomization of generator, seed, params, and palette</li>
+              <li>Canvas SAVE: Export PNG at 1080x1080 or record WebM animations</li>
+              <li>GIF / WebM export with 3/5/8 second duration options</li>
+              <li>Undo / Redo with 50-step parameter history</li>
               <li>Customizable: Adjust parameters to fine-tune your artwork</li>
             </ul>
           </div>
 
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Version</h3>
-            <p>v1.1.0</p>
+            <p>v1.4.0</p>
           </div>
 
           <div>
