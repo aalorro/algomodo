@@ -350,8 +350,8 @@ export const turingPatterns: Generator = {
     F: 0.037, k: 0.060,
     Du: 0.02, Dv: 0.5,
     stencil: '9-point',
-    paramGradient: 0.0, paramDrift: 0.0,
-    warmupSteps: 800, stepsPerFrame: 5, paramDrift: 0.15, colorMode: 'palette',
+    paramGradient: 0.0, paramDrift: 0.15,
+    warmupSteps: 800, stepsPerFrame: 5, colorMode: 'palette',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
