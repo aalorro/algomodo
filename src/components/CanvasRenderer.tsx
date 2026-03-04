@@ -473,7 +473,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       )}
 
       {/* Bottom Canvas Buttons */}
-      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2">
+      <div className="absolute bottom-4 lg:bottom-24 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2">
         <div className="flex gap-3">
           <button
             onClick={undo}
@@ -521,6 +521,9 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             {isSaving ? '💾 SAVING...' : '💾 SAVE'}
           </button>
         </div>
+        <p className="text-white/40 text-sm font-medium pointer-events-none">
+          {getGenerator(selectedGeneratorId)?.styleName}
+        </p>
       </div>
 
     </div>
