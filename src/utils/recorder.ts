@@ -82,31 +82,24 @@ export class CanvasRecorder {
           return;
         }
 
-        // Downscale for GIF to speed up encoding
-        const scale = 0.5; // 50% resolution
-        const gifWidth = Math.round(width * scale);
-        const gifHeight = Math.round(height * scale);
-
-        console.log(`Creating GIF with ${this.frames.length} frames at ${gifWidth}x${gifHeight} (${fps}fps)...`);
+        console.log(`Creating GIF with ${this.frames.length} frames at ${width}x${height} (${fps}fps)...`);
 
         const gif = new GIF({
           workers: 1,
           quality: 10,
-          width: gifWidth,
-          height: gifHeight,
+          width,
+          height,
           workerScript: '/gif.worker.js',
         }) as any;
 
-        // Add downscaled frames
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = gifWidth;
-        tempCanvas.height = gifHeight;
+        tempCanvas.width = width;
+        tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d')!;
 
         for (let i = 0; i < this.frames.length; i++) {
           const frameCanvas = this.frames[i];
-          // Draw scaled down version
-          tempCtx.drawImage(frameCanvas, 0, 0, gifWidth, gifHeight);
+          tempCtx.drawImage(frameCanvas, 0, 0, width, height);
           gif.addFrame(tempCanvas, { delay: 1000 / fps, copy: true });
           if ((i + 1) % 10 === 0) {
             console.log(`Added frame ${i + 1}/${this.frames.length}`);

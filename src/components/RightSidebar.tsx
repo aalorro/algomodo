@@ -151,11 +151,12 @@ export const RightSidebar: React.FC = () => {
       setIsRecording(true);
       console.log(`Starting GIF recording for ${recordingDuration} seconds...`);
 
+      const gifSize = 600;
       const recorder = new CanvasRecorder({
         duration: recordingDuration,
         fps: 24,
-        width: canvas.width,
-        height: canvas.height,
+        width: gifSize,
+        height: gifSize,
       });
 
       recorderRef.current = recorder;
@@ -174,7 +175,7 @@ export const RightSidebar: React.FC = () => {
       }
 
       console.log('Starting GIF encoding...');
-      const blob = await recorder.exportGIF(canvas.width, canvas.height, 24);
+      const blob = await recorder.exportGIF(gifSize, gifSize, 24);
 
       if (!blob || blob.size === 0) {
         throw new Error('Generated GIF is empty');
