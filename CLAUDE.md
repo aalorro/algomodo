@@ -84,3 +84,7 @@ Image generators (`pixel-sort`, `mosaic`, `halftone`) receive the loaded image v
 ### Rendering Architecture Note
 
 Despite `renderWebGL2` being required in the `Generator` interface type, the `CanvasRenderer` component only calls `renderCanvas2D`. The WebGL2 interface exists for future use; implement `renderCanvas2D` for any generator to work.
+
+### Canvas Save vs Export Tab
+
+The canvas SAVE button exports at a fixed 1080×1080 resolution (PNG for static, WebM for animations). The Export tab's GIF/WebM export uses the user-configured dimensions and duration settings (3/5/8 seconds). These are independent code paths in `CanvasRenderer.tsx`.

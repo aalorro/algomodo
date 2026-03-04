@@ -25,6 +25,8 @@ let _ageAnim: {
   next: Uint8Array;
   acc: Float32Array;
   size: number;
+  stasisCount: number;   // consecutive frames with zero changes
+  perturbRng: SeededRNG;  // RNG for perturbation injection
 } | null = null;
 
 function initState(seed: number, size: number, density: number) {
@@ -40,10 +42,11 @@ function initState(seed: number, size: number, density: number) {
 
 // Advance the CA by one step (periodic boundaries) and update the accumulation buffer.
 // acc[i] = acc[i] * decay  +  (alive ? exposure : 0)
+// Returns the number of cells that changed state.
 function stepAndAccum(
   grid: Uint8Array, next: Uint8Array, acc: Float32Array, size: number,
   birth: number, survive: number, exposure: number, decay: number,
-): void {
+): number {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let n = 0;
@@ -57,10 +60,13 @@ function stepAndAccum(
       next[y * size + x] = was ? ((survive >> n) & 1) : ((birth >> n) & 1);
     }
   }
+  let changed = 0;
   for (let i = 0, N = size * size; i < N; i++) {
+    if (grid[i] !== next[i]) changed++;
     grid[i] = next[i];
     acc[i] = acc[i] * decay + (next[i] ? exposure : 0);
   }
+  return changed;
 }
 
 // Map the float accumulation buffer to pixels using the steady-state maximum as the
@@ -235,11 +241,26 @@ export const ageTrails: Generator = {
     const key = `${seed}|${size}|${density}|${ruleKey}`;
     if (!_ageAnim || _ageAnim.key !== key) {
       const { grid, next, acc } = initState(seed, size, density);
-      _ageAnim = { key, grid, next, acc, size };
+      _ageAnim = { key, grid, next, acc, size, stasisCount: 0, perturbRng: new SeededRNG(seed + 9999) };
     }
     const spf = Math.max(1, (params.stepsPerFrame ?? 1) | 0);
     for (let s = 0; s < spf; s++) {
-      stepAndAccum(_ageAnim.grid, _ageAnim.next, _ageAnim.acc, _ageAnim.size, birth, survive, exposure, decay);
+      const changed = stepAndAccum(_ageAnim.grid, _ageAnim.next, _ageAnim.acc, _ageAnim.size, birth, survive, exposure, decay);
+      if (changed === 0) {
+        _ageAnim.stasisCount++;
+      } else {
+        _ageAnim.stasisCount = 0;
+      }
+      // If CA has been static for 3+ frames, inject perturbation to restart dynamics
+      if (_ageAnim.stasisCount >= 3) {
+        const N = _ageAnim.size * _ageAnim.size;
+        const flipCount = Math.max(4, (N * 0.02) | 0); // flip ~2% of cells
+        for (let f = 0; f < flipCount; f++) {
+          const idx = (_ageAnim.perturbRng.random() * N) | 0;
+          _ageAnim.grid[idx] ^= 1;
+        }
+        _ageAnim.stasisCount = 0;
+      }
     }
     renderAcc(ctx, _ageAnim.acc, _ageAnim.size, palette, colorMode, exposure, decay, gamma);
   },
