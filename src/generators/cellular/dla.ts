@@ -32,7 +32,7 @@ function initDLA(seed: number, size: number, seedMode: string, scatterSeeds: num
   if (seedMode === 'line-bottom') {
     // Seed: entire bottom row is aggregate
     for (let x = 0; x < size; x++) grid[(size - 1) * size + x] = ++count;
-    maxRadius = 0; // tracks how high the aggregate has grown (smaller y = higher)
+    maxRadius = size - 1; // tracks top-most y reached (starts at bottom row)
   } else if (seedMode === 'scatter') {
     // Seed: N random interior points
     for (let i = 0; i < scatterSeeds; i++) {
