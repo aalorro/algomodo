@@ -437,14 +437,14 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       <canvas
         ref={canvasRef}
         className="w-full h-full rounded-lg bg-black border border-gray-700"
-        style={{ aspectRatio: '1 / 1' }}
+        style={{ aspectRatio: '1 / 1', objectFit: 'cover' }}
       />
 
       {/* Interaction overlay (mouse/touch effects) */}
       <canvas
         ref={overlayCanvasRef}
         className="absolute inset-0 w-full h-full rounded-lg"
-        style={{ aspectRatio: '1 / 1' }}
+        style={{ aspectRatio: '1 / 1', objectFit: 'cover' }}
       />
 
       {/* Render progress bar */}
