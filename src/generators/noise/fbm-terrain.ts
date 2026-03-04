@@ -81,6 +81,24 @@ const parameterSchema: ParameterSchema = {
     help: 'Animation speed multiplier',
     group: 'Flow/Motion',
   },
+  style: {
+    name: 'Style',
+    type: 'select',
+    options: ['smooth', 'ridged', 'terraced'],
+    default: 'smooth',
+    help: 'smooth: standard fBm | ridged: sharp mountain ridges | terraced: plateau contour steps',
+    group: 'Geometry',
+  },
+  terraceLevels: {
+    name: 'Terrace Levels',
+    type: 'number',
+    min: 4,
+    max: 20,
+    step: 1,
+    default: 8,
+    help: 'Number of height steps (terraced mode only)',
+    group: 'Geometry',
+  },
   contrast: {
     name: 'Contrast',
     type: 'number',
@@ -115,6 +133,8 @@ export const fbmTerrain: Generator = {
     gain: 0.5,
     warpStrength: 0.5,
     warpScale: 2,
+    style: 'smooth',
+    terraceLevels: 8,
     contrast: 1,
     colorMode: 'height',
     animMode: 'drift',
@@ -226,18 +246,22 @@ export const fbmTerrain: Generator = {
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noise = new SimplexNoise(seed);
+    const warpNoise = new SimplexNoise(seed + 42);
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
 
     const animMode = params.animMode ?? 'drift';
     const speed    = params.speed    ?? 0.5;
+    const style    = params.style    ?? 'smooth';
+    const terraceLevels = params.terraceLevels ?? 8;
+    const warpStrength  = params.warpStrength  ?? 0.5;
+    const warpScale     = params.warpScale     ?? 2;
     const t = time * speed;
 
     // Precompute rotation for 'rotate' mode
     const rotAngle = animMode === 'rotate' ? t * 0.1 : 0;
     const rotCos = Math.cos(rotAngle);
     const rotSin = Math.sin(rotAngle);
-    // Noise-space center (midpoint of 4*scale range)
     const nCenter = 2 * params.scale;
 
     // Scale multiplier for 'pulse' mode — oscillates ±20 %
@@ -252,20 +276,38 @@ export const fbmTerrain: Generator = {
         let ny = (y / height) * 4 * params.scale * pulseMul;
 
         if (animMode === 'drift') {
-          // Pan through noise field at a gentle angle so X and Y drift differ
           nx += t * 0.04;
           ny += t * 0.027;
         } else if (animMode === 'rotate') {
-          // Rotate sample coordinates around the noise-space centre
           const dx = nx - nCenter, dy = ny - nCenter;
           nx = nCenter + dx * rotCos - dy * rotSin;
           ny = nCenter + dx * rotSin + dy * rotCos;
         }
-        // 'pulse' already applied via pulseMul above
+
+        // Domain warping — displace coordinates using a second noise field
+        if (warpStrength > 0) {
+          const wx = warpNoise.fbm(nx * warpScale, ny * warpScale, 3, 2.0, 0.5);
+          const wy = warpNoise.fbm(nx * warpScale + 5.2, ny * warpScale + 1.3, 3, 2.0, 0.5);
+          nx += warpStrength * wx;
+          ny += warpStrength * wy;
+        }
 
         let value = noise.fbm(nx, ny, params.octaves, params.lacunarity, params.gain);
-        value = Math.pow(value, 1 / params.contrast);
-        value = Math.max(0, Math.min(1, value));
+
+        // Apply style transform
+        if (style === 'ridged') {
+          // Sharp ridges: invert absolute value, square for sharper peaks
+          const ridge = 1 - Math.abs(value);
+          value = ridge * ridge;
+        } else if (style === 'terraced') {
+          // Quantize to discrete terrace levels
+          value = (value + 1) * 0.5; // normalize to 0-1
+          value = Math.floor(value * terraceLevels) / terraceLevels;
+        } else {
+          value = (value + 1) * 0.5; // normalize to 0-1
+        }
+
+        value = Math.pow(Math.max(0, Math.min(1, value)), 1 / params.contrast);
 
         const colorIdx = Math.floor(value * (palette.colors.length - 1));
         const nextColorIdx = Math.min(colorIdx + 1, palette.colors.length - 1);

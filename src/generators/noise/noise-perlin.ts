@@ -27,6 +27,16 @@ const parameterSchema: ParameterSchema = {
     help: '1 = pure single-frequency smooth field; 2–6 adds coarser layering without turbulence or ridges',
     group: 'Composition',
   },
+  style: {
+    name: 'Style', type: 'select', options: ['smooth', 'ridged', 'turbulent'], default: 'smooth',
+    help: 'smooth: standard noise | ridged: sharp ridge lines | turbulent: billowy cloud-like abs(noise)',
+    group: 'Geometry',
+  },
+  warpAmount: {
+    name: 'Warp Amount', type: 'number', min: 0, max: 2, step: 0.1, default: 0,
+    help: 'Domain warping for organic distortion',
+    group: 'Composition',
+  },
   colorMode: {
     name: 'Color Mode', type: 'select', options: ['palette', 'bands'], default: 'palette',
     help: 'palette: smooth gradient through palette | bands: hard-edged contour steps',
@@ -56,20 +66,23 @@ export const noisePerlin: Generator = {
   algorithmNotes:
     'Evaluates gradient noise at each pixel using a seeded permutation table and quintic (C²) interpolation between lattice-point gradients. With octaves = 1 the output is the archetypal single-frequency field: smooth, gently rounded hills and valleys with no self-similarity. Adding 2–6 octaves layers coarser fBm structure. Output ≈ [−1, 1] is shifted to [0, 1] for palette mapping. Animation pans or rotates the sample-coordinate frame without any state.',
   parameterSchema,
-  defaultParams: { scale: 3, octaves: 1, colorMode: 'palette', bandCount: 6, animMode: 'drift', speed: 0.5 },
+  defaultParams: { scale: 3, octaves: 1, style: 'smooth', warpAmount: 0, colorMode: 'palette', bandCount: 6, animMode: 'drift', speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const noise   = new SimplexNoise(seed);
+    const warpNoise = new SimplexNoise(seed + 77);
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const colors  = palette.colors.map(hexToRgb);
     const scale   = params.scale   ?? 3;
     const octaves = Math.max(1, Math.min(6, (params.octaves ?? 1) | 0));
+    const style      = params.style      ?? 'smooth';
+    const warpAmount = params.warpAmount  ?? 0;
     const colorMode  = params.colorMode ?? 'palette';
     const bandCount  = Math.max(2, (params.bandCount ?? 6) | 0);
     const t          = time * (params.speed ?? 0.5);
     const animMode   = params.animMode ?? 'drift';
-    const nCenter    = 2 * scale; // rotation pivot in noise space
+    const nCenter    = 2 * scale;
     const angle      = animMode === 'rotate' ? t * 0.08 : 0;
     const cos        = Math.cos(angle), sin = Math.sin(angle);
 
@@ -90,10 +103,28 @@ export const noisePerlin: Generator = {
           ny = nCenter + dx * sin + dy * cos;
         }
 
+        // Domain warping
+        if (warpAmount > 0) {
+          const wx = warpNoise.fbm(nx, ny, 3, 2.0, 0.5);
+          const wy = warpNoise.fbm(nx + 5.2, ny + 1.3, 3, 2.0, 0.5);
+          nx += warpAmount * wx;
+          ny += warpAmount * wy;
+        }
+
         const raw = octaves === 1
           ? noise.noise2D(nx, ny)
           : noise.fbm(nx, ny, octaves, 2.0, 0.5);
-        let v = (raw + 1) * 0.5;
+
+        let v: number;
+        if (style === 'ridged') {
+          const ridge = 1 - Math.abs(raw);
+          v = ridge * ridge;
+        } else if (style === 'turbulent') {
+          v = Math.abs(raw);
+        } else {
+          v = (raw + 1) * 0.5;
+        }
+
         if (colorMode === 'bands') v = Math.floor(v * bandCount) / bandCount;
 
         const [r, g, b] = paletteSample(v, colors);
