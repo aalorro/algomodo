@@ -93,7 +93,7 @@ function stepSchnakenberg(
       // Spatial gradient: vary 'a' across x-axis (low a → stripes, high a → spots)
       const localA = a * (1 + paramGradient * (x / (size - 1) - 0.5) * 2);
       // Slow parameter drift: oscillate 'b' during animation
-      const driftB = b + paramDrift * b * Math.sin(animTime * 0.0005);
+      const driftB = b + paramDrift * b * Math.sin(animTime * 0.008);
 
       nU[idx] = Math.max(0, u + DT_SCHNAKENBERG * (Du * lapU + gamma * (localA - u + uvv)));
       nV[idx] = Math.max(0, v + DT_SCHNAKENBERG * (Dv * lapV + gamma * (driftB - uvv)));
@@ -173,7 +173,7 @@ function stepGrayScott(
       // Spatial gradient: vary k across x-axis (left = low k = spots/solitons, right = high k = decay)
       const localK = k * (1 + paramGradient * (x / (size - 1) - 0.5) * 1.4);
       // Slow drift: oscillate F (feed rate) during animation to evolve pattern morphology
-      const driftF = F + paramDrift * F * Math.sin(animTime * 0.0003);
+      const driftF = F + paramDrift * F * Math.sin(animTime * 0.005);
 
       nU[idx] = Math.max(0, Math.min(1, u + DT_GRAY_SCOTT * (Du * lapU - uvv + driftF * (1 - u))));
       nV[idx] = Math.max(0, Math.min(1, v + DT_GRAY_SCOTT * (Dv * lapV + uvv - (driftF + localK) * v)));
@@ -281,13 +281,13 @@ const parameterSchema: ParameterSchema = {
   Du: {
     name: 'Diffusion u',
     type: 'number', min: 0.005, max: 0.3, step: 0.005, default: 0.02,
-    help: 'Activator/substrate diffusion — Schnakenberg: keep ≪ Dv (target ≥10× ratio); Gray-Scott: typical 0.16–0.20',
+    help: 'Activator diffusion for Schnakenberg — keep ≪ Dv (target ≥10× ratio). Gray-Scott uses a fixed canonical Du=0.16 regardless of this value.',
     group: 'Texture',
   },
   Dv: {
     name: 'Diffusion v',
     type: 'number', min: 0.05, max: 2.0, step: 0.05, default: 0.5,
-    help: 'Inhibitor/catalyst diffusion — Schnakenberg: Dv/Du ratio drives instability; Gray-Scott: typical 0.08–0.10',
+    help: 'Inhibitor diffusion for Schnakenberg — Dv/Du ratio drives the Turing instability. Gray-Scott uses a fixed canonical Dv=0.08 regardless of this value.',
     group: 'Texture',
   },
   stencil: {
@@ -307,7 +307,7 @@ const parameterSchema: ParameterSchema = {
   paramDrift: {
     name: 'Param Drift',
     type: 'number', min: 0, max: 0.5, step: 0.05, default: 0.0,
-    help: 'Slowly oscillates the reaction parameter during animation, driving the pattern to continuously morph between morphologies',
+    help: 'Slowly oscillates the reaction parameter during animation — set above 0 to see the pattern continuously morph between morphologies. 0 = static equilibrium.',
     group: 'Flow/Motion',
   },
   warmupSteps: {
@@ -351,7 +351,7 @@ export const turingPatterns: Generator = {
     Du: 0.02, Dv: 0.5,
     stencil: '9-point',
     paramGradient: 0.0, paramDrift: 0.0,
-    warmupSteps: 500, stepsPerFrame: 5, colorMode: 'palette',
+    warmupSteps: 800, stepsPerFrame: 5, paramDrift: 0.15, colorMode: 'palette',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -363,13 +363,16 @@ export const turingPatterns: Generator = {
     const gamma   = params.gamma ?? 100;
     const F       = params.F     ?? 0.037;
     const k       = params.k     ?? 0.060;
-    const Du      = params.Du    ?? 0.02;
-    const Dv      = params.Dv    ?? 0.5;
+    const isGS = model === 'gray-scott';
+    // Gray-Scott requires Du > Dv (substrate diffuses faster than catalyst).
+    // The schema Du/Dv defaults are tuned for Schnakenberg (Dv >> Du).
+    // Always use canonical Pearl (1993) values for GS — avoids the reaction collapsing.
+    const Du      = isGS ? 0.16 : (params.Du ?? 0.02);
+    const Dv      = isGS ? 0.08 : (params.Dv ?? 0.5);
     const stencil9 = (params.stencil ?? '9-point') === '9-point';
     const paramGradient = params.paramGradient ?? 0;
-    const paramDrift    = params.paramDrift    ?? 0;
+    const paramDrift    = params.paramDrift    ?? 0.15;
     const colorMode = params.colorMode ?? 'palette';
-    const isGS = model === 'gray-scott';
 
     const stepFn = isGS
       ? (U: Float32Array, V: Float32Array, nU: Float32Array, nV: Float32Array, aTime: number) =>
@@ -381,7 +384,7 @@ export const turingPatterns: Generator = {
       const { U, V, nU, nV } = isGS
         ? initGrayScott(seed, size)
         : initSchnakenberg(seed, size, a, b);
-      const steps = Math.max(1, (params.warmupSteps ?? 500) | 0);
+      const steps = Math.max(1, (params.warmupSteps ?? (isGS ? 1000 : 500)) | 0);
       for (let s = 0; s < steps; s++) stepFn(U, V, nU, nV, s);
       renderTuring(ctx, U, V, size, a, b, F, model, palette, colorMode);
       return;
