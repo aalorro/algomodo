@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
+import { CanvasRecorder } from '../utils/recorder';
 
 interface CanvasRendererProps {
   showFPS?: boolean;
@@ -25,6 +26,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const lastFrameTimeRef = useRef(0);
   const mouseRef = useRef({ x: 0.5, y: 0.5, inside: false });
   const ripplesRef = useRef<Ripple[]>([]);
+  const recorderRef = useRef<CanvasRecorder | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const {
     canvasSettings,
@@ -357,6 +360,52 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     };
   }, [interactionEnabled]);
 
+  const handleSave = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    if (!isAnimating) {
+      // Static: save PNG
+      const link = document.createElement('a');
+      link.download = `algomodo-${timestamp}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      return;
+    }
+
+    // Animating: record 5s WebM
+    setIsSaving(true);
+    try {
+      const recorder = new CanvasRecorder({
+        duration: 5,
+        fps: 30,
+        width: canvas.width,
+        height: canvas.height,
+      });
+      recorderRef.current = recorder;
+      recorder.startRecording(canvas, 5);
+
+      // Wait for recording to finish
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      const blob = await recorder.exportWebM(canvas.width, canvas.height, 30);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `algomodo-${timestamp}.webm`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+      recorder.clearFrames();
+    } catch (err) {
+      console.error('Save error:', err);
+    } finally {
+      recorderRef.current = null;
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -419,16 +468,25 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             🎲 RANDOM
           </button>
         </div>
-        <button
-          onClick={() => {
-            const all = getAllGenerators().filter(g => g.family !== 'image');
-            const pick = all[Math.floor(Math.random() * all.length)];
-            if (pick) selectGenerator(pick.id);
-          }}
-          className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
-        >
-          ✨ SURPRISE ME
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              const all = getAllGenerators().filter(g => g.family !== 'image');
+              const pick = all[Math.floor(Math.random() * all.length)];
+              if (pick) selectGenerator(pick.id);
+            }}
+            className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+          >
+            ✨ SURPRISE ME
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-5 py-2 bg-green-500/60 hover:bg-green-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? '💾 SAVING...' : '💾 SAVE'}
+          </button>
+        </div>
       </div>
 
     </div>
