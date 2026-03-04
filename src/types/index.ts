@@ -148,6 +148,7 @@ export interface AppState {
   interactionEnabled: boolean;
   isAnimating: boolean;
   animationFps: number;
+  recordingDuration: number;
   openModal: 'about' | 'privacy' | 'changelog' | 'donation' | null;
 
   // PostFX
@@ -184,6 +185,7 @@ export interface AppState {
   setShowFPS: (show: boolean) => void;
   setAnimating: (animating: boolean) => void;
   setAnimationFps: (fps: number) => void;
+  setRecordingDuration: (duration: number) => void;
   updatePostFX: (key: string, value: any) => void;
   setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | null) => void;
 

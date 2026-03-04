@@ -44,6 +44,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     sourceImage,
     setSourceImage,
     interactionEnabled,
+    recordingDuration,
   } = useStore();
 
   // Decode source image data-URL → HTMLImageElement
@@ -374,7 +375,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       return;
     }
 
-    // Animating: record 5s WebM directly from the live canvas stream
+    // Animating: record WebM directly from the live canvas stream
     const mimeTypes = [
       'video/webm;codecs=vp9',
       'video/webm;codecs=vp8',
@@ -420,7 +421,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     recorder.start(100); // collect data every 100ms
     setTimeout(() => {
       if (recorder.state === 'recording') recorder.stop();
-    }, 5000);
+    }, recordingDuration * 1000);
   };
 
   return (

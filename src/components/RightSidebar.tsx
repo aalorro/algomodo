@@ -44,6 +44,8 @@ export const RightSidebar: React.FC = () => {
     deletePreset,
     sourceImage,
     setSourceImage,
+    recordingDuration,
+    setRecordingDuration,
   } = useStore();
 
   const generator = getGenerator(selectedGeneratorId);
@@ -53,7 +55,6 @@ export const RightSidebar: React.FC = () => {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInputValue, setUrlInputValue] = useState('');
   const recorderRef = useRef<CanvasRecorder | null>(null);
-  const [recordingDuration, setRecordingDuration] = useState(5);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingProgress, setRecordingProgress] = useState(0);
   const [imageFileName, setImageFileName] = useState('');
