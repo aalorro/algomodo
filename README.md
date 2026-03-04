@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.2.0 · © 2026 ArtMondo
+MIT License · v1.4.0 · © 2026 ArtMondo
 
 ---
 
@@ -17,8 +17,10 @@ MIT License · v1.2.0 · © 2026 ArtMondo
 | **PostFX pipeline** | Grain, vignette, ordered dither, and posterize as post-render ImageData pixel passes |
 | **Image input** | Drop or paste any image (JPEG / PNG / URL) to activate the Image family generators |
 | **Recipe save / load** | Export or import a compact JSON snapshot: generator + seed + params + palette + PostFX |
-| **GIF export** | Record and download animated GIFs via gif.js |
-| **Undo / Redo** | Full parameter history — Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) |
+| **SURPRISE ME** | One-click randomization of generator, seed, parameters, and colour palette |
+| **Canvas SAVE** | Export static images as 1080×1080 PNG or animations as 1080×1080 WebM directly from the canvas |
+| **GIF / WebM export** | Record and download animated GIFs or WebM videos via the Export tab with 3/5/8 second durations |
+| **Undo / Redo** | Full parameter history — Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) with toolbar buttons |
 | **Dark & light theme** | Togglable; persisted to localStorage |
 | **Quality modes** | Draft / Normal / Ultra — scale grid resolution for simulation generators |
 | **FPS counter** | Overlay toggle for animation performance monitoring |
@@ -42,10 +44,10 @@ Simulation-based automata and physics models. All support live animation with pe
 | **Fluid Lite** | Seeded point-vortex velocity field advects a passive dye density on a periodic grid; no PDE solver required |
 | **Cyclic CA** | K-state cyclic automaton — cells advance through a colour wheel when enough neighbours are ahead, self-organising into counter-rotating spirals and phase waves |
 | **Brian's Brain** | 3-state excitable automaton (ON → DYING → OFF → ON if 2 neighbours firing) — no still lifes, only perpetually moving gliders |
-| **Age Trails** | Floating-point exposure accumulation over multiple CA rules — creates luminous long-exposure trail photographs of automaton activity |
+| **Age Trails** | Floating-point exposure accumulation over multiple CA rules — creates luminous long-exposure trail photographs of automaton activity; stasis detection with perturbation injection keeps Maze rule animating indefinitely |
 | **Turing Patterns** | Schnakenberg activator-inhibitor reaction-diffusion (du/dt = Du·∇²u + γ(a−u+u²v)) — self-organising spots and labyrinthine stripes |
 | **Crystal Growth** | Kobayashi (1993) anisotropic phase-field solidification — simulates dendritic crystal growth with tunable symmetry (3/4/6/8-fold) and undercooling |
-| **DLA** | Diffusion-Limited Aggregation — random walkers freeze on contact with a growing cluster, producing fractal trees of Hausdorff dimension ≈ 1.71 |
+| **DLA** | Diffusion-Limited Aggregation — random walkers freeze on contact with a growing cluster, producing fractal trees of dimension ≈ 1.71; three seed modes (center / line-bottom / scatter) with walk bias and tip affinity controls |
 | **Elementary CA** | Wolfram's 1D automata shown as a scrolling spacetime diagram — Rule 30 (chaotic), 90 (Sierpiński), 110 (Turing-complete), and all 256 rules selectable |
 
 ### Noise (7)
@@ -54,9 +56,9 @@ Procedural terrain and surface textures driven by fractal noise algorithms. All 
 
 | Name | Key Feature |
 |---|---|
-| **FBM Terrain** | Natural terrain from stacked octaves of Simplex noise with optional domain warping and palette-mapped elevation bands |
-| **Domain Warped Marble** | Layered domain warping of FBM creates organic marble veining and turbulent flow structures |
-| **Simplex Field** | Raw single-layer or low-octave Simplex noise — the baseline of all procedural generation; drift or rotate animation |
+| **FBM Terrain** | Natural terrain from stacked octaves of Simplex noise with domain warping; style modes (smooth / ridged / terraced) for mountain ridges and contour plateaus |
+| **Domain Warped Marble** | Layered domain warping of FBM creates organic marble veining; vein sharpness control and turbulence toggle for chaotic patterns |
+| **Simplex Field** | Single-layer or low-octave Simplex noise with style modes (smooth / ridged / turbulent) and domain warping for organic distortion |
 | **FBM** | Full fractal Brownian Motion with explicit lacunarity and gain controls; pulse animation breathes the scale |
 | **Turbulence** | Absolute-value noise per octave folds the field into sharp V-shaped creases — fire, plasma, and cloud textures; churn animation drifts each octave independently |
 | **Ridged Multifractal** | Ken Musgrave's cascaded ridge formula: max(0, offset−\|noise\|)² with amplitude cascade produces knife-edge mountain ridges; sculpt animation oscillates ridge sharpness |
@@ -93,12 +95,12 @@ Pen-plotter-inspired vector-style generators optimised for line art and print ou
 | **TSP Art** | Single Hamiltonian tour through density-weighted stipple points via nearest-neighbour construction + 2-opt refinement |
 | **Circle Packing** | Non-overlapping circles grown to maximum radius, biased by a noise density field |
 | **Offset Paths** | Concentric iso-distance rings around randomly placed seed shapes via a signed-distance field |
-| **Guilloché** | Concentric hypotrochoid rings producing the interference moiré pattern of banknote security print |
-| **Halftone Dots** | Regular dot grid with radii modulated by a noise density field — vector-plotter halftone |
-| **Phyllotaxis** | Sunflower spiral: dots placed at successive golden-angle increments with radius growing as √i |
-| **Meander / Maze Fill** | Space-filling paths via recursive-backtracker maze DFS or serpentine Greek-key meander; BFS distance colouring |
-| **Scribble Shading** | Multi-pass directional hatching with FBM noise wobble — emulates organic pen-plotter scribble fill |
-| **Bézier Ribbon Weaves** | Horizontal and vertical Bézier ribbon strands woven over/under in an alternating basket-weave; animated wave oscillation |
+| **Guilloché** | Concentric rings in four curve types (hypotrochoid / epitrochoid / rose / lissajous) with multi-line moiré weaving and wave modulation |
+| **Halftone Dots** | Dot grid with configurable grid type (square / hex / diamond), dot shape (circle / square / diamond / line), rotation angle, and animated density field |
+| **Phyllotaxis** | Golden-angle spiral with angle offset for arm patterns; shapes (circle / petal / star / square), size modes, connecting lines, and Fibonacci colour mode |
+| **Meander / Maze Fill** | Four maze algorithms (DFS / Kruskal / Binary Tree / Sidewinder) with wall styles (straight / rounded / wobbly), BFS solution path, and distance heatmap fill |
+| **Scribble Shading** | Multi-pass directional hatching with stroke styles (straight / wavy / zigzag / loop), density styles (fbm / ridged / radial / turbulent), and variable width |
+| **Bézier Ribbon Weaves** | Horizontal and vertical Bézier ribbon strands in weave patterns (basket / twill / satin) with ribbon styles (flat / shaded / striped) and animated wave oscillation |
 
 ### Voronoi (11)
 
@@ -108,7 +110,7 @@ Voronoi and Delaunay-based spatial partitioning with diverse rendering treatment
 |---|---|
 | **Voronoi Cells** | Classic nearest-seed Voronoi regions with palette fill and adjustable seed count / jitter |
 | **Crackle** | f₂−f₁ Voronoi distance gap rendered as cracked ceramic or dried-mud texture |
-| **Ridges** | Multi-octave Voronoi f₂−f₁ noise stacked to produce mountain-ridge terrain profiles |
+| **Ridges** | Multi-octave Voronoi f₂−f₁ noise with spatial hash grid for full-pixel resolution; distance metrics (euclidean / manhattan / chebyshev) produce distinct crystal structures |
 | **Voronoi Mosaic** | Each Voronoi cell rendered as a coloured tile with grout lines and optional bevel shading |
 | **Delaunay Triangulation** | Delaunay triangulation of seed points with per-triangle palette colour fill |
 | **Centroidal Voronoi** | Lloyd relaxation iterates seeds toward cell centroids, converging to near-hexagonal regular tiling |

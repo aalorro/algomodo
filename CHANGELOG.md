@@ -5,6 +5,50 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-04
+
+### Added
+
+**New UI features:**
+
+- **SURPRISE ME button** on the canvas toolbar — randomizes generator, seed, parameters, and colour palette in one click
+- **SAVE button** on the canvas — exports static images as 1080×1080 PNG and animations as 1080×1080 WebM video
+- **Undo / Redo buttons** in the toolbar — Ctrl+Z / Ctrl+Y with 50-step parameter history
+- **Style name overlay** on the canvas showing the active generator name
+- **Animation duration selector** in the Export tab — choose 3, 5, or 8 second recording durations
+
+### Changed
+
+**15 generators improved** with new parameters, rendering modes, and algorithm enhancements:
+
+- **Noise / FBM Terrain** — Domain warping now actually applied (was previously ignored); new `style` param (smooth / ridged / terraced) with `terraceLevels` for plateau contour effects
+- **Noise / Domain Warped Marble** — Added `veinSharpness` (pow curve for thinner/wider veins) and `turbulence` toggle (abs-value noise for chaotic patterns)
+- **Noise / Simplex Field** — Added `style` param (smooth / ridged / turbulent) and `warpAmount` for organic domain distortion
+- **Noise / FBM, Turbulence, Ridged Multifractal, Domain Warp** — Algorithm refinements and parameter tuning across all four noise generators
+- **Plotter / Hatching** — Algorithm improvements for stroke quality and density
+- **Plotter / Stippling** — Enhanced dot placement and density field
+- **Plotter / TSP Art** — Improved nearest-neighbour construction and 2-opt refinement
+- **Plotter / Guilloché** — Added `curveType` (hypotrochoid / epitrochoid / rose / lissajous), `linesPerRing` (1–6) for moiré weaving, `waveModulation`, and `gradient-sweep` colour mode
+- **Plotter / Halftone Dots** — Added `gridType` (square / hex / diamond), `dotShape` (circle / square / diamond / line), `gridAngle` (0–45°), and `animSpeed` with animation support
+- **Plotter / Phyllotaxis** — Added `angleOffset` for dramatic spiral arm patterns, `sizeMode` (uniform / grow / shrink / wave), `shape` (circle / petal / star / square), `connectLines`, and `palette-fibonacci` colour mode
+- **Plotter / Meander / Maze Fill** — Four maze algorithms (DFS / Kruskal / Binary Tree / Sidewinder), `wallStyle` (straight / rounded / wobbly), `showSolution` BFS path, and `fillCells` distance heatmap
+- **Plotter / Scribble Shading** — Added `strokeStyle` (straight / wavy / zigzag / loop), `densityStyle` (fbm / ridged / radial / turbulent), `variableWidth`, and `animSpeed` with animation support
+- **Plotter / Bézier Ribbon Weaves** — Added `weavePattern` (basket / twill / satin) with distinct over/under crossing logic, and `ribbonStyle` (flat / shaded / striped) with 3D highlight/shadow rendering
+- **Voronoi / Ridges** — Rewrote with spatial hash grid for O(1) nearest-neighbor lookup enabling full-pixel resolution; added `distanceMetric` (euclidean / manhattan / chebyshev) for distinct crystal structures
+- **Animation / Plasma Feedback, Geometry / Chladni Figures, Geometry / Superformula, Geometry / Truchet Tiles** — Algorithm improvements and parameter enhancements
+
+### Fixed
+
+- **DLA line-bottom mode** not rendering — `maxRadius` was initialized to 0 instead of `size - 1`, causing the particle growth loop to never execute and walkers to spawn at the wrong end of the grid
+- **Age Trails Maze rule** not animating — Maze (B3/S12345) stabilizes into a static state; added stasis detection with automatic cell perturbation to restart CA dynamics
+- **Voronoi Ridges** rendering blank/blurred — grid was too fine with too-small search radius causing Infinity values; fixed grid sizing, widened neighbor search to 7×7, and added Infinity guard
+- **GIF export** cropping to top-left quarter — `drawImage()` was not scaling the 2160×2160 source canvas to fit the recording canvas dimensions
+- **Parameter lock** feature broken — `Set<string>` not serializable by Zustand's localStorage persistence; replaced with `string[]`
+- **Gray-Scott model** (Reaction Diffusion) rendering fix
+- **Canvas save** on mobile devices — image render compatibility fix
+
+---
+
 ## [1.2.0] - 2026-03-03
 
 ### Changed
