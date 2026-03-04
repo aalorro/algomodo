@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { getGenerator } from '../core/registry';
+import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
 
 interface CanvasRendererProps {
@@ -37,6 +37,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     animationFps,
     setAnimating,
     randomizeParams,
+    selectGenerator,
     postFX,
     sourceImage,
     setSourceImage,
@@ -403,18 +404,30 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       )}
 
       {/* Bottom Canvas Buttons */}
-      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex gap-3">
+      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2">
+        <div className="flex gap-3">
+          <button
+            onClick={() => setAnimating(!isAnimating)}
+            className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+          >
+            {isAnimating ? '⏸ ANIMATE' : '▶ ANIMATE'}
+          </button>
+          <button
+            onClick={() => randomizeParams(getGenerator(selectedGeneratorId)?.parameterSchema || {})}
+            className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+          >
+            🎲 RANDOM
+          </button>
+        </div>
         <button
-          onClick={() => setAnimating(!isAnimating)}
-          className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+          onClick={() => {
+            const all = getAllGenerators().filter(g => g.family !== 'image');
+            const pick = all[Math.floor(Math.random() * all.length)];
+            if (pick) selectGenerator(pick.id);
+          }}
+          className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
         >
-          {isAnimating ? '⏸ ANIMATE' : '▶ ANIMATE'}
-        </button>
-        <button
-          onClick={() => randomizeParams(getGenerator(selectedGeneratorId)?.parameterSchema || {})}
-          className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
-        >
-          🎲 RANDOM
+          ✨ SURPRISE ME
         </button>
       </div>
 
