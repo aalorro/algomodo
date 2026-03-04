@@ -84,11 +84,11 @@ function ridgeOctaveFast(
   const gy = Math.min(grid.size - 1, Math.max(0, (ny * grid.size) | 0));
 
   let d1 = Infinity, d2 = Infinity;
-  // Search 5×5 neighborhood to reliably find f1 and f2
-  for (let dy = -2; dy <= 2; dy++) {
+  // Search 7×7 neighborhood to reliably find f1 and f2
+  for (let dy = -3; dy <= 3; dy++) {
     const cy = gy + dy;
     if (cy < 0 || cy >= grid.size) continue;
-    for (let dx = -2; dx <= 2; dx++) {
+    for (let dx = -3; dx <= 3; dx++) {
       const cx = gx + dx;
       if (cx < 0 || cx >= grid.size) continue;
       const ci = cy * grid.size + cx;
@@ -212,8 +212,8 @@ export const ridges: Generator = {
         : base
     );
 
-    // Build spatial grids for fast lookup
-    const gridSize = Math.max(4, Math.ceil(Math.sqrt(count)) * 2);
+    // Build spatial grids for fast lookup (coarser grid = more sites per cell = safer f2 search)
+    const gridSize = Math.max(3, Math.ceil(Math.sqrt(count)));
     const gridsPerOctave = sitesPerOctave.map(sites => buildSiteGrid(sites, gridSize));
 
     const colors = palette.colors.map(hexToRgb);
@@ -238,8 +238,8 @@ export const ridges: Generator = {
           freq *= lac;
         }
         const idx = yi * sw + xi;
-        raw[idx] = value;
-        if (value > rawMax) rawMax = value;
+        raw[idx] = isFinite(value) ? value : 0;
+        if (raw[idx] > rawMax) rawMax = raw[idx];
       }
     }
 
