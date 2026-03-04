@@ -45,6 +45,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     setSourceImage,
     interactionEnabled,
     recordingDuration,
+    undo,
+    redo,
   } = useStore();
 
   // Decode source image data-URL → HTMLImageElement
@@ -474,6 +476,13 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2">
         <div className="flex gap-3">
           <button
+            onClick={undo}
+            className="px-3 py-2 bg-gray-500/60 hover:bg-gray-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+            title="Undo"
+          >
+            ↩ UNDO
+          </button>
+          <button
             onClick={() => setAnimating(!isAnimating)}
             className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
           >
@@ -484,6 +493,13 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
           >
             🎲 RANDOM
+          </button>
+          <button
+            onClick={redo}
+            className="px-3 py-2 bg-gray-500/60 hover:bg-gray-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+            title="Redo"
+          >
+            REDO ↪
           </button>
         </div>
         <div className="flex gap-3">
