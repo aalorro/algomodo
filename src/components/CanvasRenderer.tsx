@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
-import { CanvasRecorder } from '../utils/recorder';
 
 interface CanvasRendererProps {
   showFPS?: boolean;
@@ -26,7 +25,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const lastFrameTimeRef = useRef(0);
   const mouseRef = useRef({ x: 0.5, y: 0.5, inside: false });
   const ripplesRef = useRef<Ripple[]>([]);
-  const recorderRef = useRef<CanvasRecorder | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const {
@@ -360,7 +359,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     };
   }, [interactionEnabled]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -375,35 +374,53 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       return;
     }
 
-    // Animating: record 5s WebM
+    // Animating: record 5s WebM directly from the live canvas stream
+    const mimeTypes = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ];
+    const mimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t));
+    if (!mimeType) {
+      alert('Your browser does not support WebM video recording.');
+      return;
+    }
+
     setIsSaving(true);
-    try {
-      const recorder = new CanvasRecorder({
-        duration: 5,
-        fps: 30,
-        width: canvas.width,
-        height: canvas.height,
-      });
-      recorderRef.current = recorder;
-      recorder.startRecording(canvas, 5);
+    const chunks: Blob[] = [];
+    const stream = canvas.captureStream(30);
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 5_000_000,
+    });
+    mediaRecorderRef.current = recorder;
 
-      // Wait for recording to finish
-      await new Promise(resolve => setTimeout(resolve, 5000));
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
 
-      const blob = await recorder.exportWebM(canvas.width, canvas.height, 30);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.download = `algomodo-${timestamp}.webm`;
       link.href = url;
       link.click();
       URL.revokeObjectURL(url);
-      recorder.clearFrames();
-    } catch (err) {
-      console.error('Save error:', err);
-    } finally {
-      recorderRef.current = null;
+      mediaRecorderRef.current = null;
       setIsSaving(false);
-    }
+    };
+
+    recorder.onerror = () => {
+      console.error('MediaRecorder error');
+      mediaRecorderRef.current = null;
+      setIsSaving(false);
+    };
+
+    recorder.start(100); // collect data every 100ms
+    setTimeout(() => {
+      if (recorder.state === 'recording') recorder.stop();
+    }, 5000);
   };
 
   return (
