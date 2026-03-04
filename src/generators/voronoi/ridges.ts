@@ -7,21 +7,6 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/**
- * One octave of Voronoi ridge noise.
- * All coordinates are normalised to [0, 1]. freq scales the distance so higher
- * octaves produce finer patterns without needing separate site arrays.
- */
-function ridgeOctave(nx: number, ny: number, sites: [number, number][], freq: number): number {
-  let d1 = Infinity, d2 = Infinity;
-  for (const [sx, sy] of sites) {
-    const dx = (nx - sx) * freq, dy = (ny - sy) * freq;
-    const d = Math.sqrt(dx * dx + dy * dy);
-    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
-  }
-  return d2 - d1;
-}
-
 /** Jittered grid in normalised [0,1] space */
 function jitteredGridNorm(count: number, rng: SeededRNG): [number, number][] {
   const cols = Math.ceil(Math.sqrt(count));
@@ -42,6 +27,87 @@ function animateSites(base: [number, number][], amp: number, speed: number, time
     const ph = i * 2.39996;
     return [bx + Math.cos(time * speed + ph) * amp, by + Math.sin(time * speed * 1.3 + ph * 1.7) * amp];
   });
+}
+
+// ── Spatial grid for fast f1/f2 Voronoi lookup ──────────────────────────
+
+interface SiteGrid {
+  cells: Int32Array;   // flattened: cells[offset .. offset+len) = site indices
+  offsets: Int32Array;  // offset into cells for grid cell i
+  counts: Int32Array;   // number of sites in grid cell i
+  size: number;         // grid dimension (size × size)
+}
+
+function buildSiteGrid(sites: [number, number][], gridSize: number): SiteGrid {
+  const n = gridSize * gridSize;
+  const counts = new Int32Array(n);
+
+  // Count sites per cell
+  for (const [sx, sy] of sites) {
+    const gx = Math.min(gridSize - 1, Math.max(0, (sx * gridSize) | 0));
+    const gy = Math.min(gridSize - 1, Math.max(0, (sy * gridSize) | 0));
+    counts[gy * gridSize + gx]++;
+  }
+
+  // Compute offsets (prefix sum)
+  const offsets = new Int32Array(n);
+  for (let i = 1; i < n; i++) offsets[i] = offsets[i - 1] + counts[i - 1];
+
+  // Fill cells array
+  const total = offsets[n - 1] + counts[n - 1];
+  const cells = new Int32Array(total);
+  const pos = new Int32Array(n); // write position per cell
+
+  for (let i = 0; i < sites.length; i++) {
+    const gx = Math.min(gridSize - 1, Math.max(0, (sites[i][0] * gridSize) | 0));
+    const gy = Math.min(gridSize - 1, Math.max(0, (sites[i][1] * gridSize) | 0));
+    const ci = gy * gridSize + gx;
+    cells[offsets[ci] + pos[ci]] = i;
+    pos[ci]++;
+  }
+
+  return { cells, offsets, counts, size: gridSize };
+}
+
+/**
+ * Fast f2-f1 ridge noise using spatial grid lookup.
+ * freq scales distances for multi-octave stacking.
+ */
+function ridgeOctaveFast(
+  nx: number, ny: number,
+  sites: [number, number][],
+  freq: number,
+  grid: SiteGrid,
+  metric: number, // 0=euclidean, 1=manhattan, 2=chebyshev
+): number {
+  const gx = Math.min(grid.size - 1, Math.max(0, (nx * grid.size) | 0));
+  const gy = Math.min(grid.size - 1, Math.max(0, (ny * grid.size) | 0));
+
+  let d1 = Infinity, d2 = Infinity;
+  // Search 5×5 neighborhood to reliably find f1 and f2
+  for (let dy = -2; dy <= 2; dy++) {
+    const cy = gy + dy;
+    if (cy < 0 || cy >= grid.size) continue;
+    for (let dx = -2; dx <= 2; dx++) {
+      const cx = gx + dx;
+      if (cx < 0 || cx >= grid.size) continue;
+      const ci = cy * grid.size + cx;
+      const off = grid.offsets[ci];
+      const cnt = grid.counts[ci];
+      for (let k = 0; k < cnt; k++) {
+        const si = grid.cells[off + k];
+        const sdx = (nx - sites[si][0]) * freq;
+        const sdy = (ny - sites[si][1]) * freq;
+        let d: number;
+        if (metric === 1) d = Math.abs(sdx) + Math.abs(sdy);
+        else if (metric === 2) d = Math.max(Math.abs(sdx), Math.abs(sdy));
+        else d = Math.sqrt(sdx * sdx + sdy * sdy);
+        if (d < d1) { d2 = d1; d1 = d; }
+        else if (d < d2) { d2 = d; }
+      }
+    }
+  }
+  return d2 - d1;
 }
 
 const parameterSchema: ParameterSchema = {
@@ -74,6 +140,14 @@ const parameterSchema: ParameterSchema = {
     help: 'Power curve applied to ridge values — higher = sharper peaks',
     group: 'Texture',
   },
+  distanceMetric: {
+    name: 'Distance Metric',
+    type: 'select',
+    options: ['euclidean', 'manhattan', 'chebyshev'],
+    default: 'euclidean',
+    help: 'euclidean: round ridges | manhattan: diamond facets | chebyshev: square crystalline',
+    group: 'Geometry',
+  },
   colorMode: {
     name: 'Color Mode',
     type: 'select',
@@ -98,12 +172,12 @@ export const ridges: Generator = {
   id: 'voronoi-ridges',
   family: 'voronoi',
   styleName: 'Ridges',
-  definition: 'Stacks multiple octaves of Voronoi f₂−f₁ noise to produce mountain-ridge-like terrain patterns',
-  algorithmNotes: 'Each octave uses a fresh jittered-grid set of sites in normalised [0,1] coordinates. Frequency scaling is applied to the distance computation per octave. Contributions are summed with gain decay and power-curved for sharper ridges.',
+  definition: 'Stacks multiple octaves of Voronoi f2-f1 noise to produce mountain-ridge-like terrain patterns',
+  algorithmNotes: 'Each octave uses a jittered-grid site set with a spatial hash grid for O(1) nearest-neighbor lookups, enabling full-resolution pixel rendering. Distance metrics (euclidean, manhattan, chebyshev) produce distinct crystal structures.',
   parameterSchema,
   defaultParams: {
     cellCount: 50, octaves: 3, lacunarity: 2.0, gain: 0.5, ridgeSharpness: 1.5,
-    colorMode: 'palette', animSpeed: 0.3, animAmp: 0.15,
+    distanceMetric: 'euclidean', colorMode: 'palette', animSpeed: 0.3, animAmp: 0.15,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -118,6 +192,8 @@ export const ridges: Generator = {
     const g = params.gain ?? 0.5;
     const sharpness = params.ridgeSharpness ?? 1.5;
     const colorMode = params.colorMode || 'palette';
+    const metricName = params.distanceMetric || 'euclidean';
+    const metric = metricName === 'manhattan' ? 1 : metricName === 'chebyshev' ? 2 : 0;
 
     // Sites in normalised [0,1] space — one set per octave
     const baseSitesPerOctave: [number, number][][] = [];
@@ -125,7 +201,7 @@ export const ridges: Generator = {
       baseSitesPerOctave.push(jitteredGridNorm(count, rng));
     }
 
-    // Animation amplitude in normalised space (avgCellSize_norm = sqrt(1/count))
+    // Animation
     const avgCellNorm = Math.sqrt(1.0 / count);
     const animAmpNorm = (params.animAmp ?? 0.15) * avgCellNorm;
     const animSpeed = params.animSpeed ?? 0.3;
@@ -136,33 +212,40 @@ export const ridges: Generator = {
         : base
     );
 
+    // Build spatial grids for fast lookup
+    const gridSize = Math.max(4, Math.ceil(Math.sqrt(count)) * 2);
+    const gridsPerOctave = sitesPerOctave.map(sites => buildSiteGrid(sites, gridSize));
+
     const colors = palette.colors.map(hexToRgb);
-    const step = quality === 'draft' ? 3 : quality === 'balanced' ? 2 : 1;
+    // With spatial grid, we can render every pixel even at balanced quality
+    const step = quality === 'draft' ? 2 : 1;
     const imageData = ctx.createImageData(w, h);
     const data = imageData.data;
 
-    // Pass 1: compute raw ridge values and find actual maximum for auto-scaling
+    // Pass 1: compute raw ridge values and find max for auto-scaling
     const sw = Math.ceil(w / step), sh = Math.ceil(h / step);
     const raw = new Float32Array(sw * sh);
     let rawMax = 0;
 
     for (let yi = 0; yi < sh; yi++) {
+      const ny = (yi * step) / h;
       for (let xi = 0; xi < sw; xi++) {
-        const nx = (xi * step) / w, ny = (yi * step) / h;
+        const nx = (xi * step) / w;
         let value = 0, amplitude = 1.0, freq = 1.0;
         for (let o = 0; o < oct; o++) {
-          value += ridgeOctave(nx, ny, sitesPerOctave[o], freq) * amplitude;
+          value += ridgeOctaveFast(nx, ny, sitesPerOctave[o], freq, gridsPerOctave[o], metric) * amplitude;
           amplitude *= g;
           freq *= lac;
         }
-        raw[yi * sw + xi] = value;
+        const idx = yi * sw + xi;
+        raw[idx] = value;
         if (value > rawMax) rawMax = value;
       }
     }
 
     rawMax = Math.max(rawMax, 1e-6);
 
-    // Pass 2: normalize against actual max, apply sharpness, map to color
+    // Pass 2: normalize, apply sharpness, map to color
     for (let yi = 0; yi < sh; yi++) {
       for (let xi = 0; xi < sw; xi++) {
         let t = raw[yi * sw + xi] / rawMax;
