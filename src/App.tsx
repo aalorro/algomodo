@@ -155,22 +155,22 @@ function App() {
           <CanvasRenderer showFPS={showFPS} />
         </div>
 
-        {/* Floating Left Arrow Button */}
+        {/* Left edge tab */}
         <button
           onClick={() => setLeftPanelVisible(!leftPanelVisible)}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-40 p-8 bg-blue-600 hover:bg-blue-700 text-white text-4xl rounded-full shadow-lg transition-all"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-40 w-8 h-24 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-xl font-bold rounded-r-lg shadow-lg shadow-amber-500/40 transition-all flex items-center justify-center"
           title={leftPanelVisible ? 'Hide generators' : 'Show generators'}
         >
-          {leftPanelVisible ? '←' : '→'}
+          {leftPanelVisible ? '‹' : '›'}
         </button>
 
-        {/* Floating Right Arrow Button */}
+        {/* Right edge tab */}
         <button
           onClick={() => setRightPanelVisible(!rightPanelVisible)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-40 p-8 bg-blue-600 hover:bg-blue-700 text-white text-4xl rounded-full shadow-lg transition-all"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-40 w-8 h-24 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-xl font-bold rounded-l-lg shadow-lg shadow-amber-500/40 transition-all flex items-center justify-center"
           title={rightPanelVisible ? 'Hide controls' : 'Show controls'}
         >
-          {rightPanelVisible ? '→' : '←'}
+          {rightPanelVisible ? '›' : '‹'}
         </button>
       </div>
 

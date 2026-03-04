@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AppState, Palette, CanvasSettings, ParameterSchema, Preset, HistorySnapshot } from './types';
 import { getGenerator } from './core/registry';
+import { CURATED_PALETTES } from './data/palettes';
 
 function captureSnapshot(state: any): HistorySnapshot {
   return {
@@ -122,10 +123,13 @@ export const useStore = create<AppState>()(
           }
         }
 
+        const randomPalette = CURATED_PALETTES[Math.floor(Math.random() * CURATED_PALETTES.length)];
+
         set({
           selectedGeneratorId: generatorId,
           selectedPresetId: undefined,
           params: randomized,
+          palette: randomPalette,
           ...(state.seedLocked ? {} : { seed: Math.floor(Math.random() * 1000000) }),
           historyPast: [...state.historyPast.slice(-49), captureSnapshot(state)],
           historyFuture: [],
