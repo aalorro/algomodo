@@ -93,7 +93,6 @@ export const RightSidebar: React.FC = () => {
 
   const generator = getGenerator(selectedGeneratorId);
   const [activeTab, setActiveTab] = useState<'params' | 'presets' | 'export' | 'settings'>('params');
-  const [showSaveForm, setShowSaveForm] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInputValue, setUrlInputValue] = useState('');
@@ -541,49 +540,29 @@ export const RightSidebar: React.FC = () => {
           <div className="flex flex-col h-full">
             <div className="px-4 py-4 space-y-3 overflow-y-auto pb-[30px] flex-1">
             {/* Save section */}
-            {!showSaveForm ? (
-              <button
-                onClick={() => setShowSaveForm(true)}
-                className="w-full px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
-              >
-                Save as Preset
-              </button>
-            ) : (
-              <div className="space-y-2">
+            <div className="space-y-2">
+              <div className="flex gap-2">
                 <input
-                  autoFocus
                   value={presetName}
                   onChange={e => setPresetName(e.target.value)}
                   placeholder="Preset name..."
-                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
+                  className="flex-1 px-2 py-2 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
                   onKeyDown={e => {
                     if (e.key === 'Enter' && presetName.trim()) {
                       savePreset(presetName.trim());
-                      setShowSaveForm(false);
-                      setPresetName('');
-                    } else if (e.key === 'Escape') {
-                      setShowSaveForm(false);
                       setPresetName('');
                     }
                   }}
                 />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { savePreset(presetName.trim()); setShowSaveForm(false); setPresetName(''); }}
-                    disabled={!presetName.trim()}
-                    className="flex-1 px-3 py-1 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-400 text-white rounded"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => { setShowSaveForm(false); setPresetName(''); }}
-                    className="flex-1 px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <button
+                  onClick={() => { savePreset(presetName.trim()); setPresetName(''); }}
+                  disabled={!presetName.trim()}
+                  className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-400 text-white rounded"
+                >
+                  Save
+                </button>
               </div>
-            )}
+            </div>
 
             {/* Export / Import */}
             {presets.length > 0 && (
