@@ -4,7 +4,10 @@
       "mcp__ide__getDiagnostics",
       "Bash(npx tsc:*)",
       "Bash(grep:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebSearch",
+      "Bash(node:*)",
+      "Bash(ffmpeg:*)"
     ]
   }
 }

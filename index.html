@@ -3,49 +3,83 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
+
     <!-- Essential Meta Tags -->
-    <title>Algomodo - Algorithmic Art Generator | Generative Art Tool</title>
-    <meta name="description" content="Create stunning algorithmic art with Algomodo, a free browser-based generative art tool. Explore fractals, cellular automata, noise patterns, and more. 100% pure procedural mathematics, no AI." />
-    <meta name="keywords" content="algorithmic art, generative art, fractal art, noise, cellular automata, procedural art, algorithm, mathematics art, webgl, canvas art, digital art" />
+    <title>Algomodo - Algorithmic Art Generator | 73+ Procedural Generators</title>
+    <meta name="description" content="Create stunning algorithmic art with Algomodo, a free browser-based generative art tool. Explore 73+ procedural generators — fractals, cellular automata, noise fields, Voronoi tessellations, and more. 100% pure mathematics, no AI, fully offline." />
+    <meta name="keywords" content="algorithmic art, generative art, fractal art, noise patterns, cellular automata, procedural art, voronoi, reaction diffusion, turing patterns, mathematical art, canvas art, digital art, creative coding, art generator" />
     <meta name="author" content="Algomodo" />
     <meta name="theme-color" content="#0a0a0a" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="language" content="English" />
-    
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Mobile / PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Algomodo" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Algomodo" />
+    <meta name="format-detection" content="telephone=no" />
+
     <!-- Canonical URL -->
-    <link rel="canonical" href="https://www.algomodo.work/" />
-    
+    <link rel="canonical" href="https://algomodo.work/" />
+
     <!-- Open Graph Tags -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Algomodo - Algorithmic Art Generator" />
-    <meta property="og:description" content="Create generative art with pure procedural mathematics. Fractals, noise, cellular automata, and 50+ algorithms." />
-    <meta property="og:url" content="https://www.algomodo.work/" />
-    <meta property="og:image" content="https://www.algomodo.work/algomodo-logo.png" />
+    <meta property="og:description" content="Create generative art with pure procedural mathematics. 73+ generators: fractals, cellular automata, noise fields, Voronoi, and more. Free, offline, open source." />
+    <meta property="og:url" content="https://algomodo.work/" />
+    <meta property="og:image" content="https://algomodo.work/algomodo-logo.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Algomodo logo - Algorithmic Art Generator" />
     <meta property="og:site_name" content="Algomodo" />
     <meta property="og:locale" content="en_US" />
-    
+
     <!-- Twitter Card Tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Algomodo - Algorithmic Art Generator" />
-    <meta name="twitter:description" content="Create stunning generative art with algorithms. Explore 50+ procedural generators." />
-    <meta name="twitter:image" content="https://www.algomodo.work/algomodo-logo.png" />
-    
+    <meta name="twitter:description" content="Create stunning generative art with 73+ procedural generators. Fractals, cellular automata, noise, and more. Free and open source." />
+    <meta name="twitter:image" content="https://algomodo.work/algomodo-logo.png" />
+    <meta name="twitter:image:alt" content="Algomodo logo - Algorithmic Art Generator" />
+
     <!-- Favicons -->
-    <link rel="icon" href="/favicon.ico" sizes="64x64" />
-    <link rel="icon" type="image/png" href="/algomodo-logo.png" sizes="any" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" href="/algomodo-logo.png" sizes="512x512" />
     <link rel="apple-touch-icon" href="/algomodo-logo.png" />
-    
+
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "Algomodo",
-      "description": "A free browser-based algorithmic art generator using pure procedural mathematics",
-      "url": "https://www.algomodo.work/",
-      "image": "https://www.algomodo.work/algomodo-logo.png",
+      "alternateName": "Algomodo Art Generator",
+      "description": "A free browser-based algorithmic art generator with 73+ procedural generators using pure mathematics. Create fractals, cellular automata, noise fields, Voronoi tessellations, and more.",
+      "url": "https://algomodo.work/",
+      "image": "https://algomodo.work/algomodo-logo.png",
       "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "Any",
+      "browserRequirements": "Requires a modern browser with JavaScript and HTML5 Canvas support",
+      "softwareVersion": "1.4.0",
+      "featureList": [
+        "73+ procedural art generators",
+        "Fractal generators (Mandelbrot, Julia, Sierpinski, L-Systems)",
+        "Cellular automata (Game of Life, Reaction-Diffusion, Turing Patterns)",
+        "Noise generators (Simplex, Perlin, Worley, Flow Fields)",
+        "Voronoi tessellations and Delaunay triangulations",
+        "Real-time animation with adjustable FPS",
+        "PNG and GIF export",
+        "Deterministic seed-based generation",
+        "Custom color palettes",
+        "PostFX effects (grain, vignette, dither, posterize)",
+        "100% offline — no server, no AI",
+        "Open source (MIT License)"
+      ],
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -53,8 +87,10 @@
       },
       "author": {
         "@type": "Organization",
-        "name": "Algomodo"
-      }
+        "name": "Algomodo",
+        "url": "https://algomodo.work/"
+      },
+      "license": "https://opensource.org/licenses/MIT"
     }
     </script>
   </head>
