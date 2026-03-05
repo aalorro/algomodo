@@ -1,0 +1,20 @@
+{
+  "name": "Algomodo - Algorithmic Art Generator",
+  "short_name": "Algomodo",
+  "description": "Create algorithmic art with 73+ procedural generators using pure mathematics",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0a0a0a",
+  "background_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "/algomodo-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["graphics", "design", "entertainment"]
+}
