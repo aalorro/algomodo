@@ -74,7 +74,10 @@ export class CanvasRecorder {
     this.isRecording = false;
   }
 
-  async exportGIF(width: number, height: number, fps: number = 24, loop: boolean = false): Promise<Blob> {
+  async exportGIF(
+    width: number, height: number, fps: number = 24,
+    options: { boomerang?: boolean; endless?: boolean } = {},
+  ): Promise<Blob> {
     return new Promise((resolve, reject) => {
       try {
         if (!this.frames || this.frames.length === 0) {
@@ -82,13 +85,17 @@ export class CanvasRecorder {
           return;
         }
 
-        // Build frame sequence: if loop enabled, append reversed frames for seamless ping-pong
+        const { boomerang = false, endless = false } = options;
+        const shouldLoop = boomerang || endless;
+
+        // Boomerang: append reversed frames for ping-pong effect
         const forwardFrames = this.frames;
-        const frameSequence = loop && forwardFrames.length > 2
+        const frameSequence = boomerang && forwardFrames.length > 2
           ? [...forwardFrames, ...forwardFrames.slice(1, -1).reverse()]
           : forwardFrames;
 
-        console.log(`Creating GIF with ${frameSequence.length} frames at ${width}x${height} (${fps}fps)${loop ? ' [loop]' : ''}...`);
+        const tag = boomerang ? ' [boomerang]' : endless ? ' [endless]' : '';
+        console.log(`Creating GIF with ${frameSequence.length} frames at ${width}x${height} (${fps}fps)${tag}...`);
 
         const gif = new GIF({
           workers: 1,
@@ -96,7 +103,7 @@ export class CanvasRecorder {
           width,
           height,
           workerScript: '/gif.worker.js',
-          ...(loop ? { repeat: 0 } : { repeat: -1 }),
+          repeat: shouldLoop ? 0 : -1,
         }) as any;
 
         const tempCanvas = document.createElement('canvas');

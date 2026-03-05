@@ -67,7 +67,8 @@ export const useStore = create<AppState>()(
       isAnimating: false,
       animationFps: 24,
       recordingDuration: 5,
-      loopGif: false,
+      boomerangGif: false,
+      endlessGif: false,
       renderKey: 0,
       openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | null,
 
@@ -287,7 +288,8 @@ export const useStore = create<AppState>()(
 
       setRecordingDuration: (duration) => set({ recordingDuration: duration }),
 
-      setLoopGif: (loop) => set({ loopGif: loop }),
+      setBoomerangGif: (on) => set({ boomerangGif: on }),
+      setEndlessGif: (on) => set({ endlessGif: on }),
 
       forceReload: () => set((state) => ({ renderKey: state.renderKey + 1 })),
 
