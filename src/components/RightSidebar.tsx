@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { getGenerator } from '../core/registry';
 import { ParameterControls } from './ParameterControls';
-import { createRecipe, downloadRecipe } from '../core/recipe';
+import { createRecipe, downloadRecipe, downloadJSON } from '../core/recipe';
 import { generateSVG, downloadSVG } from '../renderers/svg/builder';
 import { CanvasRecorder } from '../utils/recorder';
 import { CURATED_PALETTES } from '../data/palettes';
@@ -43,6 +43,7 @@ export const RightSidebar: React.FC = () => {
     savePreset,
     loadPreset,
     deletePreset,
+    importPresets,
     sourceImage,
     setSourceImage,
     recordingDuration,
@@ -81,6 +82,7 @@ export const RightSidebar: React.FC = () => {
     savePreset: s.savePreset,
     loadPreset: s.loadPreset,
     deletePreset: s.deletePreset,
+    importPresets: s.importPresets,
     sourceImage: s.sourceImage,
     setSourceImage: s.setSourceImage,
     recordingDuration: s.recordingDuration,
@@ -98,6 +100,10 @@ export const RightSidebar: React.FC = () => {
   const [recordingProgress, setRecordingProgress] = useState(0);
   const [imageFileName, setImageFileName] = useState('');
   const [filePrefix, setFilePrefix] = useState('');
+  const [presetPrefix, setPresetPrefix] = useState('');
+  const [recipePrefix, setRecipePrefix] = useState('');
+  const [importError, setImportError] = useState('');
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const buildFilename = (ext: string): string => {
     if (filePrefix.trim()) return `${filePrefix.trim()}.${ext}`;
@@ -105,6 +111,22 @@ export const RightSidebar: React.FC = () => {
     const date = now.toISOString().slice(0, 10).replace(/-/g, '');
     const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
     return `algomodo-${date}-${time}.${ext}`;
+  };
+
+  const buildPresetFilename = (): string => {
+    if (presetPrefix.trim()) return `${presetPrefix.trim()}.json`;
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    return `algomodo-preset-${date}-${time}.json`;
+  };
+
+  const buildRecipeFilename = (): string => {
+    if (recipePrefix.trim()) return `${recipePrefix.trim()}.json`;
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    return `algomodo-json-${date}-${time}.json`;
   };
 
   const loadFromUrl = async (url: string) => {
@@ -320,7 +342,7 @@ export const RightSidebar: React.FC = () => {
       canvasSettings,
       postFX
     );
-    downloadRecipe(recipe, buildFilename('json'));
+    downloadRecipe(recipe, buildRecipeFilename());
   };
 
   return (
@@ -537,6 +559,62 @@ export const RightSidebar: React.FC = () => {
               </div>
             )}
 
+            {/* Export / Import */}
+            {presets.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-1">Preset Filename</label>
+                <input
+                  type="text"
+                  value={presetPrefix}
+                  onChange={(e) => setPresetPrefix(e.target.value)}
+                  placeholder="algomodo-preset-YYYYMMDD-HHMMSS"
+                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
+                />
+              </div>
+            )}
+            <div className="flex gap-2">
+              {presets.length > 0 && (
+                <button
+                  onClick={() => downloadJSON(presets, buildPresetFilename())}
+                  className="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
+                >
+                  Export All
+                </button>
+              )}
+              <button
+                onClick={() => importInputRef.current?.click()}
+                className="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
+              >
+                Import
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    const parsed = JSON.parse(text);
+                    if (!Array.isArray(parsed) || !parsed.every((p: any) => p.id && p.name && p.generatorId && p.params && p.palette)) {
+                      throw new Error('Invalid preset format');
+                    }
+                    importPresets(parsed);
+                    setImportError('');
+                  } catch {
+                    setImportError('Invalid preset file');
+                    setTimeout(() => setImportError(''), 3000);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </div>
+            {importError && (
+              <p className="text-xs text-red-500 dark:text-red-400">{importError}</p>
+            )}
+
             {/* Preset list */}
             {presets.length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">No presets saved yet</p>
@@ -674,10 +752,17 @@ export const RightSidebar: React.FC = () => {
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Data</h3>
               <button
                 onClick={handleExportRecipe}
-                className="w-full px-3 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded text-sm"
+                className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm"
               >
                 JSON Recipe
               </button>
+              <input
+                type="text"
+                value={recipePrefix}
+                onChange={(e) => setRecipePrefix(e.target.value)}
+                placeholder="algomodo-json-YYYYMMDD-HHMMSS"
+                className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
+              />
             </div>
 
             <div>

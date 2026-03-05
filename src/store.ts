@@ -229,6 +229,14 @@ export const useStore = create<AppState>()(
       deletePreset: (id: string) =>
         set(state => ({ presets: state.presets.filter(p => p.id !== id) })),
 
+      importPresets: (incoming) => {
+        set(state => {
+          const existingIds = new Set(state.presets.map(p => p.id));
+          const newPresets = incoming.filter(p => !existingIds.has(p.id));
+          return { presets: [...state.presets, ...newPresets] };
+        });
+      },
+
       setPalette: (palette) => {
         const state = get();
         set({
