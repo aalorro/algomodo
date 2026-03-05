@@ -77,6 +77,11 @@ import { fractured } from './voronoi/fractured';
 import { depthCells } from './voronoi/depth-cells';
 import { weightedVoronoi } from './voronoi/weighted-voronoi';
 import { neighborBands } from './voronoi/neighbor-bands';
+import { mandelbrot } from './fractals/mandelbrot';
+import { julia } from './fractals/julia';
+import { newtonFractal } from './fractals/newton';
+import { ifsBarnsley } from './fractals/ifs-barnsley';
+import { recursiveSubdivision } from './fractals/recursive-subdivision';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -157,6 +162,11 @@ export function initializeGenerators() {
   registerGenerator(depthCells);
   registerGenerator(weightedVoronoi);
   registerGenerator(neighborBands);
+  registerGenerator(mandelbrot);
+  registerGenerator(julia);
+  registerGenerator(newtonFractal);
+  registerGenerator(ifsBarnsley);
+  registerGenerator(recursiveSubdivision);
 }
 
 export {
@@ -175,4 +185,5 @@ export {
   kaleidoscope, waveInterference,
   voronoiCells, crackle, ridges, voronoiMosaic, delaunayMesh, centroidalVoronoi, contourBands,
   fractured, depthCells, weightedVoronoi, neighborBands,
+  mandelbrot, julia, newtonFractal, ifsBarnsley, recursiveSubdivision,
 };
