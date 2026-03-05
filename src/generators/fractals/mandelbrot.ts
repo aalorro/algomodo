@@ -70,13 +70,16 @@ export const mandelbrot: Generator = {
     const colorCycles = Math.max(1, params.colorCycles ?? 3);
     const step = quality === 'draft' ? 2 : 1;
 
-    // View center — for animation, smoothly zoom toward an interesting target
+    // View center — for animation, cycle zoom toward an interesting target
     const zoomParam = params.zoom ?? 1;
     let cx: number, cy: number, viewZoom: number;
     if (time > 0) {
       const target = ZOOM_TARGETS[Math.abs(seed) % ZOOM_TARGETS.length];
       const speed = params.speed ?? 0.5;
-      viewZoom = zoomParam * Math.pow(1.5, time * speed);
+      const maxAnimZoom = 50;
+      const cycleDuration = Math.log(maxAnimZoom) / (Math.log(1.5) * speed);
+      const cycleTime = time % cycleDuration;
+      viewZoom = zoomParam * Math.pow(1.5, cycleTime * speed);
       const t = 1 - 1 / viewZoom;
       cx = (params.centerX ?? -0.5) + (target.x - (params.centerX ?? -0.5)) * t;
       cy = (params.centerY ?? 0) + (target.y - (params.centerY ?? 0)) * t;
