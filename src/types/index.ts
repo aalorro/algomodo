@@ -152,6 +152,7 @@ export interface AppState {
   isAnimating: boolean;
   animationFps: number;
   recordingDuration: number;
+  loopGif: boolean;
   openModal: 'about' | 'privacy' | 'changelog' | 'donation' | null;
 
   // PostFX
@@ -193,6 +194,7 @@ export interface AppState {
   setAnimating: (animating: boolean) => void;
   setAnimationFps: (fps: number) => void;
   setRecordingDuration: (duration: number) => void;
+  setLoopGif: (loop: boolean) => void;
   updatePostFX: (key: string, value: any) => void;
   setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | null) => void;
 

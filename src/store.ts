@@ -67,6 +67,7 @@ export const useStore = create<AppState>()(
       isAnimating: false,
       animationFps: 24,
       recordingDuration: 5,
+      loopGif: false,
       openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | null,
 
       // PostFX
@@ -284,6 +285,8 @@ export const useStore = create<AppState>()(
       setAnimationFps: (fps) => set({ animationFps: fps }),
 
       setRecordingDuration: (duration) => set({ recordingDuration: duration }),
+
+      setLoopGif: (loop) => set({ loopGif: loop }),
 
       updatePostFX: (key, value) =>
         set((state) => ({

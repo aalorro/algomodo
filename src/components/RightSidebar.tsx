@@ -49,6 +49,8 @@ export const RightSidebar: React.FC = () => {
     setSourceImage,
     recordingDuration,
     setRecordingDuration,
+    loopGif,
+    setLoopGif,
     loadRecipe,
   } = useStore(useShallow(s => ({
     selectedGeneratorId: s.selectedGeneratorId,
@@ -89,6 +91,8 @@ export const RightSidebar: React.FC = () => {
     setSourceImage: s.setSourceImage,
     recordingDuration: s.recordingDuration,
     setRecordingDuration: s.setRecordingDuration,
+    loopGif: s.loopGif,
+    setLoopGif: s.setLoopGif,
     loadRecipe: s.loadRecipe,
   })));
 
@@ -273,7 +277,7 @@ export const RightSidebar: React.FC = () => {
       }
 
       console.log('Starting GIF encoding...');
-      const blob = await recorder.exportGIF(gifSize, gifSize, 24);
+      const blob = await recorder.exportGIF(gifSize, gifSize, 24, loopGif);
 
       if (!blob || blob.size === 0) {
         throw new Error('Generated GIF is empty');
@@ -812,6 +816,16 @@ export const RightSidebar: React.FC = () => {
                   ))}
                 </div>
               </div>
+              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={loopGif}
+                  onChange={(e) => setLoopGif(e.target.checked)}
+                  disabled={!isAnimating}
+                  className="accent-blue-600"
+                />
+                <span className="text-xs text-gray-600 dark:text-gray-400">Seamless loop</span>
+              </label>
               <button
                 onClick={handleExportGIF}
                 className={`w-full px-3 py-2 rounded text-sm mb-2 ${
