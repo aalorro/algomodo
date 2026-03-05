@@ -717,12 +717,31 @@ export const RightSidebar: React.FC = () => {
                         <div key={c} className="flex-1 h-2 rounded-sm" style={{ backgroundColor: c }} />
                       ))}
                     </div>
-                    <button
-                      onClick={() => loadPreset(p.id)}
-                      className="w-full text-xs py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
-                    >
-                      Load
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => loadPreset(p.id)}
+                        className="flex-1 text-xs py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = serializePresets([p]);
+                          const blob = new Blob([text], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `${p.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="flex-1 text-xs py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
+                      >
+                        Export
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
