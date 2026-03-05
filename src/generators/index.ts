@@ -8,6 +8,11 @@ import { opticalFlow } from './image/optical-flow';
 import { linoCut } from './image/lino-cut';
 import { ditherImage } from './image/dither-image';
 import { asciiArt } from './image/ascii-art';
+import { convolution } from './image/convolution';
+import { edgeDetect } from './image/edge-detect';
+import { feedbackLoop } from './image/feedback-loop';
+import { glitchTransform } from './image/glitch-transform';
+import { distanceField } from './image/distance-field';
 import { fbmTerrain } from './noise/fbm-terrain';
 import { domainWarpMarble } from './noise/domain-warp-marble';
 import { noisePerlin } from './noise/noise-perlin';
@@ -83,6 +88,11 @@ export function initializeGenerators() {
   registerGenerator(linoCut);
   registerGenerator(ditherImage);
   registerGenerator(asciiArt);
+  registerGenerator(convolution);
+  registerGenerator(edgeDetect);
+  registerGenerator(feedbackLoop);
+  registerGenerator(glitchTransform);
+  registerGenerator(distanceField);
   registerGenerator(fbmTerrain);
   registerGenerator(domainWarpMarble);
   registerGenerator(noisePerlin);
@@ -151,6 +161,7 @@ export function initializeGenerators() {
 
 export {
   pixelSort, mosaic, halftone, dataMosh, lumaMesh, opticalFlow, linoCut, ditherImage, asciiArt,
+  convolution, edgeDetect, feedbackLoop, glitchTransform, distanceField,
   fbmTerrain, domainWarpMarble,
   noisePerlin, noiseFbm, noiseTurbulence, noiseRidged, noiseDomainWarp,
   spirograph, lissajous, lsystem, mstWeb, chladni,

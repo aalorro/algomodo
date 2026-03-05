@@ -104,6 +104,7 @@ export const RightSidebar: React.FC = () => {
   const [presetPrefix, setPresetPrefix] = useState('');
   const [recipePrefix, setRecipePrefix] = useState('');
   const [importError, setImportError] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const buildFilename = (ext: string): string => {
@@ -704,13 +705,30 @@ export const RightSidebar: React.FC = () => {
                         <p className="text-sm text-gray-900 dark:text-white font-medium truncate">{p.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{getGenerator(p.generatorId)?.styleName ?? p.generatorId}</p>
                       </div>
-                      <button
-                        onClick={() => deletePreset(p.id)}
-                        className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 px-1 text-lg leading-none"
-                        title="Delete preset"
-                      >
-                        ×
-                      </button>
+                      {confirmDeleteId === p.id ? (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => { deletePreset(p.id); setConfirmDeleteId(null); }}
+                            className="text-xs px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(p.id)}
+                          className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 px-1 text-lg leading-none"
+                          title="Delete preset"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                     <div className="flex gap-0.5 mt-1 mb-2">
                       {p.palette.colors.map(c => (
