@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { getGenerator } from '../core/registry';
 import { ParameterControls } from './ParameterControls';
-import { createRecipe, downloadRecipe, downloadJSON } from '../core/recipe';
+import { createRecipe, downloadRecipe, downloadJSON, uploadRecipe } from '../core/recipe';
 import { generateSVG, downloadSVG } from '../renderers/svg/builder';
 import { CanvasRecorder } from '../utils/recorder';
 import { CURATED_PALETTES } from '../data/palettes';
@@ -48,6 +48,7 @@ export const RightSidebar: React.FC = () => {
     setSourceImage,
     recordingDuration,
     setRecordingDuration,
+    loadRecipe,
   } = useStore(useShallow(s => ({
     selectedGeneratorId: s.selectedGeneratorId,
     selectedPresetId: s.selectedPresetId,
@@ -87,6 +88,7 @@ export const RightSidebar: React.FC = () => {
     setSourceImage: s.setSourceImage,
     recordingDuration: s.recordingDuration,
     setRecordingDuration: s.setRecordingDuration,
+    loadRecipe: s.loadRecipe,
   })));
 
   const generator = getGenerator(selectedGeneratorId);
@@ -375,7 +377,7 @@ export const RightSidebar: React.FC = () => {
             />
             <button
               onClick={() => document.getElementById('sidebar-image-upload')?.click()}
-              className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded text-center"
+              className="w-full px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded text-center"
             >
               Upload Image
             </button>
@@ -383,7 +385,7 @@ export const RightSidebar: React.FC = () => {
             {!showUrlInput ? (
               <button
                 onClick={() => setShowUrlInput(true)}
-                className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded text-center mt-1"
+                className="w-full px-3 py-2 text-sm bg-sky-700 hover:bg-sky-800 text-white rounded text-center mt-1"
               >
                 Load from URL
               </button>
@@ -426,6 +428,30 @@ export const RightSidebar: React.FC = () => {
             )}
 
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">or drag / paste onto canvas</p>
+
+            <input
+              id="sidebar-recipe-upload"
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const recipe = await uploadRecipe(file);
+                  loadRecipe(recipe);
+                } catch {
+                  alert('Invalid JSON recipe file');
+                }
+                e.target.value = '';
+              }}
+            />
+            <button
+              onClick={() => document.getElementById('sidebar-recipe-upload')?.click()}
+              className="w-full px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded text-center mt-1"
+            >
+              Load JSON Recipe
+            </button>
           </>
         )}
       </div>

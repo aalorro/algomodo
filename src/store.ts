@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AppState, Palette, CanvasSettings, ParameterSchema, Preset, HistorySnapshot } from './types';
+import type { AppState, Palette, CanvasSettings, ParameterSchema, Preset, HistorySnapshot, Recipe } from './types';
 import { getGenerator } from './core/registry';
 import { CURATED_PALETTES } from './data/palettes';
 
@@ -234,6 +234,22 @@ export const useStore = create<AppState>()(
           const existingIds = new Set(state.presets.map(p => p.id));
           const newPresets = incoming.filter(p => !existingIds.has(p.id));
           return { presets: [...state.presets, ...newPresets] };
+        });
+      },
+
+      loadRecipe: (recipe) => {
+        const state = get();
+        const gen = getGenerator(recipe.generatorId);
+        set({
+          selectedGeneratorId: recipe.generatorId,
+          selectedFamilyId: gen?.family ?? state.selectedFamilyId,
+          seed: recipe.seed,
+          params: recipe.params,
+          palette: recipe.palette,
+          canvasSettings: { ...state.canvasSettings, ...recipe.canvasSettings },
+          ...(recipe.postFX ? { postFX: { ...state.postFX, ...recipe.postFX } } : {}),
+          historyPast: [...state.historyPast.slice(-49), captureSnapshot(state)],
+          historyFuture: [],
         });
       },
 
