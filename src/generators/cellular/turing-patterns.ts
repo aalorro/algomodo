@@ -355,8 +355,9 @@ export const turingPatterns: Generator = {
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const size    = Math.max(16, (params.gridSize ?? 128) | 0);
+  renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
+    const rawSize = Math.max(16, (params.gridSize ?? 128) | 0);
+    const size    = quality === 'draft' ? Math.min(rawSize, 80) : quality === 'ultra' ? rawSize : Math.min(rawSize, 128);
     const model   = params.model ?? 'schnakenberg';
     const a       = params.a     ?? 0.1;
     const b       = params.b     ?? 0.9;

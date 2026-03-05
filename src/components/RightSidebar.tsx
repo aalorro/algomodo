@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { getGenerator } from '../core/registry';
 import { ParameterControls } from './ParameterControls';
 import { createRecipe, downloadRecipe } from '../core/recipe';
@@ -46,7 +47,45 @@ export const RightSidebar: React.FC = () => {
     setSourceImage,
     recordingDuration,
     setRecordingDuration,
-  } = useStore();
+  } = useStore(useShallow(s => ({
+    selectedGeneratorId: s.selectedGeneratorId,
+    selectedPresetId: s.selectedPresetId,
+    seed: s.seed,
+    seedLocked: s.seedLocked,
+    setSeed: s.setSeed,
+    setSeedLocked: s.setSeedLocked,
+    randomizeSeed: s.randomizeSeed,
+    canvasSettings: s.canvasSettings,
+    params: s.params,
+    palette: s.palette,
+    setPalette: s.setPalette,
+    postFX: s.postFX,
+    updatePostFX: s.updatePostFX,
+    quality: s.quality,
+    setQuality: s.setQuality,
+    showFPS: s.showFPS,
+    setShowFPS: s.setShowFPS,
+    performanceMode: s.performanceMode,
+    setPerformanceMode: s.setPerformanceMode,
+    useWebGL: s.useWebGL,
+    setUseWebGL: s.setUseWebGL,
+    isAnimating: s.isAnimating,
+    setAnimating: s.setAnimating,
+    animationFps: s.animationFps,
+    setAnimationFps: s.setAnimationFps,
+    theme: s.theme,
+    setTheme: s.setTheme,
+    interactionEnabled: s.interactionEnabled,
+    setInteractionEnabled: s.setInteractionEnabled,
+    presets: s.presets,
+    savePreset: s.savePreset,
+    loadPreset: s.loadPreset,
+    deletePreset: s.deletePreset,
+    sourceImage: s.sourceImage,
+    setSourceImage: s.setSourceImage,
+    recordingDuration: s.recordingDuration,
+    setRecordingDuration: s.setRecordingDuration,
+  })));
 
   const generator = getGenerator(selectedGeneratorId);
   const [activeTab, setActiveTab] = useState<'params' | 'presets' | 'export' | 'settings'>('params');
