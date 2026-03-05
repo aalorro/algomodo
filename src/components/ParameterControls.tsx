@@ -1,5 +1,6 @@
 import React from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import type { Generator, Parameter } from '../types';
 
 interface ParameterControlsProps {
@@ -7,7 +8,21 @@ interface ParameterControlsProps {
 }
 
 export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator }) => {
-  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating, lockedParams: rawLocked, toggleLockedParam } = useStore();
+  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating, lockedParams: rawLocked, toggleLockedParam } = useStore(useShallow(s => ({
+    params: s.params,
+    updateParam: s.updateParam,
+    resetParams: s.resetParams,
+    randomizeParams: s.randomizeParams,
+    pushToHistory: s.pushToHistory,
+    historyPast: s.historyPast,
+    historyFuture: s.historyFuture,
+    undo: s.undo,
+    redo: s.redo,
+    isAnimating: s.isAnimating,
+    setAnimating: s.setAnimating,
+    lockedParams: s.lockedParams,
+    toggleLockedParam: s.toggleLockedParam,
+  })));
   const lockedParams = Array.isArray(rawLocked) ? rawLocked : [];
   const canUndo = historyPast.length > 0;
   const canRedo = historyFuture.length > 0;

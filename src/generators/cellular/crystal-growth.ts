@@ -270,7 +270,7 @@ const parameterSchema: ParameterSchema = {
   },
   warmupSteps: {
     name: 'Growth Steps',
-    type: 'number', min: 200, max: 3000, step: 100, default: 1000,
+    type: 'number', min: 200, max: 600, step: 50, default: 600,
     help: 'Simulation steps before static render — more = larger crystal',
     group: 'Composition',
   },
@@ -307,7 +307,7 @@ export const crystalGrowth: Generator = {
     seedRadius: 3, seedCount: 1,
     symmetry: '4', anisotropy: 0.04, interfaceWidth: 0.01,
     thermalNoise: 0.0,
-    warmupSteps: 1000, stepsPerFrame: 20, colorMode: 'phase',
+    warmupSteps: 600, stepsPerFrame: 20, colorMode: 'phase',
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -325,7 +325,7 @@ export const crystalGrowth: Generator = {
 
     if (time === 0) {
       const { phi, u, nPhi, nU, thetaShift, rng } = initCrystal(size, undercooling, seedRadius, seedCount, undercoolingGradient, seed);
-      const steps = Math.max(1, (params.warmupSteps ?? 1000) | 0);
+      const steps = Math.min(600, Math.max(1, (params.warmupSteps ?? 600) | 0));
       for (let s = 0; s < steps; s++) stepCrystal(phi, u, nPhi, nU, thetaShift, size, eps0, delta, symmetry, thermalNoise, rng);
       renderCrystal(ctx, phi, u, thetaShift, size, palette, colorMode, undercooling);
       return;

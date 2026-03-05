@@ -110,51 +110,60 @@ export function drawText(
 }
 
 export function applyGrain(
-  ctx: CanvasRenderingContext2D,
+  _ctx: CanvasRenderingContext2D,
   imageData: ImageData,
   amount: number
 ) {
   if (amount <= 0) return imageData;
-  
+
   const data = imageData.data;
-  const seed = Math.random() * 1000;
-  
+  const scale = amount * 255;
+  // Fast LCG (linear congruential generator) — ~10x faster than Math.sin per pixel
+  let rng = (Math.random() * 0x7fffffff) | 0;
+
   for (let i = 0; i < data.length; i += 4) {
-    const grain = (Math.sin(i * 0.1 + seed) * 0.5 + 0.5) * amount * 255;
+    rng = (rng * 1664525 + 1013904223) | 0;
+    const grain = ((rng >>> 16) / 65535) * scale;
     data[i] += grain;
     data[i + 1] += grain;
     data[i + 2] += grain;
   }
-  
+
   return imageData;
 }
 
 export function applyVignette(
-  ctx: CanvasRenderingContext2D,
+  _ctx: CanvasRenderingContext2D,
   imageData: ImageData,
   width: number,
   height: number,
   amount: number
 ) {
   if (amount <= 0) return imageData;
-  
+
   const data = imageData.data;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
-  
+  const cx = width / 2;
+  const cy = height / 2;
+  // Use squared distance — avoids 4.7M sqrt calls at 2160×2160
+  const maxD2 = cx * cx + cy * cy;
+  const invMaxD2 = amount / maxD2;
+
   for (let y = 0; y < height; y++) {
+    const dy = y - cy;
+    const dy2 = dy * dy;
     for (let x = 0; x < width; x++) {
+      const dx = x - cx;
+      const d2 = dx * dx + dy2;
+      // Squared falloff: visually similar to linear, much cheaper
+      const vignette = Math.max(0, 1 - d2 * invMaxD2);
+
       const idx = (y * width + x) * 4;
-      const dist = Math.hypot(x - centerX, y - centerY);
-      const vignette = 1 - (dist / maxDist) * amount;
-      
       data[idx] *= vignette;
       data[idx + 1] *= vignette;
       data[idx + 2] *= vignette;
     }
   }
-  
+
   return imageData;
 }
 

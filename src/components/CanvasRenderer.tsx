@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
 
@@ -47,7 +48,26 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     recordingDuration,
     undo,
     redo,
-  } = useStore();
+  } = useStore(useShallow(s => ({
+    canvasSettings: s.canvasSettings,
+    selectedGeneratorId: s.selectedGeneratorId,
+    seed: s.seed,
+    params: s.params,
+    palette: s.palette,
+    quality: s.quality,
+    isAnimating: s.isAnimating,
+    animationFps: s.animationFps,
+    setAnimating: s.setAnimating,
+    randomizeParams: s.randomizeParams,
+    selectGenerator: s.selectGenerator,
+    postFX: s.postFX,
+    sourceImage: s.sourceImage,
+    setSourceImage: s.setSourceImage,
+    interactionEnabled: s.interactionEnabled,
+    recordingDuration: s.recordingDuration,
+    undo: s.undo,
+    redo: s.redo,
+  })));
 
   // Decode source image data-URL → HTMLImageElement
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
@@ -159,61 +179,124 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     return () => document.removeEventListener('paste', handlePaste);
   }, []); // stable: only reads stable setters
 
-  // ── Art canvas: generator rendering ────────────────────────────────────────
+  // ── Refs for mutable render data (animation reads from these, not closures) ──
+  const renderDataRef = useRef({
+    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage,
+  });
+  renderDataRef.current = {
+    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage,
+  };
+
+  const canvasSizeRef = useRef({ w: 0, h: 0 });
+  const staticTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // ── Canvas sizing effect — only when dimensions change ──────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const dpr = canvasSettings.devicePixelRatio || 2;
-    canvas.width = canvasSettings.width * dpr;
-    canvas.height = canvasSettings.height * dpr;
+    const newW = canvasSettings.width * dpr;
+    const newH = canvasSettings.height * dpr;
+
+    if (canvasSizeRef.current.w === newW && canvasSizeRef.current.h === newH) return;
+    canvasSizeRef.current = { w: newW, h: newH };
+
+    canvas.width = newW;
+    canvas.height = newH;
 
     const overlay = overlayCanvasRef.current;
     if (overlay) {
-      overlay.width = canvas.width;
-      overlay.height = canvas.height;
+      overlay.width = newW;
+      overlay.height = newH;
     }
+  }, [canvasSettings]);
 
+  // ── Static render effect (debounced) — only when NOT animating ──────────────
+  useEffect(() => {
+    if (isAnimating) return;
+
+    // Debounce: wait 80ms to batch rapid slider drags before doing expensive render
+    clearTimeout(staticTimerRef.current);
+    staticTimerRef.current = setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const generator = getGenerator(selectedGeneratorId);
+      if (!generator?.renderCanvas2D) return;
+
+      const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
+      if (loadedImage) finalParams._sourceImage = loadedImage;
+
+      setIsRendering(true);
+      // Defer by two rAF ticks so the browser paints the progress bar first
+      animationRef.current = requestAnimationFrame(() => {
+        animationRef.current = requestAnimationFrame(() => {
+          try {
+            generator.renderCanvas2D!(ctx, finalParams, seed, palette, quality, 0);
+
+            // Apply PostFX
+            const hasPostFX =
+              postFX.grain > 0 || postFX.vignette > 0 ||
+              postFX.dither >= 2 || postFX.posterize >= 1;
+            if (hasPostFX) {
+              const w = ctx.canvas.width, h = ctx.canvas.height;
+              let imageData = ctx.getImageData(0, 0, w, h);
+              if (postFX.grain > 0) imageData = applyGrain(ctx, imageData, postFX.grain);
+              if (postFX.vignette > 0) imageData = applyVignette(ctx, imageData, w, h, postFX.vignette);
+              if (postFX.dither >= 2) imageData = applyDither(ctx, imageData, postFX.dither);
+              if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
+              ctx.putImageData(imageData, 0, 0);
+            }
+          } catch (err) {
+            console.error('Rendering error:', err);
+            ctx.fillStyle = '#ff0000';
+            ctx.font = '14px monospace';
+            ctx.fillText('Render Error', 10, 20);
+          } finally {
+            setIsRendering(false);
+          }
+        });
+      });
+    }, 80);
+
+    return () => {
+      clearTimeout(staticTimerRef.current);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      setIsRendering(false);
+    };
+  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating]);
+
+  // ── Animation loop effect — long-lived, reads from refs ─────────────────────
+  useEffect(() => {
+    if (!isAnimating) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const generator = getGenerator(selectedGeneratorId);
-    if (!generator) {
-      console.warn(`Generator not found: ${selectedGeneratorId}`);
-      return;
-    }
+    lastFrameTimeRef.current = 0;
+    fpsRef.current = { frames: 0, lastTime: 0, fps: 0 };
 
-    const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
-    if (loadedImage) finalParams._sourceImage = loadedImage;
+    const animate = (timestamp: number) => {
+      const rd = renderDataRef.current;
+      const fpsInterval = 1000 / rd.animationFps;
+      const elapsed = timestamp - lastFrameTimeRef.current;
 
-    try {
-      const fpsInterval = 1000 / animationFps;
-      let time = 0;
+      if (elapsed >= fpsInterval) {
+        lastFrameTimeRef.current = timestamp - (elapsed % fpsInterval);
 
-      const render = (timestamp: number) => {
-        time = timestamp / 1000;
-
-        if (generator.renderCanvas2D) {
-          generator.renderCanvas2D(ctx, finalParams, seed, palette, quality, time);
+        const generator = getGenerator(rd.selectedGeneratorId);
+        if (generator?.renderCanvas2D) {
+          const finalParams: Record<string, any> = { ...generator.defaultParams, ...rd.params };
+          if (rd.loadedImage) finalParams._sourceImage = rd.loadedImage;
+          generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, timestamp / 1000);
         }
 
-        if (!isAnimating) {
-          const hasPostFX =
-            postFX.grain > 0 || postFX.vignette > 0 ||
-            postFX.dither >= 2 || postFX.posterize >= 1;
-
-          if (hasPostFX) {
-            const w = ctx.canvas.width, h = ctx.canvas.height;
-            let imageData = ctx.getImageData(0, 0, w, h);
-            if (postFX.grain > 0) imageData = applyGrain(ctx, imageData, postFX.grain);
-            if (postFX.vignette > 0) imageData = applyVignette(ctx, imageData, w, h, postFX.vignette);
-            if (postFX.dither >= 2) imageData = applyDither(ctx, imageData, postFX.dither);
-            if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
-            ctx.putImageData(imageData, 0, 0);
-          }
-        }
-
-        if (showFPS && isAnimating) {
+        if (rd.showFPS) {
           const now = performance.now();
           fpsRef.current.frames++;
           if (now >= fpsRef.current.lastTime + 1000) {
@@ -223,56 +306,23 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           }
           ctx.fillStyle = '#00ff00';
           ctx.font = '14px monospace';
-          ctx.fillText(`${fpsRef.current.fps} / ${animationFps} fps`, 10, 20);
+          ctx.fillText(`${fpsRef.current.fps} / ${rd.animationFps} fps`, 10, 20);
         }
-      };
-
-      const animate = (timestamp: number) => {
-        const elapsed = timestamp - lastFrameTimeRef.current;
-        if (elapsed >= fpsInterval) {
-          lastFrameTimeRef.current = timestamp - (elapsed % fpsInterval);
-          render(timestamp);
-        }
-        animationRef.current = requestAnimationFrame(animate);
-      };
-
-      if (isAnimating) {
-        lastFrameTimeRef.current = 0;
-        animationRef.current = requestAnimationFrame(animate);
-      } else {
-        // Show progress bar, then defer the blocking render by two rAF ticks so
-        // the browser has a chance to paint the bar before the thread is occupied.
-        setIsRendering(true);
-        animationRef.current = requestAnimationFrame(() => {
-          animationRef.current = requestAnimationFrame(() => {
-            try {
-              render(0);
-            } catch (err) {
-              console.error('Rendering error:', err);
-              ctx.fillStyle = '#ff0000';
-              ctx.font = '14px monospace';
-              ctx.fillText('Render Error', 10, 20);
-            } finally {
-              setIsRendering(false);
-            }
-          });
-        });
       }
-    } catch (error) {
-      console.error('Rendering setup error:', error);
-      ctx.fillStyle = '#ff0000';
-      ctx.font = '14px monospace';
-      ctx.fillText('Render Error', 10, 20);
-      setIsRendering(false);
-    }
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      setIsRendering(false);
     };
-  }, [canvasSettings, selectedGeneratorId, seed, params, palette, quality, isAnimating, animationFps, postFX, showFPS, loadedImage]);
+  }, [isAnimating]);
 
-  // ── Overlay canvas: spotlight + ripple interaction ──────────────────────────
+  // ── Overlay canvas: spotlight + ripple interaction (idle-aware) ──────────────
+  const overlayRunningRef = useRef(false);
+
   useEffect(() => {
     const overlay = overlayCanvasRef.current;
     if (!overlay) return;
@@ -281,6 +331,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
     if (!interactionEnabled) {
       ctx.clearRect(0, 0, overlay.width, overlay.height);
+      overlayRunningRef.current = false;
       return;
     }
 
@@ -289,24 +340,35 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       return { x: (clientX - rect.left) / rect.width, y: (clientY - rect.top) / rect.height };
     };
 
+    // Start the overlay loop only when needed
+    const ensureOverlayLoop = () => {
+      if (overlayRunningRef.current) return;
+      overlayRunningRef.current = true;
+      overlayAnimRef.current = requestAnimationFrame(drawOverlay);
+    };
+
     const onMouseMove = (e: MouseEvent) => {
       const { x, y } = getCanvasPos(e.clientX, e.clientY);
       mouseRef.current = { x, y, inside: true };
+      ensureOverlayLoop();
     };
     const onMouseLeave = () => { mouseRef.current.inside = false; };
     const onMouseDown = (e: MouseEvent) => {
       const { x, y } = getCanvasPos(e.clientX, e.clientY);
       ripplesRef.current.push({ x, y, startTime: performance.now() });
+      ensureOverlayLoop();
     };
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       const { x, y } = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
       mouseRef.current = { x, y, inside: true };
+      ensureOverlayLoop();
     };
     const onTouchStart = (e: TouchEvent) => {
       const { x, y } = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
       mouseRef.current = { x, y, inside: true };
       ripplesRef.current.push({ x, y, startTime: performance.now() });
+      ensureOverlayLoop();
     };
     const onTouchEnd = () => { mouseRef.current.inside = false; };
 
@@ -317,42 +379,47 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     overlay.addEventListener('touchstart', onTouchStart);
     overlay.addEventListener('touchend', onTouchEnd);
 
-    // Reset state when interaction is re-enabled
     mouseRef.current = { x: 0.5, y: 0.5, inside: false };
     ripplesRef.current = [];
+    overlayRunningRef.current = false;
 
-    const drawOverlay = (timestamp: number) => {
-      const w = overlay.width, h = overlay.height;
-      ctx.clearRect(0, 0, w, h);
+    function drawOverlay(timestamp: number) {
+      const w = overlay!.width, h = overlay!.height;
+      ctx!.clearRect(0, 0, w, h);
 
       if (mouseRef.current.inside) {
         const mx = mouseRef.current.x * w, my = mouseRef.current.y * h;
-        const grad = ctx.createRadialGradient(mx, my, w * 0.1, mx, my, w * 0.65);
+        const grad = ctx!.createRadialGradient(mx, my, w * 0.1, mx, my, w * 0.65);
         grad.addColorStop(0, 'rgba(0,0,0,0)');
         grad.addColorStop(1, 'rgba(0,0,0,0.72)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
+        ctx!.fillStyle = grad;
+        ctx!.fillRect(0, 0, w, h);
       }
 
       ripplesRef.current = ripplesRef.current.filter(r => timestamp - r.startTime < RIPPLE_DURATION);
       for (const ripple of ripplesRef.current) {
         const age = (timestamp - ripple.startTime) / RIPPLE_DURATION;
-        ctx.save();
-        ctx.strokeStyle = `rgba(255,255,255,${(1 - age) * 0.85})`;
-        ctx.lineWidth = Math.max(1, 2.5 * (1 - age));
-        ctx.beginPath();
-        ctx.arc(ripple.x * w, ripple.y * h, age * w * 0.42, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
+        ctx!.save();
+        ctx!.strokeStyle = `rgba(255,255,255,${(1 - age) * 0.85})`;
+        ctx!.lineWidth = Math.max(1, 2.5 * (1 - age));
+        ctx!.beginPath();
+        ctx!.arc(ripple.x * w, ripple.y * h, age * w * 0.42, 0, Math.PI * 2);
+        ctx!.stroke();
+        ctx!.restore();
+      }
+
+      // Stop the loop when nothing to draw — saves CPU when idle
+      if (!mouseRef.current.inside && ripplesRef.current.length === 0) {
+        overlayRunningRef.current = false;
+        return;
       }
 
       overlayAnimRef.current = requestAnimationFrame(drawOverlay);
-    };
-
-    overlayAnimRef.current = requestAnimationFrame(drawOverlay);
+    }
 
     return () => {
       if (overlayAnimRef.current) cancelAnimationFrame(overlayAnimRef.current);
+      overlayRunningRef.current = false;
       overlay.removeEventListener('mousemove', onMouseMove);
       overlay.removeEventListener('mouseleave', onMouseLeave);
       overlay.removeEventListener('mousedown', onMouseDown);

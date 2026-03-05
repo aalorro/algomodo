@@ -338,7 +338,7 @@ export const reactionDiffusion: Generator = {
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const width    = ctx.canvas.width;
     const height   = ctx.canvas.height;
-    const gridSize = quality === 'draft' ? 100 : quality === 'ultra' ? 320 : 180;
+    const gridSize = quality === 'draft' ? 80 : quality === 'ultra' ? 240 : 160;
 
     // Resolve f/k from preset or custom params
     const presetName = (params.preset as string) ?? 'spots';
@@ -357,7 +357,7 @@ export const reactionDiffusion: Generator = {
       const N     = gridSize * gridSize;
       const nextU = new Float32Array(N);
       const nextV = new Float32Array(N);
-      const iters = Math.max(1, (params.iterations as number) | 0);
+      const iters = Math.min(600, Math.max(1, (params.iterations as number) | 0));
       for (let i = 0; i < iters; i++) {
         stepRD(U, V, nextU, nextV, fField, kField, gridSize, Du, Dv);
       }

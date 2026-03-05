@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { useStore } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { getAllFamilies, getGeneratorsByFamily } from '../core/registry';
 import logoImage from '../assets/algomodo-logo.png';
 
 export const LeftSidebar: React.FC = () => {
-  const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator, setOpenModal } = useStore();
+  const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator, setOpenModal } = useStore(useShallow(s => ({
+    selectedFamilyId: s.selectedFamilyId,
+    selectedGeneratorId: s.selectedGeneratorId,
+    selectFamily: s.selectFamily,
+    selectGenerator: s.selectGenerator,
+    setOpenModal: s.setOpenModal,
+  })));
   const [expandedFamily, setExpandedFamily] = useState<string | null>(selectedFamilyId);
 
   const families = getAllFamilies();

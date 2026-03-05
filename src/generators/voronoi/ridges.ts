@@ -85,6 +85,8 @@ function ridgeOctaveFast(
 
   let d1 = Infinity, d2 = Infinity;
   // Search 7×7 neighborhood to reliably find f1 and f2
+  // For euclidean: compare squared distances to avoid sqrt in the inner loop
+  const useSquared = metric === 0;
   for (let dy = -3; dy <= 3; dy++) {
     const cy = gy + dy;
     if (cy < 0 || cy >= grid.size) continue;
@@ -101,12 +103,14 @@ function ridgeOctaveFast(
         let d: number;
         if (metric === 1) d = Math.abs(sdx) + Math.abs(sdy);
         else if (metric === 2) d = Math.max(Math.abs(sdx), Math.abs(sdy));
-        else d = Math.sqrt(sdx * sdx + sdy * sdy);
+        else d = sdx * sdx + sdy * sdy; // squared — defer sqrt
         if (d < d1) { d2 = d1; d1 = d; }
         else if (d < d2) { d2 = d; }
       }
     }
   }
+  // Only sqrt the final two values for euclidean
+  if (useSquared) return Math.sqrt(d2) - Math.sqrt(d1);
   return d2 - d1;
 }
 
