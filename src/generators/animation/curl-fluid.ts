@@ -68,7 +68,7 @@ export const curlFluid: Generator = {
     const h = ctx.canvas.height;
     const { particleCount, noiseScale, speed, trailDecay, evolution, lineWidth, colorMode } = params;
 
-    const storeKey = `__curl_${seed}`;
+    const storeKey = `__curl_${seed}_${params._renderKey ?? 0}`;
     let state = (globalThis as any)[storeKey];
 
     if (!state || state.w !== w || state.h !== h || state.count !== particleCount) {

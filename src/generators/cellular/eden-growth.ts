@@ -243,7 +243,7 @@ export const edenGrowth: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${seedCount}|${connectivity}`;
+    const key = `${seed}|${size}|${seedCount}|${connectivity}|${params._renderKey ?? 0}`;
     if (!_edenAnim || _edenAnim.key !== key) {
       const { grid, team, birthOrder, frontier, inFrontier, rng } = initEden(seed, size, seedCount, connectivity);
       _edenAnim = { key, grid, team, birthOrder, frontier, inFrontier, step: 0, rng, size, seedCount };

@@ -383,7 +383,7 @@ export const percolation: Generator = {
     const invasionSeeds = Math.max(1, (params.invasionSeeds ?? 4) | 0);
     const baseP = Math.max(0, Math.min(1, params.occupancyP ?? 0.593));
 
-    const key = `${seed}|${size}|${noiseMix}|${noiseScale}`;
+    const key = `${seed}|${size}|${noiseMix}|${noiseScale}|${params._renderKey ?? 0}`;
     if (!_percAnim || _percAnim.key !== key) {
       _percAnim = {
         key,

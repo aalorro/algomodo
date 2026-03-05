@@ -279,7 +279,7 @@ export const ecosystems: Generator = {
     const showTrails = params.showTrails ?? true;
     const stepsPerFrame = params.stepsPerFrame ?? 2;
 
-    const key = `${seed}|${nPrey}|${nPred}|${w}|${h}`;
+    const key = `${seed}|${nPrey}|${nPred}|${w}|${h}|${params._renderKey ?? 0}`;
 
     // Initialize or re-initialize state
     if (!_ecoState || _ecoState.key !== key) {

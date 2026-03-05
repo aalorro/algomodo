@@ -150,7 +150,7 @@ export const briansBrain: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${density}`;
+    const key = `${seed}|${size}|${density}|${params._renderKey ?? 0}`;
     if (!_brainAnim || _brainAnim.key !== key) {
       const { grid, next } = initBrain(seed, size, density);
       _brainAnim = { key, grid, next, size };

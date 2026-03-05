@@ -284,7 +284,7 @@ export const flowingParticles: Generator = {
       sampleField(field!, px, py, width, height, timeDrift);
 
     // ── Particle store (keyed so shape/variance changes reinitialise) ──────
-    const storeKey = `__particles_${seed}_${objectType}_${sizeVariance}_${params.particleCount}`;
+    const storeKey = `__particles_${seed}_${objectType}_${sizeVariance}_${params.particleCount}_${params._renderKey ?? 0}`;
     const isFirstRender = !(globalThis as any)[storeKey];
 
     interface Particle {

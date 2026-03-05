@@ -167,7 +167,7 @@ export const cyclicCA: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${K}`;
+    const key = `${seed}|${size}|${K}|${params._renderKey ?? 0}`;
     if (!_cyclicAnim || _cyclicAnim.key !== key) {
       const { grid, next } = initCyclic(seed, size, K);
       _cyclicAnim = { key, grid, next, size, K };

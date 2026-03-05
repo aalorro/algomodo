@@ -232,7 +232,7 @@ export const isingModel: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}`;
+    const key = `${seed}|${size}|${params._renderKey ?? 0}`;
     if (!_isingAnim || _isingAnim.key !== key) {
       const { spins, flipAge, rng } = initSpins(seed, size);
       // Run warmup sweeps so animation starts from a partially-equilibrated state

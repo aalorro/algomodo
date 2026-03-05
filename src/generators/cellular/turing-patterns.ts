@@ -391,7 +391,7 @@ export const turingPatterns: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${model}|${a}|${b}|${F}|${k}`;
+    const key = `${seed}|${size}|${model}|${a}|${b}|${F}|${k}|${params._renderKey ?? 0}`;
     if (!_turingAnim || _turingAnim.key !== key) {
       const { U, V, nU, nV } = isGS
         ? initGrayScott(seed, size)

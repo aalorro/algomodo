@@ -238,7 +238,7 @@ export const ageTrails: Generator = {
     }
 
     // ── Animation: persistent state ──────────────────────────────────────────
-    const key = `${seed}|${size}|${density}|${ruleKey}`;
+    const key = `${seed}|${size}|${density}|${ruleKey}|${params._renderKey ?? 0}`;
     if (!_ageAnim || _ageAnim.key !== key) {
       const { grid, next, acc } = initState(seed, size, density);
       _ageAnim = { key, grid, next, acc, size, stasisCount: 0, perturbRng: new SeededRNG(seed + 9999) };

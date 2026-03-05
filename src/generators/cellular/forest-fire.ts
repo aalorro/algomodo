@@ -157,7 +157,7 @@ export const forestFire: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}`;
+    const key = `${seed}|${size}|${params._renderKey ?? 0}`;
     if (!_ffAnim || _ffAnim.key !== key) {
       const { grid, rng } = initFF(seed, size, initDensity);
       _ffAnim = { key, grid, next: new Uint8Array(size * size), rng, size };

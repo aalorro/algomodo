@@ -352,7 +352,7 @@ export const dla: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${seedMode}|${scatterSeeds}`;
+    const key = `${seed}|${size}|${seedMode}|${scatterSeeds}|${params._renderKey ?? 0}`;
     if (!_dlaAnim || _dlaAnim.key !== key) {
       const { grid, rng, count, maxRadius } = initDLA(seed, size, seedMode, scatterSeeds);
       _dlaAnim = { key, grid, size, rng, count, maxRadius, seedMode };
