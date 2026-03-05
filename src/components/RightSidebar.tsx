@@ -49,8 +49,10 @@ export const RightSidebar: React.FC = () => {
     setSourceImage,
     recordingDuration,
     setRecordingDuration,
-    loopGif,
-    setLoopGif,
+    boomerangGif,
+    setBoomerangGif,
+    endlessGif,
+    setEndlessGif,
     loadRecipe,
   } = useStore(useShallow(s => ({
     selectedGeneratorId: s.selectedGeneratorId,
@@ -91,8 +93,10 @@ export const RightSidebar: React.FC = () => {
     setSourceImage: s.setSourceImage,
     recordingDuration: s.recordingDuration,
     setRecordingDuration: s.setRecordingDuration,
-    loopGif: s.loopGif,
-    setLoopGif: s.setLoopGif,
+    boomerangGif: s.boomerangGif,
+    setBoomerangGif: s.setBoomerangGif,
+    endlessGif: s.endlessGif,
+    setEndlessGif: s.setEndlessGif,
     loadRecipe: s.loadRecipe,
   })));
 
@@ -277,7 +281,7 @@ export const RightSidebar: React.FC = () => {
       }
 
       console.log('Starting GIF encoding...');
-      const blob = await recorder.exportGIF(gifSize, gifSize, 24, loopGif);
+      const blob = await recorder.exportGIF(gifSize, gifSize, 24, { boomerang: boomerangGif, endless: endlessGif });
 
       if (!blob || blob.size === 0) {
         throw new Error('Generated GIF is empty');
@@ -816,15 +820,25 @@ export const RightSidebar: React.FC = () => {
                   ))}
                 </div>
               </div>
-              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+              <label className="flex items-center gap-2 mb-1 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={loopGif}
-                  onChange={(e) => setLoopGif(e.target.checked)}
+                  checked={boomerangGif}
+                  onChange={(e) => { setBoomerangGif(e.target.checked); if (e.target.checked) setEndlessGif(false); }}
                   disabled={!isAnimating}
                   className="accent-blue-600"
                 />
-                <span className="text-xs text-gray-600 dark:text-gray-400">Seamless loop</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400">Boomerang loop</span>
+              </label>
+              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={endlessGif}
+                  onChange={(e) => { setEndlessGif(e.target.checked); if (e.target.checked) setBoomerangGif(false); }}
+                  disabled={!isAnimating}
+                  className="accent-blue-600"
+                />
+                <span className="text-xs text-gray-600 dark:text-gray-400">Endless loop</span>
               </label>
               <button
                 onClick={handleExportGIF}

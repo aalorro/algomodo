@@ -152,7 +152,8 @@ export interface AppState {
   isAnimating: boolean;
   animationFps: number;
   recordingDuration: number;
-  loopGif: boolean;
+  boomerangGif: boolean;
+  endlessGif: boolean;
   renderKey: number;
   openModal: 'about' | 'privacy' | 'changelog' | 'donation' | null;
 
@@ -195,7 +196,8 @@ export interface AppState {
   setAnimating: (animating: boolean) => void;
   setAnimationFps: (fps: number) => void;
   setRecordingDuration: (duration: number) => void;
-  setLoopGif: (loop: boolean) => void;
+  setBoomerangGif: (on: boolean) => void;
+  setEndlessGif: (on: boolean) => void;
   forceReload: () => void;
   updatePostFX: (key: string, value: any) => void;
   setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | null) => void;
