@@ -9,7 +9,8 @@
       "Bash(node:*)",
       "Bash(ffmpeg:*)",
       "Bash(npm run:*)",
-      "Bash(timeout 15 npx vite:*)"
+      "Bash(timeout 15 npx vite:*)",
+      "Bash(npx eslint:*)"
     ]
   }
 }

@@ -7,7 +7,9 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 function paletteSample(t: number, colors: [number, number, number][]): [number, number, number] {
-  const s = Math.max(0, Math.min(1, t)) * (colors.length - 1);
+  const v = Math.max(0, Math.min(1, t));
+  if (isNaN(v)) return colors[0];
+  const s = v * (colors.length - 1);
   const i0 = Math.floor(s), i1 = Math.min(colors.length - 1, i0 + 1), f = s - i0;
   return [
     (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
@@ -46,23 +48,21 @@ function generateRandomIFS(rng: SeededRNG): AffineTransform[] {
   const transforms: AffineTransform[] = [];
   let totalP = 0;
   for (let i = 0; i < count; i++) {
-    // Generate contractive transforms (eigenvalues < 1)
-    const scale = rng.range(0.1, 0.6);
+    const s = rng.range(0.1, 0.5);
     const angle = rng.randomAngle();
-    const cos = Math.cos(angle) * scale;
-    const sin = Math.sin(angle) * scale;
-    const skew = rng.range(-0.3, 0.3);
+    const cos = Math.cos(angle) * s;
+    const sin = Math.sin(angle) * s;
+    const skew = rng.range(-0.2, 0.2);
     const a = cos + skew;
     const b = -sin;
     const c = sin;
     const d = cos - skew;
-    const e = rng.range(-1.5, 1.5);
+    const e = rng.range(-1, 1);
     const f = rng.range(-0.5, 2.0);
     const p = rng.range(0.1, 1.0);
     totalP += p;
     transforms.push([a, b, c, d, e, f, p]);
   }
-  // Normalize probabilities
   for (const t of transforms) t[6] /= totalP;
   return transforms;
 }
@@ -74,9 +74,14 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   iterations: {
-    name: 'Iterations', type: 'number', min: 10000, max: 1000000, step: 10000, default: 200000,
+    name: 'Iterations', type: 'number', min: 50000, max: 500000, step: 50000, default: 200000,
     help: 'More iterations = denser, more detailed image',
     group: 'Composition',
+  },
+  pointSize: {
+    name: 'Point Size', type: 'number', min: 1, max: 4, step: 1, default: 2,
+    help: 'Size of each plotted point in pixels',
+    group: 'Geometry',
   },
   rotation: {
     name: 'Rotation', type: 'number', min: 0, max: 360, step: 5, default: 0,
@@ -107,7 +112,7 @@ export const ifsBarnsley: Generator = {
     '(4 transforms mimicking stem, left/right leaflets, and tip), Sierpinski triangle, maple leaf, and ' +
     'a random IFS generated from the seed. Density mode accumulates a histogram of point hits.',
   parameterSchema,
-  defaultParams: { preset: 'barnsley', iterations: 200000, rotation: 0, colorMode: 'height', speed: 0.5 },
+  defaultParams: { preset: 'barnsley', iterations: 200000, pointSize: 2, rotation: 0, colorMode: 'height', speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
@@ -120,6 +125,7 @@ export const ifsBarnsley: Generator = {
     const baseRotation = ((params.rotation ?? 0) * Math.PI) / 180;
     const rotation = time > 0 ? baseRotation + time * speed * 0.3 : baseRotation;
     const cosR = Math.cos(rotation), sinR = Math.sin(rotation);
+    const ptSize = Math.max(1, (params.pointSize ?? 2) | 0);
 
     const iterCount = quality === 'draft' ? Math.max(10000, (params.iterations ?? 200000) >> 2)
                     : quality === 'ultra' ? (params.iterations ?? 200000) * 2
@@ -138,8 +144,10 @@ export const ifsBarnsley: Generator = {
     // Run chaos game, collect bounds
     let x = 0, y = 0;
     const warmup = 100;
-    const points: Float32Array = new Float32Array((iterCount - warmup) * 2);
-    const iterValues: Float32Array = new Float32Array(iterCount - warmup);
+    const pointCount = iterCount - warmup;
+    const pointsX = new Float32Array(pointCount);
+    const pointsY = new Float32Array(pointCount);
+    const iterValues = new Float32Array(pointCount);
 
     for (let i = 0; i < iterCount; i++) {
       // Pick transform
@@ -156,19 +164,16 @@ export const ifsBarnsley: Generator = {
       if (i >= warmup) {
         const idx = i - warmup;
         // Apply rotation
-        const rx = x * cosR - y * sinR;
-        const ry = x * sinR + y * cosR;
-        points[idx * 2] = rx;
-        points[idx * 2 + 1] = ry;
+        pointsX[idx] = x * cosR - y * sinR;
+        pointsY[idx] = x * sinR + y * cosR;
         iterValues[idx] = i / iterCount;
       }
     }
 
     // Find bounds
-    const count = iterCount - warmup;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (let i = 0; i < count; i++) {
-      const px = points[i * 2], py = points[i * 2 + 1];
+    for (let i = 0; i < pointCount; i++) {
+      const px = pointsX[i], py = pointsY[i];
       if (px < minX) minX = px;
       if (px > maxX) maxX = px;
       if (py < minY) minY = py;
@@ -178,25 +183,27 @@ export const ifsBarnsley: Generator = {
     const rangeX = maxX - minX || 1;
     const rangeY = maxY - minY || 1;
 
-    // Clear canvas
-    ctx.fillStyle = palette.colors[0] ?? '#000000';
+    // Clear canvas with background
+    const bg = colors[0];
+    ctx.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`;
     ctx.fillRect(0, 0, w, h);
+
+    // Compute mapping from IFS space to canvas
+    const margin = 0.05;
+    const scaleX = (1 - 2 * margin) * w / rangeX;
+    const scaleY = (1 - 2 * margin) * h / rangeY;
+    const sc = Math.min(scaleX, scaleY);
+    const offX = (w - rangeX * sc) * 0.5;
+    const offY = (h - rangeY * sc) * 0.5;
 
     if (colorMode === 'density') {
       // Density histogram mode
       const density = new Float32Array(w * h);
       let maxDensity = 0;
 
-      const margin = 0.05;
-      const scaleX = (1 - 2 * margin) * w / rangeX;
-      const scaleY = (1 - 2 * margin) * h / rangeY;
-      const sc = Math.min(scaleX, scaleY);
-      const offX = (w - rangeX * sc) * 0.5;
-      const offY = (h - rangeY * sc) * 0.5;
-
-      for (let i = 0; i < count; i++) {
-        const px = ((points[i * 2] - minX) * sc + offX) | 0;
-        const py = (h - 1 - ((points[i * 2 + 1] - minY) * sc + offY)) | 0;
+      for (let i = 0; i < pointCount; i++) {
+        const px = ((pointsX[i] - minX) * sc + offX) | 0;
+        const py = (h - 1 - ((pointsY[i] - minY) * sc + offY)) | 0;
         if (px >= 0 && px < w && py >= 0 && py < h) {
           const di = py * w + px;
           density[di]++;
@@ -206,45 +213,39 @@ export const ifsBarnsley: Generator = {
 
       // Render density with log scaling
       const logMax = Math.log(maxDensity + 1);
-      const img = ctx.getImageData(0, 0, w, h);
+      const img = ctx.createImageData(w, h);
       const d = img.data;
+      // Fill with background first
+      for (let i = 0; i < w * h; i++) {
+        const idx = i * 4;
+        d[idx] = bg[0]; d[idx + 1] = bg[1]; d[idx + 2] = bg[2]; d[idx + 3] = 255;
+      }
       for (let i = 0; i < w * h; i++) {
         if (density[i] > 0) {
           const v = Math.log(density[i] + 1) / logMax;
           const [r, g, b] = paletteSample(v, colors);
           const idx = i * 4;
-          d[idx] = r; d[idx + 1] = g; d[idx + 2] = b; d[idx + 3] = 255;
+          d[idx] = r; d[idx + 1] = g; d[idx + 2] = b;
         }
       }
       ctx.putImageData(img, 0, 0);
     } else {
-      // Point-by-point rendering
-      const margin = 0.05;
-      const scaleX = (1 - 2 * margin) * w / rangeX;
-      const scaleY = (1 - 2 * margin) * h / rangeY;
-      const sc = Math.min(scaleX, scaleY);
-      const offX = (w - rangeX * sc) * 0.5;
-      const offY = (h - rangeY * sc) * 0.5;
-
-      const img = ctx.getImageData(0, 0, w, h);
-      const d = img.data;
-
-      for (let i = 0; i < count; i++) {
-        const px = ((points[i * 2] - minX) * sc + offX) | 0;
-        const py = (h - 1 - ((points[i * 2 + 1] - minY) * sc + offY)) | 0;
+      // Draw points directly on canvas (visible, uses point size)
+      for (let i = 0; i < pointCount; i++) {
+        const px = ((pointsX[i] - minX) * sc + offX) | 0;
+        const py = (h - 1 - ((pointsY[i] - minY) * sc + offY)) | 0;
         if (px >= 0 && px < w && py >= 0 && py < h) {
           let v: number;
           if (colorMode === 'height') {
-            v = (points[i * 2 + 1] - minY) / rangeY;
+            v = (pointsY[i] - minY) / rangeY;
           } else {
             v = iterValues[i];
           }
           const [r, g, b] = paletteSample(v, colors);
-          const idx = (py * w + px) * 4;
-          d[idx] = r; d[idx + 1] = g; d[idx + 2] = b; d[idx + 3] = 255;
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(px, py, ptSize, ptSize);
         }
       }
-      ctx.putImageData(img, 0, 0);
     }
   },
 
