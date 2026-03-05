@@ -165,6 +165,7 @@ export interface AppState {
   loadPreset: (id: string) => void;
   deletePreset: (id: string) => void;
   importPresets: (incoming: Preset[]) => void;
+  loadRecipe: (recipe: Recipe) => void;
 
   // Actions
   setCanvasSettings: (settings: Partial<CanvasSettings>) => void;
