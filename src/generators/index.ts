@@ -82,6 +82,11 @@ import { julia } from './fractals/julia';
 import { newtonFractal } from './fractals/newton';
 import { ifsBarnsley } from './fractals/ifs-barnsley';
 import { recursiveSubdivision } from './fractals/recursive-subdivision';
+import { textConcrete } from './text/text-concrete';
+import { textMatrix } from './text/text-matrix';
+import { textGrid } from './text/text-grid';
+import { textRewrite } from './text/text-rewrite';
+import { textPoem } from './text/text-poem';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -167,6 +172,11 @@ export function initializeGenerators() {
   registerGenerator(newtonFractal);
   registerGenerator(ifsBarnsley);
   registerGenerator(recursiveSubdivision);
+  registerGenerator(textConcrete);
+  registerGenerator(textMatrix);
+  registerGenerator(textGrid);
+  registerGenerator(textRewrite);
+  registerGenerator(textPoem);
 }
 
 export {
@@ -186,4 +196,5 @@ export {
   voronoiCells, crackle, ridges, voronoiMosaic, delaunayMesh, centroidalVoronoi, contourBands,
   fractured, depthCells, weightedVoronoi, neighborBands,
   mandelbrot, julia, newtonFractal, ifsBarnsley, recursiveSubdivision,
+  textConcrete, textMatrix, textGrid, textRewrite, textPoem,
 };
