@@ -5,6 +5,22 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-03-05
+
+### Added
+
+- **Preset export/import** — Export all presets (or individual presets) as human-readable `.txt` files; import them back with duplicate detection by id
+- **JSON recipe import** — Load JSON recipe files via a "Load JSON Recipe" button in the Source Image section to restore generator, seed, params, palette, canvas settings, and PostFX
+- **Configurable export filenames** — Separate filename prefix inputs for preset exports (`algomodo-preset-<date>-<time>.txt`) and JSON recipe exports (`algomodo-json-<date>-<time>.json`)
+- **Individual preset export** — Each preset card now has an Export button to download that single preset as a text file
+
+### Changed
+
+- Preset file format uses human-readable text (`.txt`) instead of JSON to clearly differentiate from JSON recipe files
+- Save preset UI simplified to an always-visible inline input with Save button (no more two-step toggle)
+
+---
+
 ## [1.4.0] - 2026-03-04
 
 ### Added

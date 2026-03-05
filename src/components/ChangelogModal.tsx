@@ -20,6 +20,33 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.4.1 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.4.1] - 2026-03-05
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Preset export/import — save presets as human-readable .txt files, import them back</li>
+                  <li>JSON recipe import — load recipe files to restore full canvas state</li>
+                  <li>Configurable filenames for preset and recipe exports</li>
+                  <li>Individual preset export button on each preset card</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Changed</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Preset format uses .txt instead of JSON to differentiate from recipes</li>
+                  <li>Simplified preset save UI to inline input with Save button</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.4.0 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">

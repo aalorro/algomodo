@@ -37,6 +37,8 @@ export const AboutModal: React.FC = () => {
               <li>SURPRISE ME: One-click randomization of generator, seed, params, and palette</li>
               <li>Canvas SAVE: Export PNG at 1080x1080 or record WebM animations</li>
               <li>GIF / WebM export with 3/5/8 second duration options</li>
+              <li>Preset export/import: Save presets as text files and load them back</li>
+              <li>JSON recipe import: Load recipe files to restore canvas state</li>
               <li>Undo / Redo with 50-step parameter history</li>
               <li>Customizable: Adjust parameters to fine-tune your artwork</li>
             </ul>
@@ -44,7 +46,7 @@ export const AboutModal: React.FC = () => {
 
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Version</h3>
-            <p>v1.4.0</p>
+            <p>v1.4.1</p>
           </div>
 
           <div>
