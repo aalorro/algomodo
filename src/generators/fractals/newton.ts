@@ -24,12 +24,12 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   zoom: {
-    name: 'Zoom', type: 'number', min: 0.5, max: 10, step: 0.5, default: 1,
+    name: 'Zoom', type: 'number', min: 0.5, max: 4, step: 0.5, default: 1,
     help: 'Zoom level into the fractal',
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
+    name: 'Max Iterations', type: 'number', min: 16, max: 64, step: 8, default: 32,
     help: 'Maximum Newton iterations per pixel',
     group: 'Composition',
   },
@@ -62,16 +62,17 @@ export const newtonFractal: Generator = {
     'iteration count. The damping factor d alters convergence behavior — values ≠ 1 produce "nova" fractals ' +
     'with elaborate boundary patterns. Animation oscillates the damping factor.',
   parameterSchema,
-  defaultParams: { power: 3, zoom: 1, maxIterations: 48, damping: 1, colorMode: 'blended', speed: 0.5 },
+  defaultParams: { power: 3, zoom: 1, maxIterations: 32, damping: 1, colorMode: 'blended', speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (w === 0 || h === 0) return;
     const colors = palette.colors.map(hexToRgb);
     const power = Math.max(2, Math.min(6, (params.power ?? 3) | 0));
-    const maxIter = quality === 'draft' ? Math.max(16, (params.maxIterations ?? 48) >> 1)
-                  : quality === 'ultra' ? (params.maxIterations ?? 48) * 2
-                  : (params.maxIterations ?? 48);
+    const maxIter = quality === 'draft' ? Math.max(16, (params.maxIterations ?? 32) >> 1)
+                  : quality === 'ultra' ? (params.maxIterations ?? 32) * 2
+                  : (params.maxIterations ?? 32);
     const colorMode = params.colorMode ?? 'blended';
     const zoom = params.zoom ?? 1;
     const step = quality === 'draft' ? 2 : 1;
@@ -185,5 +186,5 @@ export const newtonFractal: Generator = {
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
-  estimateCost(params) { return ((params.maxIterations ?? 48) * (params.power ?? 3) * 8) | 0; },
+  estimateCost(params) { return ((params.maxIterations ?? 32) * (params.power ?? 3) * 8) | 0; },
 };

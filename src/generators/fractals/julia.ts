@@ -29,12 +29,12 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   zoom: {
-    name: 'Zoom', type: 'number', min: 0.5, max: 20, step: 0.5, default: 1,
+    name: 'Zoom', type: 'number', min: 0.5, max: 5, step: 0.5, default: 1,
     help: 'Zoom level into the Julia set',
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 512, step: 16, default: 128,
+    name: 'Max Iterations', type: 'number', min: 32, max: 256, step: 16, default: 100,
     help: 'Higher = more detail but slower',
     group: 'Composition',
   },
@@ -72,15 +72,16 @@ export const julia: Generator = {
     'morphing the fractal between connected and disconnected Julia sets. Smooth coloring uses renormalized ' +
     'iteration count.',
   parameterSchema,
-  defaultParams: { cReal: -0.7, cImag: 0.27, zoom: 1, maxIterations: 128, colorMode: 'smooth', colorCycles: 3, bandCount: 8, speed: 0.5 },
+  defaultParams: { cReal: -0.7, cImag: 0.27, zoom: 1, maxIterations: 100, colorMode: 'smooth', colorCycles: 3, bandCount: 8, speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (w === 0 || h === 0) return;
     const colors = palette.colors.map(hexToRgb);
-    const maxIter = quality === 'draft' ? Math.max(32, (params.maxIterations ?? 128) >> 2)
-                  : quality === 'ultra' ? (params.maxIterations ?? 128) * 2
-                  : (params.maxIterations ?? 128);
+    const maxIter = quality === 'draft' ? Math.max(32, (params.maxIterations ?? 100) >> 2)
+                  : quality === 'ultra' ? (params.maxIterations ?? 100) * 2
+                  : (params.maxIterations ?? 100);
     const colorMode = params.colorMode ?? 'smooth';
     const colorCycles = params.colorCycles ?? 3;
     const bandCount = Math.max(2, (params.bandCount ?? 8) | 0);

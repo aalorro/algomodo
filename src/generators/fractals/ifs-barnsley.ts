@@ -19,8 +19,7 @@ function paletteSample(t: number, colors: [number, number, number][]): [number, 
 }
 
 // Affine transform: [a, b, c, d, e, f, probability]
-// x' = a*x + b*y + e
-// y' = c*x + d*y + f
+// x' = a*x + b*y + e,  y' = c*x + d*y + f
 type AffineTransform = [number, number, number, number, number, number, number];
 
 const PRESETS: Record<string, AffineTransform[]> = {
@@ -53,15 +52,10 @@ function generateRandomIFS(rng: SeededRNG): AffineTransform[] {
     const cos = Math.cos(angle) * s;
     const sin = Math.sin(angle) * s;
     const skew = rng.range(-0.2, 0.2);
-    const a = cos + skew;
-    const b = -sin;
-    const c = sin;
-    const d = cos - skew;
-    const e = rng.range(-1, 1);
-    const f = rng.range(-0.5, 2.0);
+    transforms.push([cos + skew, -sin, sin, cos - skew, rng.range(-1, 1), rng.range(-0.5, 2), 0]);
     const p = rng.range(0.1, 1.0);
     totalP += p;
-    transforms.push([a, b, c, d, e, f, p]);
+    transforms[i][6] = p;
   }
   for (const t of transforms) t[6] /= totalP;
   return transforms;
@@ -108,15 +102,14 @@ export const ifsBarnsley: Generator = {
   algorithmNotes:
     'Implements the chaos game algorithm: start at an arbitrary point, repeatedly choose a random affine ' +
     'transform (weighted by probability) and apply it. After a warmup period, plot each resulting point. ' +
-    'The attractor emerges as the set of all limit points. Presets include the classic Barnsley fern ' +
-    '(4 transforms mimicking stem, left/right leaflets, and tip), Sierpinski triangle, maple leaf, and ' +
-    'a random IFS generated from the seed. Density mode accumulates a histogram of point hits.',
+    'Presets include the classic Barnsley fern, Sierpinski triangle, maple leaf, and a random IFS from seed.',
   parameterSchema,
   defaultParams: { preset: 'barnsley', iterations: 200000, pointSize: 2, rotation: 0, colorMode: 'height', speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (w === 0 || h === 0) return;
     const colors = palette.colors.map(hexToRgb);
     const rng = new SeededRNG(seed);
     const preset = params.preset ?? 'barnsley';
@@ -131,7 +124,6 @@ export const ifsBarnsley: Generator = {
                     : quality === 'ultra' ? (params.iterations ?? 200000) * 2
                     : (params.iterations ?? 200000);
 
-    // Get transforms
     const transforms = preset === 'random'
       ? generateRandomIFS(rng)
       : PRESETS[preset] ?? PRESETS.barnsley;
@@ -141,16 +133,14 @@ export const ifsBarnsley: Generator = {
     let sum = 0;
     for (const t of transforms) { sum += t[6]; cumP.push(sum); }
 
-    // Run chaos game, collect bounds
+    // Run chaos game
     let x = 0, y = 0;
     const warmup = 100;
     const pointCount = iterCount - warmup;
     const pointsX = new Float32Array(pointCount);
     const pointsY = new Float32Array(pointCount);
-    const iterValues = new Float32Array(pointCount);
 
     for (let i = 0; i < iterCount; i++) {
-      // Pick transform
       const r = rng.random();
       let ti = 0;
       for (; ti < cumP.length - 1; ti++) {
@@ -163,32 +153,23 @@ export const ifsBarnsley: Generator = {
 
       if (i >= warmup) {
         const idx = i - warmup;
-        // Apply rotation
         pointsX[idx] = x * cosR - y * sinR;
         pointsY[idx] = x * sinR + y * cosR;
-        iterValues[idx] = i / iterCount;
       }
     }
 
     // Find bounds
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (let i = 0; i < pointCount; i++) {
-      const px = pointsX[i], py = pointsY[i];
-      if (px < minX) minX = px;
-      if (px > maxX) maxX = px;
-      if (py < minY) minY = py;
-      if (py > maxY) maxY = py;
+      if (pointsX[i] < minX) minX = pointsX[i];
+      if (pointsX[i] > maxX) maxX = pointsX[i];
+      if (pointsY[i] < minY) minY = pointsY[i];
+      if (pointsY[i] > maxY) maxY = pointsY[i];
     }
-
     const rangeX = maxX - minX || 1;
     const rangeY = maxY - minY || 1;
 
-    // Clear canvas with background
-    const bg = colors[0];
-    ctx.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`;
-    ctx.fillRect(0, 0, w, h);
-
-    // Compute mapping from IFS space to canvas
+    // Compute mapping
     const margin = 0.05;
     const scaleX = (1 - 2 * margin) * w / rangeX;
     const scaleY = (1 - 2 * margin) * h / rangeY;
@@ -196,11 +177,21 @@ export const ifsBarnsley: Generator = {
     const offX = (w - rangeX * sc) * 0.5;
     const offY = (h - rangeY * sc) * 0.5;
 
+    // Render using ImageData (fast) — fill background, then stamp points
+    const img = ctx.createImageData(w, h);
+    const d = img.data;
+
+    // Fill background with first palette color
+    const bg = colors[0];
+    for (let i = 0; i < w * h; i++) {
+      const idx = i * 4;
+      d[idx] = bg[0]; d[idx + 1] = bg[1]; d[idx + 2] = bg[2]; d[idx + 3] = 255;
+    }
+
     if (colorMode === 'density') {
-      // Density histogram mode
+      // Accumulate density histogram
       const density = new Float32Array(w * h);
       let maxDensity = 0;
-
       for (let i = 0; i < pointCount; i++) {
         const px = ((pointsX[i] - minX) * sc + offX) | 0;
         const py = (h - 1 - ((pointsY[i] - minY) * sc + offY)) | 0;
@@ -210,16 +201,7 @@ export const ifsBarnsley: Generator = {
           if (density[di] > maxDensity) maxDensity = density[di];
         }
       }
-
-      // Render density with log scaling
       const logMax = Math.log(maxDensity + 1);
-      const img = ctx.createImageData(w, h);
-      const d = img.data;
-      // Fill with background first
-      for (let i = 0; i < w * h; i++) {
-        const idx = i * 4;
-        d[idx] = bg[0]; d[idx + 1] = bg[1]; d[idx + 2] = bg[2]; d[idx + 3] = 255;
-      }
       for (let i = 0; i < w * h; i++) {
         if (density[i] > 0) {
           const v = Math.log(density[i] + 1) / logMax;
@@ -228,9 +210,8 @@ export const ifsBarnsley: Generator = {
           d[idx] = r; d[idx + 1] = g; d[idx + 2] = b;
         }
       }
-      ctx.putImageData(img, 0, 0);
     } else {
-      // Draw points directly on canvas (visible, uses point size)
+      // Plot points into ImageData with ptSize×ptSize blocks
       for (let i = 0; i < pointCount; i++) {
         const px = ((pointsX[i] - minX) * sc + offX) | 0;
         const py = (h - 1 - ((pointsY[i] - minY) * sc + offY)) | 0;
@@ -239,14 +220,21 @@ export const ifsBarnsley: Generator = {
           if (colorMode === 'height') {
             v = (pointsY[i] - minY) / rangeY;
           } else {
-            v = iterValues[i];
+            v = i / pointCount;
           }
           const [r, g, b] = paletteSample(v, colors);
-          ctx.fillStyle = `rgb(${r},${g},${b})`;
-          ctx.fillRect(px, py, ptSize, ptSize);
+          // Stamp a ptSize×ptSize block
+          for (let dy = 0; dy < ptSize && py + dy < h; dy++) {
+            for (let dx = 0; dx < ptSize && px + dx < w; dx++) {
+              const idx = ((py + dy) * w + (px + dx)) * 4;
+              d[idx] = r; d[idx + 1] = g; d[idx + 2] = b;
+            }
+          }
         }
       }
     }
+
+    ctx.putImageData(img, 0, 0);
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
