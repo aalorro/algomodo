@@ -7,6 +7,7 @@ import { createRecipe, downloadRecipe, uploadRecipe } from '../core/recipe';
 import { generateSVG, downloadSVG } from '../renderers/svg/builder';
 import { CanvasRecorder } from '../utils/recorder';
 import { CURATED_PALETTES } from '../data/palettes';
+import { loadImageFromUrl } from '../utils/imageUrl';
 
 export const RightSidebar: React.FC = () => {
   const {
@@ -189,32 +190,8 @@ export const RightSidebar: React.FC = () => {
     return `algomodo-json-${date}-${time}.json`;
   };
 
-  const loadFromUrl = async (url: string) => {
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const blob = await resp.blob();
-      if (!blob.type.startsWith('image/')) throw new Error('Not an image');
-      const reader = new FileReader();
-      reader.onload = (e) => setSourceImage(e.target?.result as string);
-      reader.readAsDataURL(blob);
-      return;
-    } catch { /* fall through */ }
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        c.getContext('2d')!.drawImage(img, 0, 0);
-        setSourceImage(c.toDataURL());
-      } catch {
-        alert('Could not read image — the server may block cross-origin access.');
-      }
-    };
-    img.onerror = () => alert('Failed to load image from URL.');
-    img.src = url;
+  const loadFromUrl = (url: string) => {
+    loadImageFromUrl(url, (dataUrl) => setSourceImage(dataUrl));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
