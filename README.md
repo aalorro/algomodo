@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.4.0 · © 2026 ArtMondo
+MIT License · v1.4.1 · © 2026 ArtMondo
 
 ---
 
@@ -16,7 +16,8 @@ MIT License · v1.4.0 · © 2026 ArtMondo
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
 | **PostFX pipeline** | Grain, vignette, ordered dither, and posterize as post-render ImageData pixel passes |
 | **Image input** | Drop or paste any image (JPEG / PNG / URL) to activate the Image family generators |
-| **Recipe save / load** | Export or import a compact JSON snapshot: generator + seed + params + palette + PostFX |
+| **Recipe save / load** | Export or import a compact JSON snapshot: generator + seed + params + palette + PostFX; load JSON recipes from file |
+| **Preset export / import** | Export presets as human-readable text files and import them back; individual or bulk export with configurable filenames |
 | **SURPRISE ME** | One-click randomization of generator, seed, parameters, and colour palette |
 | **Canvas SAVE** | Export static images as 1080×1080 PNG or animations as 1080×1080 WebM directly from the canvas |
 | **GIF / WebM export** | Record and download animated GIFs or WebM videos via the Export tab with 3/5/8 second durations |
