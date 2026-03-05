@@ -7,7 +7,9 @@
       "Bash(python3:*)",
       "WebSearch",
       "Bash(node:*)",
-      "Bash(ffmpeg:*)"
+      "Bash(ffmpeg:*)",
+      "Bash(npm run:*)",
+      "Bash(timeout 15 npx vite:*)"
     ]
   }
 }

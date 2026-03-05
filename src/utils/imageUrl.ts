@@ -4,7 +4,7 @@
  * - Wikimedia Commons file pages → Special:FilePath redirect
  */
 export function normalizeImageUrl(raw: string): string {
-  let url = raw.trim();
+  const url = raw.trim();
 
   // Wikipedia media page: .../wiki/...#/media/File:Name.jpg
   const wikiMediaMatch = url.match(
