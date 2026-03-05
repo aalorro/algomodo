@@ -6,7 +6,9 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 function paletteSample(t: number, colors: [number, number, number][]): [number, number, number] {
-  const s = Math.max(0, Math.min(1, t)) * (colors.length - 1);
+  const v = Math.max(0, Math.min(1, t));
+  if (isNaN(v)) return colors[0];
+  const s = v * (colors.length - 1);
   const i0 = Math.floor(s), i1 = Math.min(colors.length - 1, i0 + 1), f = s - i0;
   return [
     (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
@@ -17,28 +19,33 @@ function paletteSample(t: number, colors: [number, number, number][]): [number, 
 
 const parameterSchema: ParameterSchema = {
   cReal: {
-    name: 'C Real', type: 'number', min: -2, max: 2, step: 0.01, default: -0.7,
+    name: 'C Real', type: 'number', min: -1.5, max: 1.5, step: 0.01, default: -0.7,
     help: 'Real part of the constant c',
     group: 'Composition',
   },
   cImag: {
-    name: 'C Imaginary', type: 'number', min: -2, max: 2, step: 0.01, default: 0.27,
+    name: 'C Imaginary', type: 'number', min: -1.5, max: 1.5, step: 0.01, default: 0.27,
     help: 'Imaginary part of the constant c',
     group: 'Composition',
   },
   zoom: {
-    name: 'Zoom', type: 'number', min: 0.5, max: 100, step: 0.5, default: 1,
+    name: 'Zoom', type: 'number', min: 0.5, max: 5, step: 0.5, default: 1,
     help: 'Zoom level into the Julia set',
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 1024, step: 16, default: 256,
+    name: 'Max Iterations', type: 'number', min: 32, max: 256, step: 16, default: 100,
     help: 'Higher = more detail but slower',
     group: 'Composition',
   },
   colorMode: {
     name: 'Color Mode', type: 'select', options: ['smooth', 'bands'], default: 'smooth',
     help: 'smooth: continuous gradient | bands: stepped contours',
+    group: 'Color',
+  },
+  colorCycles: {
+    name: 'Color Cycles', type: 'number', min: 1, max: 10, step: 1, default: 3,
+    help: 'How many times the palette repeats across the iteration range',
     group: 'Color',
   },
   bandCount: {
@@ -65,16 +72,18 @@ export const julia: Generator = {
     'morphing the fractal between connected and disconnected Julia sets. Smooth coloring uses renormalized ' +
     'iteration count.',
   parameterSchema,
-  defaultParams: { cReal: -0.7, cImag: 0.27, zoom: 1, maxIterations: 256, colorMode: 'smooth', bandCount: 8, speed: 0.5 },
+  defaultParams: { cReal: -0.7, cImag: 0.27, zoom: 1, maxIterations: 100, colorMode: 'smooth', colorCycles: 3, bandCount: 8, speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
+    if (w === 0 || h === 0) return;
     const colors = palette.colors.map(hexToRgb);
-    const maxIter = quality === 'draft' ? Math.max(32, (params.maxIterations ?? 256) >> 2)
-                  : quality === 'ultra' ? (params.maxIterations ?? 256) * 2
-                  : (params.maxIterations ?? 256);
+    const maxIter = quality === 'draft' ? Math.max(32, (params.maxIterations ?? 100) >> 2)
+                  : quality === 'ultra' ? (params.maxIterations ?? 100) * 2
+                  : (params.maxIterations ?? 100);
     const colorMode = params.colorMode ?? 'smooth';
+    const colorCycles = params.colorCycles ?? 3;
     const bandCount = Math.max(2, (params.bandCount ?? 8) | 0);
     const step = quality === 'draft' ? 2 : 1;
     const zoom = params.zoom ?? 1;
@@ -95,8 +104,8 @@ export const julia: Generator = {
 
     const scale = 3.0 / (zoom * Math.min(w, h));
     const halfW = w * 0.5, halfH = h * 0.5;
-    const escapeR = 256;
-    const logEscape = Math.log2(Math.log2(escapeR));
+    const escapeR = 4;
+    const LOG2 = Math.log(2);
 
     const img = ctx.createImageData(w, h);
     const d = img.data;
@@ -124,8 +133,10 @@ export const julia: Generator = {
         } else {
           let v: number;
           if (colorMode === 'smooth') {
-            const smoothIter = iter - Math.log2(Math.log2(zr2 + zi2)) + logEscape;
-            v = (smoothIter / maxIter) % 1;
+            const mag2 = zr2 + zi2;
+            const smoothIter = mag2 > 1 ? iter + 1 - Math.log(Math.log(mag2) * 0.5) / LOG2 : iter;
+            v = (smoothIter * colorCycles / maxIter) % 1;
+            if (v < 0) v += 1;
           } else {
             v = Math.floor((iter / maxIter) * bandCount) / bandCount;
           }
@@ -144,5 +155,5 @@ export const julia: Generator = {
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
-  estimateCost(params) { return ((params.maxIterations ?? 256) * 4) | 0; },
+  estimateCost(params) { return ((params.maxIterations ?? 128) * 4) | 0; },
 };

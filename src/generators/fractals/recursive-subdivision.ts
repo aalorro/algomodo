@@ -145,10 +145,15 @@ export const recursiveSubdivision: Generator = {
     const colorMode = params.colorMode ?? 'depth';
     const speed = params.speed ?? 0.5;
 
-    // Animated depth reveal
-    const visibleDepth = time > 0
-      ? Math.min(maxDepth, Math.floor(time * speed * 2) + 1)
-      : maxDepth;
+    // Animated depth reveal — cycles from 1 to maxDepth and back
+    let visibleDepth: number;
+    if (time > 0) {
+      const period = maxDepth / (speed * 1.5); // seconds per full cycle
+      const phase = (time % period) / period;  // 0→1 within each cycle
+      visibleDepth = Math.max(1, Math.min(maxDepth, Math.floor(phase * (maxDepth + 1))));
+    } else {
+      visibleDepth = maxDepth;
+    }
 
     // Generate cells
     const cells: Cell[] = [];
