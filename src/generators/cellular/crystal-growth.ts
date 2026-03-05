@@ -331,7 +331,7 @@ export const crystalGrowth: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${undercooling}|${symmetry}|${delta}|${eps0}|${seedCount}`;
+    const key = `${seed}|${size}|${undercooling}|${symmetry}|${delta}|${eps0}|${seedCount}|${params._renderKey ?? 0}`;
     if (!_crystalAnim || _crystalAnim.key !== key) {
       const { phi, u, nPhi, nU, thetaShift, rng } = initCrystal(size, undercooling, seedRadius, seedCount, undercoolingGradient, seed);
       _crystalAnim = { key, phi, u, nPhi, nU, thetaShift, rng, size };

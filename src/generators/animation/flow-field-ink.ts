@@ -115,7 +115,7 @@ export const flowFieldInk: Generator = {
     const colorMode    = (params.colorMode   ?? 'angle') as string;
 
     // ── State: off-screen accumulation canvas + particles ─────────────────
-    const storeKey = `__ffi_${seed}`;
+    const storeKey = `__ffi_${seed}_${params._renderKey ?? 0}`;
     let state = (globalThis as any)[storeKey] as {
       particles: Particle[];
       off: HTMLCanvasElement;

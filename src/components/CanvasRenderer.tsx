@@ -49,6 +49,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     recordingDuration,
     undo,
     redo,
+    renderKey,
+    forceReload,
   } = useStore(useShallow(s => ({
     canvasSettings: s.canvasSettings,
     selectedGeneratorId: s.selectedGeneratorId,
@@ -68,6 +70,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     recordingDuration: s.recordingDuration,
     undo: s.undo,
     redo: s.redo,
+    renderKey: s.renderKey,
+    forceReload: s.forceReload,
   })));
 
   // Decode source image data-URL → HTMLImageElement
@@ -155,10 +159,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
   // ── Refs for mutable render data (animation reads from these, not closures) ──
   const renderDataRef = useRef({
-    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage,
+    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage, renderKey,
   });
   renderDataRef.current = {
-    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage,
+    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage, renderKey,
   };
 
   const canvasSizeRef = useRef({ w: 0, h: 0 });
@@ -203,6 +207,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
       const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
       if (loadedImage) finalParams._sourceImage = loadedImage;
+      finalParams._renderKey = renderKey;
 
       setIsRendering(true);
       // Defer by two rAF ticks so the browser paints the progress bar first
@@ -241,7 +246,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       setIsRendering(false);
     };
-  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating]);
+  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating, renderKey]);
 
   // ── Animation loop effect — long-lived, reads from refs ─────────────────────
   useEffect(() => {
@@ -267,6 +272,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         if (generator?.renderCanvas2D) {
           const finalParams: Record<string, any> = { ...generator.defaultParams, ...rd.params };
           if (rd.loadedImage) finalParams._sourceImage = rd.loadedImage;
+          finalParams._renderKey = rd.renderKey;
           generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, timestamp / 1000);
         }
 
@@ -292,7 +298,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [isAnimating]);
+  }, [isAnimating, renderKey]);
 
   // ── Overlay canvas: spotlight + ripple interaction (idle-aware) ──────────────
   const overlayRunningRef = useRef(false);
@@ -603,6 +609,13 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
           >
             ✨ SURPRISE ME
+          </button>
+          <button
+            onClick={forceReload}
+            className="px-5 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+            title="Re-render with same settings"
+          >
+            🔄 RELOAD
           </button>
           <button
             onClick={handleSave}

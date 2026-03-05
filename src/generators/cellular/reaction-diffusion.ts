@@ -366,7 +366,7 @@ export const reactionDiffusion: Generator = {
     }
 
     // ── Animation mode ─────────────────────────────────────────────────────
-    const key = rdKey(seed, gridSize, f, k, Du, Dv, sv, im);
+    const key = rdKey(seed, gridSize, f, k, Du, Dv, sv, im) + `|${params._renderKey ?? 0}`;
     if (!_rdAnim || _rdAnim.key !== key) {
       const { U, V, fField, kField } = initRD(seed, gridSize, f, k, sv, im);
       const N = gridSize * gridSize;

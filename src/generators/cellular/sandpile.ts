@@ -268,7 +268,7 @@ export const sandpile: Generator = {
       return;
     }
 
-    const key = `${seed}|${size}|${dropSite}`;
+    const key = `${seed}|${size}|${dropSite}|${params._renderKey ?? 0}`;
     if (!_sandAnim || _sandAnim.key !== key) {
       const { grains, toppleCount, lastToppleStep, pendingStack } = initSandpile(size);
       _sandAnim = { key, grains, toppleCount, lastToppleStep, pendingStack, size, totalDropped: 0, frameIndex: 0 };

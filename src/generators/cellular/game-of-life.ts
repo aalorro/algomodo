@@ -269,7 +269,7 @@ export const gameOfLife: Generator = {
     }
 
     // ── Animation mode ────────────────────────────────────────────────────────
-    const key = `${seed}|${size}|${density}|${wrap}|${params.ruleSet ?? 'conway'}`;
+    const key = `${seed}|${size}|${density}|${wrap}|${params.ruleSet ?? 'conway'}|${params._renderKey ?? 0}`;
     if (!_anim || _anim.key !== key) {
       const { grid, next, age } = initGrid(seed, size, density);
       _anim = { key, grid, next, age, size };
