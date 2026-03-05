@@ -75,7 +75,7 @@ export const textGrid: Generator = {
 
     const customText = (params.customText ?? '').trim();
     const chars = customText.length > 0
-      ? [...new Set(customText.split('').filter(c => c !== ' '))]
+      ? [...new Set(customText.split('').filter((c: string) => c !== ' '))] as string[]
       : (CHAR_SETS[charSetName] ?? CHAR_SETS.blocks);
     if (chars.length === 0) return;
     const cols = Math.ceil(w / gridSize);
@@ -129,7 +129,7 @@ export const textGrid: Generator = {
 
         ctx.font = `${fontSize}px monospace`;
         ctx.fillStyle = hexToRgba(color, alpha);
-        ctx.fillText(char, x, y);
+        ctx.fillText(char as string, x, y);
       }
     }
   },

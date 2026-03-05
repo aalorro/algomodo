@@ -82,7 +82,7 @@ export const textMatrix: Generator = {
 
     const customText = (params.customText ?? '').trim();
     const chars = customText.length > 0
-      ? customText.split('').filter(c => c !== ' ')
+      ? customText.split('').filter((c: string) => c !== ' ')
       : getCharSet(charSetName);
     if (chars.length === 0) return;
     const cellW = w / numCols;

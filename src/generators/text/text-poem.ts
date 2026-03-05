@@ -163,8 +163,8 @@ export const textPoem: Generator = {
     if (customText.length > 0) {
       // Split on | for explicit line breaks, or fall back to natural line detection
       lines = customText.includes('|')
-        ? customText.split('|').map(l => l.trim()).filter(l => l.length > 0)
-        : customText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        ? customText.split('|').map((l: string) => l.trim()).filter((l: string) => l.length > 0)
+        : customText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
       if (lines.length === 0) lines = [customText];
     } else {
       switch (style) {
