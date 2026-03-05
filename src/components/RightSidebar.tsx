@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { getGenerator } from '../core/registry';
 import { ParameterControls } from './ParameterControls';
-import { createRecipe, downloadRecipe, downloadJSON, uploadRecipe } from '../core/recipe';
+import { createRecipe, downloadRecipe, uploadRecipe } from '../core/recipe';
 import { generateSVG, downloadSVG } from '../renderers/svg/builder';
 import { CanvasRecorder } from '../utils/recorder';
 import { CURATED_PALETTES } from '../data/palettes';
@@ -93,7 +93,6 @@ export const RightSidebar: React.FC = () => {
 
   const generator = getGenerator(selectedGeneratorId);
   const [activeTab, setActiveTab] = useState<'params' | 'presets' | 'export' | 'settings'>('params');
-  const [showSaveForm, setShowSaveForm] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInputValue, setUrlInputValue] = useState('');
@@ -116,11 +115,69 @@ export const RightSidebar: React.FC = () => {
   };
 
   const buildPresetFilename = (): string => {
-    if (presetPrefix.trim()) return `${presetPrefix.trim()}.json`;
+    if (presetPrefix.trim()) return `${presetPrefix.trim()}.txt`;
     const now = new Date();
     const date = now.toISOString().slice(0, 10).replace(/-/g, '');
     const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
-    return `algomodo-preset-${date}-${time}.json`;
+    return `algomodo-preset-${date}-${time}.txt`;
+  };
+
+  const serializePresets = (items: import('../types').Preset[]): string => {
+    return items.map(p => {
+      const lines: string[] = [];
+      lines.push('=== ALGOMODO PRESET ===');
+      lines.push(`id: ${p.id}`);
+      lines.push(`name: ${p.name}`);
+      lines.push(`generator: ${p.generatorId}`);
+      if (p.seed !== undefined) lines.push(`seed: ${p.seed}`);
+      lines.push(`palette: ${p.palette.name}`);
+      lines.push(`colors: ${p.palette.colors.join(', ')}`);
+      lines.push('[params]');
+      for (const [key, value] of Object.entries(p.params)) {
+        lines.push(`${key} = ${JSON.stringify(value)}`);
+      }
+      lines.push('=== END ===');
+      return lines.join('\n');
+    }).join('\n\n');
+  };
+
+  const deserializePresets = (text: string): import('../types').Preset[] => {
+    const blocks = text.split('=== ALGOMODO PRESET ===').slice(1);
+    return blocks.map(block => {
+      const content = block.split('=== END ===')[0].trim();
+      const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+
+      const get = (prefix: string) => {
+        const line = lines.find(l => l.startsWith(prefix));
+        return line ? line.slice(prefix.length).trim() : '';
+      };
+
+      const paramsStart = lines.indexOf('[params]');
+      const params: Record<string, any> = {};
+      if (paramsStart !== -1) {
+        for (let i = paramsStart + 1; i < lines.length; i++) {
+          const eq = lines[i].indexOf(' = ');
+          if (eq === -1) continue;
+          const key = lines[i].slice(0, eq);
+          const val = lines[i].slice(eq + 3);
+          try { params[key] = JSON.parse(val); } catch { params[key] = val; }
+        }
+      }
+
+      const preset: import('../types').Preset = {
+        id: get('id:'),
+        name: get('name:'),
+        generatorId: get('generator:'),
+        params,
+        palette: {
+          name: get('palette:'),
+          colors: get('colors:').split(',').map(c => c.trim()).filter(Boolean),
+        },
+      };
+      const seed = get('seed:');
+      if (seed) preset.seed = Number(seed);
+      return preset;
+    });
   };
 
   const buildRecipeFilename = (): string => {
@@ -541,67 +598,46 @@ export const RightSidebar: React.FC = () => {
           <div className="flex flex-col h-full">
             <div className="px-4 py-4 space-y-3 overflow-y-auto pb-[30px] flex-1">
             {/* Save section */}
-            {!showSaveForm ? (
-              <button
-                onClick={() => setShowSaveForm(true)}
-                className="w-full px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
-              >
-                Save as Preset
-              </button>
-            ) : (
-              <div className="space-y-2">
+            <div className="space-y-2">
+              <div className="flex gap-2">
                 <input
-                  autoFocus
                   value={presetName}
                   onChange={e => setPresetName(e.target.value)}
                   placeholder="Preset name..."
-                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
+                  className="flex-1 px-2 py-2 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
                   onKeyDown={e => {
                     if (e.key === 'Enter' && presetName.trim()) {
                       savePreset(presetName.trim());
-                      setShowSaveForm(false);
-                      setPresetName('');
-                    } else if (e.key === 'Escape') {
-                      setShowSaveForm(false);
                       setPresetName('');
                     }
                   }}
                 />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { savePreset(presetName.trim()); setShowSaveForm(false); setPresetName(''); }}
-                    disabled={!presetName.trim()}
-                    className="flex-1 px-3 py-1 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-400 text-white rounded"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => { setShowSaveForm(false); setPresetName(''); }}
-                    className="flex-1 px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <button
+                  onClick={() => { savePreset(presetName.trim()); setPresetName(''); }}
+                  disabled={!presetName.trim()}
+                  className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-400 text-white rounded"
+                >
+                  Save
+                </button>
               </div>
-            )}
+            </div>
 
             {/* Export / Import */}
-            {presets.length > 0 && (
-              <div>
-                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-1">Preset Filename</label>
-                <input
-                  type="text"
-                  value={presetPrefix}
-                  onChange={(e) => setPresetPrefix(e.target.value)}
-                  placeholder="algomodo-preset-YYYYMMDD-HHMMSS"
-                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
-                />
-              </div>
-            )}
             <div className="flex gap-2">
               {presets.length > 0 && (
                 <button
-                  onClick={() => downloadJSON(presets, buildPresetFilename())}
+                  onClick={() => {
+                    const text = serializePresets(presets);
+                    const blob = new Blob([text], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = buildPresetFilename();
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
                   className="flex-1 px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded"
                 >
                   Export All
@@ -616,15 +652,15 @@ export const RightSidebar: React.FC = () => {
               <input
                 ref={importInputRef}
                 type="file"
-                accept=".json"
+                accept=".txt"
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
                     const text = await file.text();
-                    const parsed = JSON.parse(text);
-                    if (!Array.isArray(parsed) || !parsed.every((p: any) => p.id && p.name && p.generatorId && p.params && p.palette)) {
+                    const parsed = deserializePresets(text);
+                    if (parsed.length === 0 || !parsed.every(p => p.id && p.name && p.generatorId && p.params && p.palette)) {
                       throw new Error('Invalid preset format');
                     }
                     importPresets(parsed);
@@ -637,6 +673,18 @@ export const RightSidebar: React.FC = () => {
                 }}
               />
             </div>
+            {presets.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-1">Export Filename</label>
+                <input
+                  type="text"
+                  value={presetPrefix}
+                  onChange={(e) => setPresetPrefix(e.target.value)}
+                  placeholder="algomodo-preset-YYYYMMDD-HHMMSS.txt"
+                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
+                />
+              </div>
+            )}
             {importError && (
               <p className="text-xs text-red-500 dark:text-red-400">{importError}</p>
             )}
