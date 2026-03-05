@@ -74,7 +74,7 @@ export class CanvasRecorder {
     this.isRecording = false;
   }
 
-  async exportGIF(width: number, height: number, fps: number = 24): Promise<Blob> {
+  async exportGIF(width: number, height: number, fps: number = 24, loop: boolean = false): Promise<Blob> {
     return new Promise((resolve, reject) => {
       try {
         if (!this.frames || this.frames.length === 0) {
@@ -82,7 +82,13 @@ export class CanvasRecorder {
           return;
         }
 
-        console.log(`Creating GIF with ${this.frames.length} frames at ${width}x${height} (${fps}fps)...`);
+        // Build frame sequence: if loop enabled, append reversed frames for seamless ping-pong
+        const forwardFrames = this.frames;
+        const frameSequence = loop && forwardFrames.length > 2
+          ? [...forwardFrames, ...forwardFrames.slice(1, -1).reverse()]
+          : forwardFrames;
+
+        console.log(`Creating GIF with ${frameSequence.length} frames at ${width}x${height} (${fps}fps)${loop ? ' [loop]' : ''}...`);
 
         const gif = new GIF({
           workers: 1,
@@ -90,6 +96,7 @@ export class CanvasRecorder {
           width,
           height,
           workerScript: '/gif.worker.js',
+          ...(loop ? { repeat: 0 } : { repeat: -1 }),
         }) as any;
 
         const tempCanvas = document.createElement('canvas');
@@ -97,12 +104,12 @@ export class CanvasRecorder {
         tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d')!;
 
-        for (let i = 0; i < this.frames.length; i++) {
-          const frameCanvas = this.frames[i];
+        for (let i = 0; i < frameSequence.length; i++) {
+          const frameCanvas = frameSequence[i];
           tempCtx.drawImage(frameCanvas, 0, 0, width, height);
           gif.addFrame(tempCanvas, { delay: 1000 / fps, copy: true });
           if ((i + 1) % 10 === 0) {
-            console.log(`Added frame ${i + 1}/${this.frames.length}`);
+            console.log(`Added frame ${i + 1}/${frameSequence.length}`);
           }
         }
 
