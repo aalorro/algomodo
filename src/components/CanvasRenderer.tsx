@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
+import { loadImageFromUrl } from '../utils/imageUrl';
 
 interface CanvasRendererProps {
   showFPS?: boolean;
@@ -87,35 +88,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     reader.readAsDataURL(file);
   };
 
-  const loadFromUrl = async (url: string) => {
-    // Try fetch first (works when server sends CORS headers)
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const blob = await resp.blob();
-      if (!blob.type.startsWith('image/')) throw new Error('Not an image');
-      const reader = new FileReader();
-      reader.onload = (e) => setSourceImage(e.target?.result as string);
-      reader.readAsDataURL(blob);
-      return;
-    } catch { /* fall through */ }
-
-    // Fallback: load as <img> with crossOrigin (works for same-origin or CORS-enabled CDNs)
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth;
-        c.height = img.naturalHeight;
-        c.getContext('2d')!.drawImage(img, 0, 0);
-        setSourceImage(c.toDataURL());
-      } catch {
-        alert('Could not read image — the server may block cross-origin access.');
-      }
-    };
-    img.onerror = () => alert('Failed to load image from URL.');
-    img.src = url;
+  const loadFromUrl = (url: string) => {
+    loadImageFromUrl(url, (dataUrl) => setSourceImage(dataUrl));
   };
 
   // ── Drag-and-drop ───────────────────────────────────────────────────────────
