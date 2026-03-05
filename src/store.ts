@@ -186,6 +186,9 @@ export const useStore = create<AppState>()(
             randomized[key] = Math.random() > 0.5;
           } else if (param.type === 'select' && param.options?.length) {
             randomized[key] = param.options[Math.floor(Math.random() * param.options.length)];
+          } else if (param.type === 'text') {
+            // Keep current text value or fall back to default (don't randomize user text)
+            randomized[key] = state.params[key] ?? param.default;
           }
         }
         set({

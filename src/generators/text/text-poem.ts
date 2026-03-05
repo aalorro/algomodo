@@ -123,6 +123,13 @@ const parameterSchema: ParameterSchema = {
     name: 'Speed', type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 0.3,
     help: 'Typewriter animation speed', group: 'Flow/Motion',
   },
+  customText: {
+    name: 'Custom Text', type: 'text', default: '',
+    placeholder: 'Enter your own poem or text (leave empty for generated)',
+    maxLength: 500,
+    help: 'Your own text — use | to separate lines. Leave empty for auto-generated poetry',
+    group: 'Composition',
+  },
 };
 
 export const textPoem: Generator = {
@@ -136,7 +143,7 @@ export const textPoem: Generator = {
     'words into visual shapes. Minimal uses sparse phrasing with large whitespace. Manifesto produces ' +
     'bold declarations with mixed sizes. Animation reveals text character by character.',
   parameterSchema,
-  defaultParams: { style: 'haiku', fontScale: 1.0, alignment: 'center', lineSpacing: 1.8, textContrast: 0.85, speed: 0.3 },
+  defaultParams: { style: 'haiku', fontScale: 1.0, alignment: 'center', lineSpacing: 1.8, textContrast: 0.85, speed: 0.3, customText: '' },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
@@ -150,13 +157,22 @@ export const textPoem: Generator = {
     const textContrast = params.textContrast ?? 0.85;
     const speed = params.speed ?? 0.3;
 
-    // Generate poem lines
+    // Generate poem lines — use custom text if provided
+    const customText = (params.customText ?? '').trim();
     let lines: string[];
-    switch (style) {
-      case 'concrete': lines = generateConcrete(rng); break;
-      case 'minimal': lines = generateMinimal(rng); break;
-      case 'manifesto': lines = generateManifesto(rng); break;
-      default: lines = generateHaiku(rng); break;
+    if (customText.length > 0) {
+      // Split on | for explicit line breaks, or fall back to natural line detection
+      lines = customText.includes('|')
+        ? customText.split('|').map(l => l.trim()).filter(l => l.length > 0)
+        : customText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) lines = [customText];
+    } else {
+      switch (style) {
+        case 'concrete': lines = generateConcrete(rng); break;
+        case 'minimal': lines = generateMinimal(rng); break;
+        case 'manifesto': lines = generateManifesto(rng); break;
+        default: lines = generateHaiku(rng); break;
+      }
     }
 
     // Background

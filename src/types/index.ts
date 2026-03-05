@@ -2,7 +2,7 @@
 
 export interface Parameter {
   name: string;
-  type: 'number' | 'boolean' | 'select' | 'color';
+  type: 'number' | 'boolean' | 'select' | 'color' | 'text';
   min?: number;
   max?: number;
   step?: number;
@@ -10,6 +10,8 @@ export interface Parameter {
   help?: string;
   options?: string[];
   group?: string;
+  maxLength?: number;
+  placeholder?: string;
 }
 
 export interface ParameterSchema {

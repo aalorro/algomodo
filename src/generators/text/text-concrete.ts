@@ -113,9 +113,16 @@ function generatePath(
 }
 
 const parameterSchema: ParameterSchema = {
+  customText: {
+    name: 'Custom Text', type: 'text', default: '',
+    placeholder: 'Enter text (leave empty for random)',
+    maxLength: 200,
+    help: 'Custom characters, words, or sentence — leave empty for random',
+    group: 'Composition',
+  },
   textSource: {
     name: 'Text Source', type: 'select', options: ['alphabet', 'digits', 'symbols', 'words'],
-    default: 'alphabet', help: 'Character set to use', group: 'Composition',
+    default: 'alphabet', help: 'Character set when custom text is empty', group: 'Composition',
   },
   pathType: {
     name: 'Path Type', type: 'select', options: ['spiral', 'circle', 'wave', 'diagonal', 'radial'],
@@ -149,7 +156,7 @@ export const textConcrete: Generator = {
     'Each character is rotated to follow the path tangent. Color is sampled from the palette based on ' +
     'position along the path. Animation scrolls characters by shifting the start offset.',
   parameterSchema,
-  defaultParams: { textSource: 'alphabet', pathType: 'spiral', fontSize: 24, density: 1.0, letterSpacing: 1.2, speed: 0.5 },
+  defaultParams: { customText: '', textSource: 'alphabet', pathType: 'spiral', fontSize: 24, density: 1.0, letterSpacing: 1.2, speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
@@ -163,8 +170,11 @@ export const textConcrete: Generator = {
     const letterSpacing = params.letterSpacing ?? 1.2;
     const speed = params.speed ?? 0.5;
 
-    const chars = getCharSet(textSource, rng);
-    const isWords = textSource === 'words';
+    const customText = (params.customText ?? '').trim();
+    const chars = customText.length > 0
+      ? (customText.includes(' ') ? customText.split(/\s+/) : customText.split(''))
+      : getCharSet(textSource, rng);
+    const isWords = textSource === 'words' || (customText.length > 0 && customText.includes(' '));
 
     // Background
     ctx.fillStyle = '#050505';

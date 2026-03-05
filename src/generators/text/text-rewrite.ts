@@ -62,6 +62,13 @@ const parameterSchema: ParameterSchema = {
     name: 'Speed', type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
     help: 'Animation reveal speed', group: 'Flow/Motion',
   },
+  customText: {
+    name: 'Custom Axiom', type: 'text', default: '',
+    placeholder: 'Custom axiom string (leave empty for preset)',
+    maxLength: 100,
+    help: 'Override the preset axiom with your own starting string',
+    group: 'Composition',
+  },
 };
 
 export const textRewrite: Generator = {
@@ -76,7 +83,7 @@ export const textRewrite: Generator = {
     'Color can be assigned per unique symbol, by generation depth, or by position in the string. ' +
     'Animation progressively reveals characters.',
   parameterSchema,
-  defaultParams: { preset: 'algae', iterations: 5, fontSize: 14, layout: 'wrap', colorMode: 'symbol', speed: 0.5 },
+  defaultParams: { preset: 'algae', iterations: 5, fontSize: 14, layout: 'wrap', colorMode: 'symbol', speed: 0.5, customText: '' },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
@@ -90,7 +97,12 @@ export const textRewrite: Generator = {
     const colorMode = params.colorMode ?? 'symbol';
     const speed = params.speed ?? 0.5;
 
-    const system = PRESETS[presetName] ?? PRESETS.algae;
+    const customText = (params.customText ?? '').trim();
+    const baseSystem = PRESETS[presetName] ?? PRESETS.algae;
+    // If custom axiom provided, override the preset's axiom
+    const system = customText.length > 0
+      ? { ...baseSystem, axiom: customText }
+      : baseSystem;
     const fullStr = rewrite(system, iterations);
 
     // Animation: progressive reveal, cycling

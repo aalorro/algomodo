@@ -21,9 +21,16 @@ function getCharSet(name: string): string[] {
 }
 
 const parameterSchema: ParameterSchema = {
+  customText: {
+    name: 'Custom Text', type: 'text', default: '',
+    placeholder: 'Enter text (leave empty for random)',
+    maxLength: 200,
+    help: 'Custom characters to rain — leave empty for random',
+    group: 'Composition',
+  },
   charSet: {
     name: 'Character Set', type: 'select', options: ['katakana', 'latin', 'digits', 'mixed'],
-    default: 'katakana', help: 'Which characters to use in the rain', group: 'Composition',
+    default: 'katakana', help: 'Character set when custom text is empty', group: 'Composition',
   },
   columns: {
     name: 'Columns', type: 'number', min: 10, max: 80, step: 5, default: 40,
@@ -58,7 +65,7 @@ export const textMatrix: Generator = {
     'Characters are randomly selected from the chosen set and periodically refreshed for a shimmer effect. ' +
     'For static renders, a frozen snapshot with full trails is shown.',
   parameterSchema,
-  defaultParams: { charSet: 'katakana', columns: 40, dropSpeed: 5, trailLength: 15, brightness: 1.0, speed: 1.0 },
+  defaultParams: { customText: '', charSet: 'katakana', columns: 40, dropSpeed: 5, trailLength: 15, brightness: 1.0, speed: 1.0 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
@@ -73,7 +80,11 @@ export const textMatrix: Generator = {
     const brightness = params.brightness ?? 1.0;
     const speed = params.speed ?? 1.0;
 
-    const chars = getCharSet(charSetName);
+    const customText = (params.customText ?? '').trim();
+    const chars = customText.length > 0
+      ? customText.split('').filter(c => c !== ' ')
+      : getCharSet(charSetName);
+    if (chars.length === 0) return;
     const cellW = w / numCols;
     const cellH = cellW * 1.2;
     const rows = Math.ceil(h / cellH) + trailLength;

@@ -15,9 +15,16 @@ const CHAR_SETS: Record<string, string[]> = {
 };
 
 const parameterSchema: ParameterSchema = {
+  customText: {
+    name: 'Custom Text', type: 'text', default: '',
+    placeholder: 'Enter characters (leave empty for random)',
+    maxLength: 200,
+    help: 'Custom characters for the grid — leave empty for random set',
+    group: 'Composition',
+  },
   charSet: {
     name: 'Character Set', type: 'select', options: ['blocks', 'braille', 'ascii', 'digits', 'custom'],
-    default: 'blocks', help: 'Which character set to use for the grid', group: 'Composition',
+    default: 'blocks', help: 'Character set when custom text is empty', group: 'Composition',
   },
   gridSize: {
     name: 'Grid Size', type: 'number', min: 8, max: 48, step: 2, default: 16,
@@ -51,7 +58,7 @@ export const textGrid: Generator = {
     'to display, its font size, and its color. Higher noise values produce denser/larger characters. ' +
     'Animation scrolls the noise field over time, creating organic flowing texture.',
   parameterSchema,
-  defaultParams: { charSet: 'blocks', gridSize: 16, noiseScale: 3, sizeVariation: 0.6, colorMode: 'noise', speed: 0.3 },
+  defaultParams: { customText: '', charSet: 'blocks', gridSize: 16, noiseScale: 3, sizeVariation: 0.6, colorMode: 'noise', speed: 0.3 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
@@ -66,7 +73,11 @@ export const textGrid: Generator = {
     const colorMode = params.colorMode ?? 'noise';
     const speed = params.speed ?? 0.3;
 
-    const chars = CHAR_SETS[charSetName] ?? CHAR_SETS.blocks;
+    const customText = (params.customText ?? '').trim();
+    const chars = customText.length > 0
+      ? [...new Set(customText.split('').filter(c => c !== ' '))]
+      : (CHAR_SETS[charSetName] ?? CHAR_SETS.blocks);
+    if (chars.length === 0) return;
     const cols = Math.ceil(w / gridSize);
     const rows = Math.ceil(h / gridSize);
 
