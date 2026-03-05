@@ -87,6 +87,10 @@ import { textMatrix } from './text/text-matrix';
 import { textGrid } from './text/text-grid';
 import { textRewrite } from './text/text-rewrite';
 import { textPoem } from './text/text-poem';
+import { tessellations } from './graphs/tessellations';
+import { lowPoly } from './graphs/low-poly';
+import { ecosystems } from './graphs/ecosystems';
+import { steinerNetworks } from './graphs/steiner-networks';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -177,6 +181,10 @@ export function initializeGenerators() {
   registerGenerator(textGrid);
   registerGenerator(textRewrite);
   registerGenerator(textPoem);
+  registerGenerator(tessellations);
+  registerGenerator(lowPoly);
+  registerGenerator(ecosystems);
+  registerGenerator(steinerNetworks);
 }
 
 export {
@@ -197,4 +205,5 @@ export {
   fractured, depthCells, weightedVoronoi, neighborBands,
   mandelbrot, julia, newtonFractal, ifsBarnsley, recursiveSubdivision,
   textConcrete, textMatrix, textGrid, textRewrite, textPoem,
+  tessellations, lowPoly, ecosystems, steinerNetworks,
 };
