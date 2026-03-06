@@ -75,7 +75,7 @@ export class CanvasRecorder {
   }
 
   async exportGIF(
-    width: number, height: number, fps: number = 24,
+    width: number, height: number, duration: number,
     options: { boomerang?: boolean; endless?: boolean } = {},
   ): Promise<Blob> {
     return new Promise((resolve, reject) => {
@@ -94,12 +94,20 @@ export class CanvasRecorder {
           ? [...forwardFrames, ...forwardFrames.slice(1, -1).reverse()]
           : forwardFrames;
 
+        // Calculate delay from actual duration / frame count so GIF plays at correct speed
+        const delayMs = Math.round((duration * 1000) / frameSequence.length);
+
         const tag = boomerang ? ' [boomerang]' : endless ? ' [endless]' : '';
-        console.log(`Creating GIF with ${frameSequence.length} frames at ${width}x${height} (${fps}fps)${tag}...`);
+        console.log(`Creating GIF with ${frameSequence.length} frames at ${width}x${height} (${delayMs}ms/frame, ~${(duration).toFixed(1)}s)${tag}...`);
+
+        // Use more workers and coarser sampling for large GIFs
+        const pixels = width * height;
+        const workerCount = pixels > 500000 ? 4 : pixels > 250000 ? 2 : 1;
+        const quality = pixels > 500000 ? 20 : 10; // higher = faster, slightly lower quality
 
         const gif = new GIF({
-          workers: 1,
-          quality: 10,
+          workers: workerCount,
+          quality,
           width,
           height,
           workerScript: '/gif.worker.js',
@@ -114,7 +122,7 @@ export class CanvasRecorder {
         for (let i = 0; i < frameSequence.length; i++) {
           const frameCanvas = frameSequence[i];
           tempCtx.drawImage(frameCanvas, 0, 0, width, height);
-          gif.addFrame(tempCanvas, { delay: 1000 / fps, copy: true });
+          gif.addFrame(tempCanvas, { delay: delayMs, copy: true });
           if ((i + 1) % 10 === 0) {
             console.log(`Added frame ${i + 1}/${frameSequence.length}`);
           }
@@ -144,17 +152,19 @@ export class CanvasRecorder {
         gif.on('finished', onFinish);
         gif.on('error', onError);
 
-        console.log('Starting GIF render...');
+        console.log(`Starting GIF render (${workerCount} workers, quality ${quality})...`);
         gif.render();
 
-        // Set timeout to 30 seconds (should be enough with downscaling)
+        // Scale timeout: ~0.5s per frame at 1Mpx, minimum 60s
+        const timeoutMs = Math.max(60000, frameSequence.length * (pixels / 2000000 + 0.3) * 1000);
+        console.log(`GIF encoding timeout set to ${(timeoutMs / 1000).toFixed(0)}s`);
         const timeoutId = setTimeout(() => {
           timedOut = true;
           if (!finished) {
-            console.error('GIF encoding timeout after 30 seconds');
-            reject(new Error('GIF encoding timeout - try shorter duration or simpler animation'));
+            console.error(`GIF encoding timeout after ${(timeoutMs / 1000).toFixed(0)} seconds`);
+            reject(new Error('GIF encoding timeout - try shorter duration or smaller resolution'));
           }
-        }, 30000);
+        }, timeoutMs);
 
       } catch (error) {
         console.error('GIF export error:', error);
