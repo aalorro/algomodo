@@ -5,6 +5,43 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-03-05
+
+### Added
+
+**New generator families:**
+
+- **Fractals family** — 5 generators: Mandelbrot, Julia Set, Newton Fractal, IFS Barnsley Fern, Recursive Subdivision
+- **Text family** — 5 generators: Concrete Poetry, Digital Rain, Typographic Grid, L-System Text, Poem Layout — all with optional custom text input
+- **Graphs family** — 4 generators: Tessellations, Low-Poly, Ecosystems, Steiner Networks
+
+**New Image family generators:**
+
+- **Convolution** — kernel-based image filtering
+- **Edge Detect** — edge detection algorithms applied to source images
+- **Feedback Loop** — recursive self-referential image transformations
+- **Glitch Transform** — codec-corruption-inspired visual effects
+- **Distance Field** — distance field generation from source image features
+
+**New UI features:**
+
+- **RELOAD button** on canvas — re-renders from scratch with identical settings; replays animations that reached a stop state (e.g., Game of Life ending in still pattern)
+- **GIF boomerang loop** — ping-pong playback (forward then backward) repeating forever
+- **GIF endless loop** — same clip repeating forever without reversing
+- **GIF resolution selector** — 600px, 800px, or 1000px export sizes
+- **WebM live recording** — records directly from the canvas stream at native resolution
+- **Instructions modal** — user guide accessible from the right panel footer
+- Custom text input parameter type for Text generators
+- Confirm dialog before deleting presets
+
+### Improved
+
+- GIF encoding: dynamic timeout scaling, multi-worker parallelism (4 workers for large resolutions), coarser sampling for 500K+ pixel GIFs
+- GIF duration accuracy: frame delay calculated from actual recording duration instead of fixed FPS assumption
+- Islamic Patterns: enhanced girih lines, inner details, additional color and animation modes
+
+---
+
 ## [1.4.1] - 2026-03-05
 
 ### Added
