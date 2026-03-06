@@ -20,6 +20,42 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.5.0 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.5.0] - 2026-03-05
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Fractals family</strong> — 5 generators: Mandelbrot, Julia Set, Newton Fractal, IFS Barnsley Fern, Recursive Subdivision</li>
+                  <li><strong>Text family</strong> — 5 generators: Concrete Poetry, Digital Rain, Typographic Grid, L-System Text, Poem Layout — all with optional custom text input</li>
+                  <li><strong>Graphs family</strong> — 4 generators: Tessellations, Low-Poly, Ecosystems, Steiner Networks</li>
+                  <li><strong>Image family</strong> — 5 new generators: Convolution, Edge Detect, Feedback Loop, Glitch Transform, Distance Field</li>
+                  <li><strong>RELOAD button</strong> on canvas — re-renders from scratch with same settings; replays animations that reached a stop state</li>
+                  <li><strong>GIF boomerang loop</strong> — ping-pong playback (forward then backward) repeating forever</li>
+                  <li><strong>GIF endless loop</strong> — same clip repeating forever without reversing</li>
+                  <li><strong>GIF resolution selector</strong> — 600px, 800px, or 1000px export sizes</li>
+                  <li><strong>WebM live recording</strong> — records directly from the canvas stream at native resolution</li>
+                  <li><strong>Instructions modal</strong> — user guide accessible from the right panel footer</li>
+                  <li>Custom text input parameter type for Text generators</li>
+                  <li>Confirm dialog before deleting presets</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Improved</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>GIF encoding: dynamic timeout, multi-worker parallelism, coarser sampling for large resolutions</li>
+                  <li>GIF duration accuracy: frame delay calculated from actual recording duration instead of fixed FPS</li>
+                  <li>Islamic Patterns: enhanced girih lines, inner details, additional color and animation modes</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.4.1 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">

@@ -30,23 +30,26 @@ export const AboutModal: React.FC = () => {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Key Features</h3>
             <ul className="list-disc list-inside space-y-1">
-              <li>73 generators across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image</li>
+              <li>93 generators across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs</li>
               <li>Deterministic: Results are reproducible with the same seed</li>
               <li>Offline: Works entirely in your browser</li>
               <li>Open Source: Available under the MIT license</li>
-              <li>SURPRISE ME: One-click randomization of generator, seed, params, and palette</li>
+              <li>SURPRISE ME / RAND / RELOAD: Three ways to explore — random generator, random params, or replay</li>
               <li>Canvas SAVE: Export PNG at 1080x1080 or record WebM animations</li>
-              <li>GIF / WebM export with 3/5/8 second duration options</li>
+              <li>GIF export with 3 resolutions (600/800/1000px), boomerang and endless loop options</li>
+              <li>WebM video export recorded directly from the live canvas</li>
+              <li>Custom text input for Text family generators</li>
+              <li>Image input: Drop, paste, or URL-load images for the Image family</li>
               <li>Preset export/import: Save presets as text files and load them back</li>
               <li>JSON recipe import: Load recipe files to restore canvas state</li>
               <li>Undo / Redo with 50-step parameter history</li>
-              <li>Customizable: Adjust parameters to fine-tune your artwork</li>
+              <li>PostFX pipeline: Grain, Vignette, Dither, Posterize</li>
             </ul>
           </div>
 
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Version</h3>
-            <p>v1.4.1</p>
+            <p>v1.5.0</p>
           </div>
 
           <div>

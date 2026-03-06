@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.4.1 · © 2026 ArtMondo
+MIT License · v1.5.0 · © 2026 ArtMondo
 
 ---
 
@@ -10,7 +10,7 @@ MIT License · v1.4.1 · © 2026 ArtMondo
 
 | Feature | Details |
 |---|---|
-| **73 generators** | Across 7 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image |
+| **93 generators** | Across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs |
 | **Live animation** | requestAnimationFrame loop with persistent simulation state; per-generator steps/frame control |
 | **Seeded RNG** | xorshift128+ — every output is fully reproducible from its integer seed |
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
@@ -19,8 +19,11 @@ MIT License · v1.4.1 · © 2026 ArtMondo
 | **Recipe save / load** | Export or import a compact JSON snapshot: generator + seed + params + palette + PostFX; load JSON recipes from file |
 | **Preset export / import** | Export presets as human-readable text files and import them back; individual or bulk export with configurable filenames |
 | **SURPRISE ME** | One-click randomization of generator, seed, parameters, and colour palette |
+| **RELOAD** | Re-render from scratch with identical settings — replay animations that reached a stop state |
 | **Canvas SAVE** | Export static images as 1080×1080 PNG or animations as 1080×1080 WebM directly from the canvas |
-| **GIF / WebM export** | Record and download animated GIFs or WebM videos via the Export tab with 3/5/8 second durations |
+| **GIF export** | Animated GIF with 3 resolutions (600/800/1000px), 3/5/8 second durations, boomerang and endless loop options |
+| **WebM export** | Live canvas stream recording at native resolution |
+| **Custom text input** | Text family generators accept user-typed characters, words, or sentences |
 | **Undo / Redo** | Full parameter history — Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) with toolbar buttons |
 | **Dark & light theme** | Togglable; persisted to localStorage |
 | **Quality modes** | Draft / Normal / Ultra — scale grid resolution for simulation generators |
