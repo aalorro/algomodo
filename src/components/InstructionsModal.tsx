@@ -141,8 +141,8 @@ export const InstructionsModal: React.FC = () => {
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">GIF &amp; Video Export</h3>
             <p className="mb-2">Enable animation first, then go to the Export tab. Choose a duration (3, 5, or 8 seconds).</p>
             <ul className="list-disc list-inside space-y-1">
-              <li><strong>GIF</strong> &mdash; Records an animated GIF. May take 1-2 minutes for longer durations.</li>
-              <li><strong>WebM</strong> &mdash; Records a video file (smaller, higher quality than GIF).</li>
+              <li><strong>GIF</strong> &mdash; Records an animated GIF. Choose a resolution: 600px (fastest), 800px, or 1000px (highest quality, may take longer). Encoding uses multiple workers for larger sizes.</li>
+              <li><strong>WebM</strong> &mdash; Records video directly from the live canvas at its native resolution. Smaller file size and higher quality than GIF.</li>
             </ul>
             <p className="mt-2 font-medium text-gray-900 dark:text-white">GIF loop options:</p>
             <ul className="list-disc list-inside space-y-1 mt-1">
