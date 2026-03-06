@@ -71,7 +71,7 @@ Every generator implements the `Generator` interface from `src/types/index.ts`:
 | `src/data/palettes.ts` | `CURATED_PALETTES` array of `Palette` |
 | `src/renderers/canvas2d/utils.ts` | Drawing helpers + PostFX pixel operations |
 | `src/renderers/svg/builder.ts` | SVG path generation for vector export |
-| `src/utils/recorder.ts` | `CanvasRecorder` — GIF recording via `gif.js` |
+| `src/utils/recorder.ts` | `CanvasRecorder` — GIF recording via `gif.js` (supports boomerang & endless loop modes) |
 
 ### Parameter Schema
 
@@ -87,4 +87,4 @@ Despite `renderWebGL2` being required in the `Generator` interface type, the `Ca
 
 ### Canvas Save vs Export Tab
 
-The canvas SAVE button exports at a fixed 1080×1080 resolution (PNG for static, WebM for animations). The Export tab's GIF/WebM export uses the user-configured dimensions and duration settings (3/5/8 seconds). These are independent code paths in `CanvasRenderer.tsx`.
+The canvas SAVE button exports at a fixed 1080×1080 resolution (PNG for static, WebM for animations). The Export tab's GIF export offers resolution options (600/800/1000px), duration settings (3/5/8 seconds), and loop modes (boomerang, endless). WebM export uses `MediaRecorder` + `captureStream()` from the live canvas. These are independent code paths in `CanvasRenderer.tsx` and `RightSidebar.tsx`.
