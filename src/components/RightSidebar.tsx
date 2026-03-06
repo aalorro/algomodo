@@ -54,6 +54,7 @@ export const RightSidebar: React.FC = () => {
     endlessGif,
     setEndlessGif,
     loadRecipe,
+    setOpenModal,
   } = useStore(useShallow(s => ({
     selectedGeneratorId: s.selectedGeneratorId,
     selectedPresetId: s.selectedPresetId,
@@ -98,6 +99,7 @@ export const RightSidebar: React.FC = () => {
     endlessGif: s.endlessGif,
     setEndlessGif: s.setEndlessGif,
     loadRecipe: s.loadRecipe,
+    setOpenModal: s.setOpenModal,
   })));
 
   const generator = getGenerator(selectedGeneratorId);
@@ -1055,6 +1057,16 @@ export const RightSidebar: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setOpenModal('instructions')}
+          className="w-full px-3 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
+        >
+          Instructions
+        </button>
       </div>
 
     </div>
