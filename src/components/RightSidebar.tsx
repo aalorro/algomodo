@@ -110,6 +110,7 @@ export const RightSidebar: React.FC = () => {
   const recorderRef = useRef<CanvasRecorder | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingProgress, setRecordingProgress] = useState(0);
+  const [gifSize, setGifSize] = useState(600);
   const [imageFileName, setImageFileName] = useState('');
   const [filePrefix, setFilePrefix] = useState('');
   const [presetPrefix, setPresetPrefix] = useState('');
@@ -257,9 +258,8 @@ export const RightSidebar: React.FC = () => {
 
     try {
       setIsRecording(true);
-      console.log(`Starting GIF recording for ${recordingDuration} seconds...`);
+      console.log(`Starting GIF recording for ${recordingDuration} seconds at ${gifSize}x${gifSize}...`);
 
-      const gifSize = 600;
       const recorder = new CanvasRecorder({
         duration: recordingDuration,
         fps: 24,
@@ -283,7 +283,7 @@ export const RightSidebar: React.FC = () => {
       }
 
       console.log('Starting GIF encoding...');
-      const blob = await recorder.exportGIF(gifSize, gifSize, 24, { boomerang: boomerangGif, endless: endlessGif });
+      const blob = await recorder.exportGIF(gifSize, gifSize, recordingDuration, { boomerang: boomerangGif, endless: endlessGif });
 
       if (!blob || blob.size === 0) {
         throw new Error('Generated GIF is empty');
@@ -322,33 +322,51 @@ export const RightSidebar: React.FC = () => {
       setIsRecording(true);
       console.log(`Starting WebM recording for ${recordingDuration} seconds...`);
 
-      const recorder = new CanvasRecorder({
-        duration: recordingDuration,
-        fps: 30,
-        width: canvas.width,
-        height: canvas.height,
-      });
+      // Record directly from the live canvas stream
+      const stream = canvas.captureStream(30);
 
-      recorderRef.current = recorder;
-      recorder.startRecording(canvas, recordingDuration);
-
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          recorder.stopRecording();
-          console.log(`Recording complete. Captured ${recorder.getFrameCount()} frames`);
-          resolve(null);
-        }, recordingDuration * 1000 + 500);
-      });
-
-      if (recorder.getFrameCount() === 0) {
-        throw new Error('No frames were recorded. Make sure animation is playing.');
+      const mimeTypes = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+      ];
+      let selectedMimeType = '';
+      for (const mt of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mt)) { selectedMimeType = mt; break; }
+      }
+      if (!selectedMimeType) {
+        throw new Error('No supported video codec found');
       }
 
-      console.log('Starting WebM encoding...');
-      const blob = await recorder.exportWebM(canvas.width, canvas.height, 30);
+      const chunks: Blob[] = [];
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: selectedMimeType,
+        videoBitsPerSecond: 8000000,
+      });
 
-      if (!blob || blob.size === 0) {
-        throw new Error('Generated WebM is empty');
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        mediaRecorder.onstop = () => {
+          const result = new Blob(chunks, { type: selectedMimeType });
+          resolve(result);
+        };
+        mediaRecorder.onerror = (e) => reject(new Error(`MediaRecorder error: ${(e as any).error}`));
+
+        // Request data every second for reliable chunk collection
+        mediaRecorder.start(1000);
+
+        setTimeout(() => {
+          mediaRecorder.stop();
+          stream.getTracks().forEach(t => t.stop());
+          console.log(`WebM recording complete (${chunks.length} chunks)`);
+        }, recordingDuration * 1000);
+      });
+
+      if (!blob || blob.size < 1000) {
+        throw new Error('Generated WebM is too small — recording may have failed');
       }
 
       console.log(`WebM encoded successfully: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
@@ -844,7 +862,7 @@ export const RightSidebar: React.FC = () => {
               </label>
               <button
                 onClick={handleExportGIF}
-                className={`w-full px-3 py-2 rounded text-sm mb-2 ${
+                className={`w-full px-3 py-2 rounded text-sm ${
                   isRecording || !isAnimating
                     ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
                     : 'bg-yellow-600 hover:bg-yellow-700 text-white'
@@ -853,6 +871,22 @@ export const RightSidebar: React.FC = () => {
               >
                 {isRecording ? `Recording... (${recordingProgress}%)` : 'GIF (may take 1-2 min)'}
               </button>
+              <div className="flex gap-1 mt-1 mb-3">
+                {([600, 800, 1000] as const).map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => setGifSize(size)}
+                    disabled={isRecording || !isAnimating}
+                    className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
+                      gifSize === size
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    {size}px
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={handleExportWebM}
                 className={`w-full px-3 py-2 rounded text-sm ${
