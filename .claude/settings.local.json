@@ -10,7 +10,10 @@
       "Bash(ffmpeg:*)",
       "Bash(npm run:*)",
       "Bash(timeout 15 npx vite:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "WebFetch(domain:mediabunny.dev)",
+      "Bash(npm install:*)",
+      "Bash(ls:*)"
     ]
   }
 }

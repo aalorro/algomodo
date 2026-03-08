@@ -6,6 +6,7 @@ import { ParameterControls } from './ParameterControls';
 import { createRecipe, downloadRecipe, uploadRecipe } from '../core/recipe';
 import { generateSVG, downloadSVG } from '../renderers/svg/builder';
 import { CanvasRecorder } from '../utils/recorder';
+import { exportMp4, isWebCodecsSupported } from '../utils/mp4-exporter';
 import { CURATED_PALETTES } from '../data/palettes';
 import { loadImageFromUrl } from '../utils/imageUrl';
 
@@ -118,6 +119,11 @@ export const RightSidebar: React.FC = () => {
   const [importError, setImportError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [mp4MaxDuration, setMp4MaxDuration] = useState(30);
+  const [isMp4Exporting, setIsMp4Exporting] = useState(false);
+  const [mp4Progress, setMp4Progress] = useState(0);
+  const [mp4Elapsed, setMp4Elapsed] = useState(0);
+  const mp4AbortRef = useRef<AbortController | null>(null);
 
   const buildFilename = (ext: string): string => {
     if (filePrefix.trim()) return `${filePrefix.trim()}.${ext}`;
@@ -383,6 +389,77 @@ export const RightSidebar: React.FC = () => {
       console.error('WebM export error:', error);
       alert(`Failed to export video: ${error?.message || 'Unknown error'}`);
       setIsRecording(false);
+    }
+  };
+
+  const handleExportMP4 = async () => {
+    if (!generator?.renderCanvas2D) {
+      alert('This generator does not support Canvas2D rendering');
+      return;
+    }
+
+    if (!isWebCodecsSupported()) {
+      alert('MP4 export requires the WebCodecs API.\nSupported in Chrome 94+, Edge 94+, Firefox 130+, Safari 16.4+.\nUse WebM export as a fallback.');
+      return;
+    }
+
+    const abortController = new AbortController();
+    mp4AbortRef.current = abortController;
+
+    try {
+      setIsMp4Exporting(true);
+      setMp4Progress(0);
+      setMp4Elapsed(0);
+
+      // Load source image if needed
+      let loadedImg: HTMLImageElement | null = null;
+      if (sourceImage) {
+        loadedImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = sourceImage;
+        });
+      }
+
+      const blob = await exportMp4({
+        generator,
+        params,
+        seed,
+        palette,
+        quality,
+        postFX,
+        width: 1080,
+        height: 1080,
+        fps: 30,
+        maxDuration: mp4MaxDuration,
+        sourceImage: loadedImg,
+        onProgress: (pct, elapsed) => {
+          setMp4Progress(pct);
+          setMp4Elapsed(elapsed);
+        },
+        abortSignal: abortController.signal,
+      });
+
+      // Download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = buildFilename('mp4');
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('MP4 export cancelled');
+      } else {
+        console.error('MP4 export error:', error);
+        alert(`Failed to export MP4: ${error?.message || 'Unknown error'}`);
+      }
+    } finally {
+      setIsMp4Exporting(false);
+      setMp4Progress(0);
+      setMp4Elapsed(0);
+      mp4AbortRef.current = null;
     }
   };
 
@@ -899,6 +976,55 @@ export const RightSidebar: React.FC = () => {
                 {isRecording ? `Recording... (${recordingProgress}%)` : 'WebM Video'}
               </button>
             </div>
+
+            {/* MP4 Export — offscreen faster-than-realtime */}
+            {generator?.supportsAnimation && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">MP4 (Record to Completion)</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                  Renders animation offscreen at full speed. Stops when animation completes or max duration is reached.
+                </p>
+                <div className="mb-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Max Duration</label>
+                  <div className="flex gap-1">
+                    {[15, 30, 60, 120].map((sec) => (
+                      <button
+                        key={sec}
+                        onClick={() => setMp4MaxDuration(sec)}
+                        disabled={isMp4Exporting}
+                        className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
+                          mp4MaxDuration === sec
+                            ? 'bg-red-600 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        } disabled:opacity-40 disabled:cursor-not-allowed`}
+                      >
+                        {sec}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={isMp4Exporting ? () => mp4AbortRef.current?.abort() : handleExportMP4}
+                  disabled={isMp4Exporting ? false : !generator?.renderCanvas2D}
+                  className={`w-full px-3 py-2 rounded text-sm ${
+                    isMp4Exporting
+                      ? 'bg-red-700 hover:bg-red-800 text-white'
+                      : !generator?.renderCanvas2D
+                        ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : 'bg-red-600 hover:bg-red-700 text-white'
+                  }`}
+                >
+                  {isMp4Exporting
+                    ? `Exporting... ${mp4Progress}% (${mp4Elapsed.toFixed(1)}s) — click to cancel`
+                    : 'MP4 Video (H.264)'}
+                </button>
+                {!isWebCodecsSupported() && (
+                  <p className="text-xs text-red-400 mt-1">
+                    WebCodecs not supported in this browser. Use Chrome, Edge, or Safari 16.4+.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Data</h3>

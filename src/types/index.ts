@@ -94,7 +94,7 @@ export interface Generator {
     palette: Palette,
     quality: 'draft' | 'balanced' | 'ultra',
     time?: number
-  ): void;
+  ): void | boolean;
   
   renderWebGPU?(
     device: any,

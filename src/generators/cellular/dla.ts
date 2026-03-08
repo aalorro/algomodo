@@ -529,6 +529,10 @@ export const dla: Generator = {
       _dlaAnim.maxRadius = res.newMaxRadius;
     }
     renderDLA(ctx, _dlaAnim.grid, _dlaAnim.size, _dlaAnim.count, colorMode, palette, seedMode, glowAmount, edgeBright, depthShade, bgStyle);
+
+    // Signal completion when aggregate reached boundary
+    const done = isLine ? _dlaAnim.maxRadius <= stopR : _dlaAnim.maxRadius >= stopR;
+    if (done) return true;
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
