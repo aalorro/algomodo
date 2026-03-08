@@ -171,55 +171,185 @@ function addParticleLine(
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
+function lerpColor(
+  c0: [number, number, number], c1: [number, number, number], f: number,
+): [number, number, number] {
+  return [
+    (c0[0] + (c1[0] - c0[0]) * f) | 0,
+    (c0[1] + (c1[1] - c0[1]) * f) | 0,
+    (c0[2] + (c1[2] - c0[2]) * f) | 0,
+  ];
+}
+
+function paletteAt(colors: [number, number, number][], t: number): [number, number, number] {
+  const scaled = Math.max(0, Math.min(1, t)) * (colors.length - 1);
+  const i0 = Math.floor(scaled);
+  const i1 = Math.min(colors.length - 1, i0 + 1);
+  return lerpColor(colors[i0], colors[i1], scaled - i0);
+}
+
 function renderDLA(
   ctx: CanvasRenderingContext2D,
   grid: Uint32Array, size: number, maxCount: number,
   colorMode: string, palette: { colors: string[] },
   seedMode: string,
+  glowAmount: number, edgeBrightness: number, depthShading: number, bgStyle: string,
 ): void {
   const w = ctx.canvas.width, h = ctx.canvas.height;
   const colors = palette.colors.map(hexToRgb);
   const cBg: [number, number, number] = [8, 8, 12];
+  const N = size * size;
+  const cx = size / 2, cy = size / 2;
+
+  // --- Precomputation: neighbor counts, edge map, distance field ---
+  const neighborCount = new Uint8Array(N);
+  const isEdge = new Uint8Array(N);
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      if (!grid[i]) continue;
+      let nc = 0;
+      let hasEmpty = false;
+      if (y > 0 && grid[(y - 1) * size + x]) nc++; else if (y > 0) hasEmpty = true;
+      if (y < size - 1 && grid[(y + 1) * size + x]) nc++; else if (y < size - 1) hasEmpty = true;
+      if (x > 0 && grid[y * size + x - 1]) nc++; else if (x > 0) hasEmpty = true;
+      if (x < size - 1 && grid[y * size + x + 1]) nc++; else if (x < size - 1) hasEmpty = true;
+      neighborCount[i] = nc;
+      if (hasEmpty) isEdge[i] = 1;
+    }
+  }
+
+  // BFS distance field + nearest aggregate color (for glow)
+  const maxGlowDist = 12;
+  const distField = new Uint8Array(N);
+  const nearestColor = new Uint32Array(N); // arrival order of nearest occupied cell
+  distField.fill(255);
+  if (glowAmount > 0) {
+    const queue: number[] = [];
+    for (let i = 0; i < N; i++) {
+      if (grid[i]) {
+        distField[i] = 0;
+        nearestColor[i] = grid[i];
+        queue.push(i);
+      }
+    }
+    let head = 0;
+    while (head < queue.length) {
+      const ci = queue[head++];
+      const cd = distField[ci];
+      if (cd >= maxGlowDist) continue;
+      const bx = ci % size, by = (ci / size) | 0;
+      const nbrs = [
+        by > 0 ? ci - size : -1,
+        by < size - 1 ? ci + size : -1,
+        bx > 0 ? ci - 1 : -1,
+        bx < size - 1 ? ci + 1 : -1,
+      ];
+      for (const ni of nbrs) {
+        if (ni >= 0 && distField[ni] > cd + 1) {
+          distField[ni] = cd + 1;
+          nearestColor[ni] = nearestColor[ci];
+          queue.push(ni);
+        }
+      }
+    }
+  }
+
+  // --- Pixel rendering ---
   const img = ctx.createImageData(w, h);
   const d = img.data;
-  const cx = size / 2, cy = size / 2;
 
   for (let py = 0; py < h; py++) {
     const gy = Math.min(size - 1, (py / h * size) | 0);
     for (let px = 0; px < w; px++) {
       const gx = Math.min(size - 1, (px / w * size) | 0);
-      const order = grid[gy * size + gx];
+      const gi = gy * size + gx;
+      const order = grid[gi];
       let r: number, g: number, b: number;
 
       if (!order) {
-        [r, g, b] = cBg;
-      } else if (colorMode === 'arrival') {
-        const t = maxCount > 1 ? (order - 1) / (maxCount - 1) : 0;
-        const scaled = t * (colors.length - 1);
-        const i0 = Math.floor(scaled);
-        const i1 = Math.min(colors.length - 1, i0 + 1);
-        const frac = scaled - i0;
-        r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * frac) | 0;
-        g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * frac) | 0;
-        b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * frac) | 0;
-      } else if (colorMode === 'radius') {
-        // Distance from grid center (or from bottom for line mode), normalised to [0,1]
-        let t: number;
-        if (seedMode === 'line-bottom') {
-          t = 1 - gy / (size - 1); // top of grid = 1 (far from seed), bottom = 0
-        } else {
-          const dr = Math.sqrt((gx - cx) ** 2 + (gy - cy) ** 2);
-          t = Math.min(1, dr / (size * 0.5));
+        // Background pixel
+        let bgR = cBg[0], bgG = cBg[1], bgB = cBg[2];
+
+        if (bgStyle === 'radial-gradient') {
+          const dx = px / w - 0.5, dy = py / h - 0.5;
+          const dist = Math.sqrt(dx * dx + dy * dy) * 2; // 0 at center, ~1.4 at corners
+          const bright = Math.max(0, 1 - dist * 0.7); // soft falloff
+          bgR = (cBg[0] + bright * 18) | 0;
+          bgG = (cBg[1] + bright * 16) | 0;
+          bgB = (cBg[2] + bright * 24) | 0;
+        } else if (bgStyle === 'vignette') {
+          const dx = px / w - 0.5, dy = py / h - 0.5;
+          const dist = Math.sqrt(dx * dx + dy * dy) * 2;
+          const darken = Math.max(0, 1 - dist * 0.6);
+          bgR = (cBg[0] * darken) | 0;
+          bgG = (cBg[1] * darken) | 0;
+          bgB = (cBg[2] * darken) | 0;
         }
-        const scaled = t * (colors.length - 1);
-        const i0 = Math.floor(scaled);
-        const i1 = Math.min(colors.length - 1, i0 + 1);
-        const frac = scaled - i0;
-        r = (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * frac) | 0;
-        g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * frac) | 0;
-        b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * frac) | 0;
+
+        // Glow: blend aggregate color into nearby empty pixels
+        const dist = distField[gi];
+        if (glowAmount > 0 && dist > 0 && dist < maxGlowDist) {
+          const falloff = Math.exp(-dist * (1.5 - glowAmount * 0.8));
+          const glowStrength = falloff * glowAmount * 0.6;
+
+          // Get color of nearest aggregate cell
+          const nearOrder = nearestColor[gi];
+          let glowR: number, glowG: number, glowB: number;
+          if (nearOrder && maxCount > 1) {
+            const t = (nearOrder - 1) / (maxCount - 1);
+            [glowR, glowG, glowB] = paletteAt(colors, t);
+          } else {
+            [glowR, glowG, glowB] = colors[0];
+          }
+
+          bgR = (bgR + (glowR - bgR) * glowStrength) | 0;
+          bgG = (bgG + (glowG - bgG) * glowStrength) | 0;
+          bgB = (bgB + (glowB - bgB) * glowStrength) | 0;
+        }
+
+        r = bgR; g = bgG; b = bgB;
       } else {
-        [r, g, b] = colors[colors.length - 1];
+        // Occupied pixel — compute base color
+        if (colorMode === 'arrival') {
+          const t = maxCount > 1 ? (order - 1) / (maxCount - 1) : 0;
+          [r, g, b] = paletteAt(colors, t);
+        } else if (colorMode === 'radius') {
+          let t: number;
+          if (seedMode === 'line-bottom') {
+            t = 1 - gy / (size - 1);
+          } else {
+            const dr = Math.sqrt((gx - cx) ** 2 + (gy - cy) ** 2);
+            t = Math.min(1, dr / (size * 0.5));
+          }
+          [r, g, b] = paletteAt(colors, t);
+        } else if (colorMode === 'neighbors') {
+          const nc = neighborCount[gi];
+          // tips (1 neighbor) = end of palette, branches (2) = mid, junctions (3+) = start
+          const t = nc <= 1 ? 1.0 : nc === 2 ? 0.5 : 0.0;
+          [r, g, b] = paletteAt(colors, t);
+        } else {
+          [r, g, b] = colors[colors.length - 1];
+        }
+
+        // Depth shading: tips brighter, junctions darker
+        if (depthShading > 0) {
+          const nc = neighborCount[gi];
+          // 1 neighbor = +boost, 4 neighbors = -darken
+          const shade = 1 + depthShading * 0.2 * (2 - nc); // nc=1→1.2, nc=2→1.0, nc=3→0.8, nc=4→0.6
+          r = Math.min(255, (r * shade) | 0);
+          g = Math.min(255, (g * shade) | 0);
+          b = Math.min(255, (b * shade) | 0);
+        }
+
+        // Edge highlighting
+        if (edgeBrightness > 0 && isEdge[gi]) {
+          const boost = 1 + edgeBrightness * 0.6;
+          r = Math.min(255, (r * boost) | 0);
+          g = Math.min(255, (g * boost) | 0);
+          b = Math.min(255, (b * boost) | 0);
+        }
       }
 
       const idx = (py * w + px) * 4;
@@ -285,10 +415,36 @@ const parameterSchema: ParameterSchema = {
   colorMode: {
     name: 'Color Mode',
     type: 'select',
-    options: ['arrival', 'radius', 'monochrome'],
+    options: ['arrival', 'radius', 'neighbors', 'monochrome'],
     default: 'arrival',
-    help: 'arrival: palette by order of sticking (first = oldest) | radius: palette by distance from origin/seed | monochrome: uniform last palette color',
+    help: 'arrival: palette by order of sticking | radius: by distance from seed | neighbors: by branch topology (tips vs junctions) | monochrome: uniform',
     group: 'Color',
+  },
+  bgStyle: {
+    name: 'Background',
+    type: 'select',
+    options: ['flat', 'radial-gradient', 'vignette'],
+    default: 'radial-gradient',
+    help: 'flat: solid dark | radial-gradient: soft center glow | vignette: darkened edges',
+    group: 'Color',
+  },
+  glow: {
+    name: 'Glow',
+    type: 'number', min: 0, max: 1, step: 0.1, default: 0.5,
+    help: 'Soft halo around the aggregate — 0 disables',
+    group: 'Texture',
+  },
+  edgeBrightness: {
+    name: 'Edge Brightness',
+    type: 'number', min: 0, max: 1, step: 0.1, default: 0.4,
+    help: 'Brightness boost on boundary cells to emphasize fractal edges',
+    group: 'Texture',
+  },
+  depthShading: {
+    name: 'Depth Shading',
+    type: 'number', min: 0, max: 1, step: 0.1, default: 0.3,
+    help: 'Brightness variation by branch density — tips glow brighter, junctions darker',
+    group: 'Texture',
   },
 };
 
@@ -304,7 +460,8 @@ export const dla: Generator = {
     gridSize: 128, targetParticles: 3000, particlesPerFrame: 8,
     seedMode: 'center', scatterSeeds: 5,
     walkBias: 0.0, stickProbability: 1.0, tipBias: 0.0,
-    colorMode: 'arrival',
+    colorMode: 'arrival', bgStyle: 'radial-gradient',
+    glow: 0.5, edgeBrightness: 0.4, depthShading: 0.3,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -316,6 +473,10 @@ export const dla: Generator = {
     const seedMode     = params.seedMode  ?? 'center';
     const scatterSeeds = Math.max(2, (params.scatterSeeds ?? 5) | 0);
     const colorMode    = params.colorMode || 'arrival';
+    const bgStyle      = params.bgStyle ?? 'radial-gradient';
+    const glowAmount   = Math.max(0, Math.min(1, params.glow ?? 0.5));
+    const edgeBright   = Math.max(0, Math.min(1, params.edgeBrightness ?? 0.4));
+    const depthShade   = Math.max(0, Math.min(1, params.depthShading ?? 0.3));
     const maxSteps     = 2000;
 
     const isLine = seedMode === 'line-bottom';
@@ -348,7 +509,7 @@ export const dla: Generator = {
         if (isLine ? maxRadius <= 1 : maxRadius >= size * 0.45) break;
         if (count >= target) break;
       }
-      renderDLA(ctx, grid, size, count, colorMode, palette, seedMode);
+      renderDLA(ctx, grid, size, count, colorMode, palette, seedMode, glowAmount, edgeBright, depthShade, bgStyle);
       return;
     }
 
@@ -367,7 +528,7 @@ export const dla: Generator = {
       _dlaAnim.count = res.count;
       _dlaAnim.maxRadius = res.newMaxRadius;
     }
-    renderDLA(ctx, _dlaAnim.grid, _dlaAnim.size, _dlaAnim.count, colorMode, palette, seedMode);
+    renderDLA(ctx, _dlaAnim.grid, _dlaAnim.size, _dlaAnim.count, colorMode, palette, seedMode, glowAmount, edgeBright, depthShade, bgStyle);
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },

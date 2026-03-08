@@ -190,6 +190,44 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     }
   }, [canvasSettings]);
 
+  // ── Static render — shared logic ────────────────────────────────────────────
+  const doStaticRender = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const generator = getGenerator(selectedGeneratorId);
+    if (!generator?.renderCanvas2D) return;
+
+    const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
+    if (loadedImage) finalParams._sourceImage = loadedImage;
+    finalParams._renderKey = renderKey;
+
+    try {
+      generator.renderCanvas2D!(ctx, finalParams, seed, palette, quality, 0);
+
+      // Apply PostFX
+      const hasPostFX =
+        postFX.grain > 0 || postFX.vignette > 0 ||
+        postFX.dither >= 2 || postFX.posterize >= 1;
+      if (hasPostFX) {
+        const w = ctx.canvas.width, h = ctx.canvas.height;
+        let imageData = ctx.getImageData(0, 0, w, h);
+        if (postFX.grain > 0) imageData = applyGrain(ctx, imageData, postFX.grain);
+        if (postFX.vignette > 0) imageData = applyVignette(ctx, imageData, w, h, postFX.vignette);
+        if (postFX.dither >= 2) imageData = applyDither(ctx, imageData, postFX.dither);
+        if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
+        ctx.putImageData(imageData, 0, 0);
+      }
+    } catch (err) {
+      console.error('Rendering error:', err);
+      ctx.fillStyle = '#ff0000';
+      ctx.font = '14px monospace';
+      ctx.fillText('Render Error', 10, 20);
+    }
+  };
+
   // ── Static render effect (debounced) — only when NOT animating ──────────────
   const prevGeneratorIdRef = useRef(selectedGeneratorId);
   useEffect(() => {
@@ -198,52 +236,21 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const generatorChanged = prevGeneratorIdRef.current !== selectedGeneratorId;
     prevGeneratorIdRef.current = selectedGeneratorId;
 
-    // Skip debounce when generator changed (e.g. Surprise Me) to avoid blank canvas
-    const delay = generatorChanged ? 0 : 80;
+    // Render synchronously when generator changes to guarantee no blank canvas
+    if (generatorChanged) {
+      doStaticRender();
+      return;
+    }
 
+    // Debounce parameter/slider changes
     clearTimeout(staticTimerRef.current);
     staticTimerRef.current = setTimeout(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const generator = getGenerator(selectedGeneratorId);
-      if (!generator?.renderCanvas2D) return;
-
-      const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
-      if (loadedImage) finalParams._sourceImage = loadedImage;
-      finalParams._renderKey = renderKey;
-
       setIsRendering(true);
-      // Defer by one rAF tick so the browser paints the progress bar first
       animationRef.current = requestAnimationFrame(() => {
-        try {
-          generator.renderCanvas2D!(ctx, finalParams, seed, palette, quality, 0);
-
-          // Apply PostFX
-          const hasPostFX =
-            postFX.grain > 0 || postFX.vignette > 0 ||
-            postFX.dither >= 2 || postFX.posterize >= 1;
-          if (hasPostFX) {
-            const w = ctx.canvas.width, h = ctx.canvas.height;
-            let imageData = ctx.getImageData(0, 0, w, h);
-            if (postFX.grain > 0) imageData = applyGrain(ctx, imageData, postFX.grain);
-            if (postFX.vignette > 0) imageData = applyVignette(ctx, imageData, w, h, postFX.vignette);
-            if (postFX.dither >= 2) imageData = applyDither(ctx, imageData, postFX.dither);
-            if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
-            ctx.putImageData(imageData, 0, 0);
-          }
-        } catch (err) {
-          console.error('Rendering error:', err);
-          ctx.fillStyle = '#ff0000';
-          ctx.font = '14px monospace';
-          ctx.fillText('Render Error', 10, 20);
-        } finally {
-          setIsRendering(false);
-        }
+        doStaticRender();
+        setIsRendering(false);
       });
-    }, delay);
+    }, 80);
 
     return () => {
       clearTimeout(staticTimerRef.current);
