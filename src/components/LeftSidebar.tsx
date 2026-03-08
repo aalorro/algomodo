@@ -88,6 +88,22 @@ export const LeftSidebar: React.FC = () => {
           💙 Support Development
         </button>
         
+        {/* Roadmap & Use Cases */}
+        <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => setOpenModal('roadmap')}
+            className="flex-1 px-2 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition"
+          >
+            Roadmap
+          </button>
+          <button
+            onClick={() => setOpenModal('use-cases')}
+            className="flex-1 px-2 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition"
+          >
+            Use Cases
+          </button>
+        </div>
+
         {/* About, Changelog and Privacy Links */}
         <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
           <button

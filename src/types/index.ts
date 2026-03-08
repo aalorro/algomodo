@@ -155,7 +155,7 @@ export interface AppState {
   boomerangGif: boolean;
   endlessGif: boolean;
   renderKey: number;
-  openModal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | null;
+  openModal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | null;
 
   // PostFX
   postFX: Record<string, any>;
@@ -200,7 +200,7 @@ export interface AppState {
   setEndlessGif: (on: boolean) => void;
   forceReload: () => void;
   updatePostFX: (key: string, value: any) => void;
-  setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | null) => void;
+  setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | null) => void;
 
   // History (undo/redo)
   historyPast: HistorySnapshot[];

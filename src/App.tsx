@@ -7,6 +7,8 @@ import { PrivacyModal } from './components/PrivacyModal';
 import { ChangelogModal } from './components/ChangelogModal';
 import { DonationModal } from './components/DonationModal';
 import { InstructionsModal } from './components/InstructionsModal';
+import { RoadmapModal } from './components/RoadmapModal';
+import { UseCasesModal } from './components/UseCasesModal';
 import { initializeGenerators } from './generators';
 import { getAllGenerators } from './core/registry';
 import { useStore } from './store';
@@ -189,6 +191,8 @@ function App() {
       {openModal === 'changelog' && <ChangelogModal />}
       {openModal === 'donation' && <DonationModal />}
       {openModal === 'instructions' && <InstructionsModal />}
+      {openModal === 'roadmap' && <RoadmapModal />}
+      {openModal === 'use-cases' && <UseCasesModal />}
     </div>
   );
 }
