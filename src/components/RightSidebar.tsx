@@ -1037,12 +1037,37 @@ export const RightSidebar: React.FC = () => {
 
             <div>
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Data</h3>
-              <button
-                onClick={handleExportRecipe}
-                className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm"
-              >
-                JSON Recipe
-              </button>
+              <div className="flex gap-2 mb-1">
+                <button
+                  onClick={handleExportRecipe}
+                  className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm"
+                >
+                  Export Recipe
+                </button>
+                <input
+                  id="export-recipe-upload"
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const recipe = await uploadRecipe(file);
+                      loadRecipe(recipe);
+                    } catch {
+                      alert('Invalid JSON recipe file');
+                    }
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  onClick={() => document.getElementById('export-recipe-upload')?.click()}
+                  className="flex-1 px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-sm"
+                >
+                  Import Recipe
+                </button>
+              </div>
               <input
                 type="text"
                 value={recipePrefix}
