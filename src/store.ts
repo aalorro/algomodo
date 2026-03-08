@@ -70,7 +70,7 @@ export const useStore = create<AppState>()(
       boomerangGif: false,
       endlessGif: false,
       renderKey: 0,
-      openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | null,
+      openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | null,
 
       // PostFX
       postFX: {
