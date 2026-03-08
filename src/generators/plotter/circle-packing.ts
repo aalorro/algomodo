@@ -111,25 +111,22 @@ export const circlePacking: Generator = {
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
-    const bufW = ctx.canvas.width, bufH = ctx.canvas.height;
-
-    // Work in a fixed 1080-based coordinate space; uniform scale to fill buffer
-    const refSize = 1080;
-    const scale = bufW / refSize;
-    const w = refSize, h = Math.round(bufH / scale);
-
-    ctx.save();
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    // Reset any stale transform from a previous generator
+    ctx.resetTransform();
+    const w = ctx.canvas.width, h = ctx.canvas.height;
 
     ctx.fillStyle = BG[params.background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
 
+
     const rng = new SeededRNG(seed);
     const noise = new SimplexNoise(seed);
 
-    const minR = Math.max(1, params.minRadius ?? 4);
-    const maxR = Math.max(minR * 3, params.maxRadius ?? 80);
-    const pad = params.padding ?? 2;
+    // Scale parameter values relative to canvas size so visuals stay consistent
+    const sizeScale = Math.min(w, h) / 1080;
+    const minR = Math.max(1, (params.minRadius ?? 4) * sizeScale);
+    const maxR = Math.max(minR * 3, (params.maxRadius ?? 80) * sizeScale);
+    const pad = (params.padding ?? 2) * sizeScale;
     const target = params.circleCount ?? 2500;
     const dScale = params.densityScale ?? 2.0;
     const dContrast = params.densityContrast ?? 0.8;
@@ -301,14 +298,14 @@ export const circlePacking: Generator = {
       }
       if (fillMode === 'outline' || fillMode === 'filled+outline') {
         ctx.strokeStyle = `rgba(${cr},${cg},${cb},${strokeAlpha})`;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = sizeScale;
         ctx.stroke();
       }
 
       // Inner detail (only for shapes large enough to see)
-      if (innerDetail !== 'none' && drawR > 8) {
+      if (innerDetail !== 'none' && drawR > 8 * sizeScale) {
         ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(isDark ? 0.45 : 0.35)})`;
-        ctx.lineWidth = 0.6;
+        ctx.lineWidth = 0.6 * sizeScale;
 
         if (innerDetail === 'rings') {
           const ringStep = Math.max(3, drawR * 0.25);
@@ -351,7 +348,6 @@ export const circlePacking: Generator = {
       ctx.restore();
     }
 
-    ctx.restore(); // undo setTransform
   },
 
   renderWebGL2(gl) {
