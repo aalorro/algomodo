@@ -24,7 +24,7 @@ export class SeededRNG {
     this.x = this.y;
     this.y = this.z;
     this.z = this.w;
-    this.w = this.w ^ (this.w >> 19) ^ t ^ (t >> 8);
+    this.w = this.w ^ (this.w >>> 19) ^ t ^ (t >>> 8);
     return (this.w >>> 0) / 0x100000000;
   }
 
