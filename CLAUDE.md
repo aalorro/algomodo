@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Development server (auto-opens browser at http://localhost:5173)
+# Development servccer (auto-opens browser at http://localhost:5173)
 npm run dev
 
 # Type check only (no emit)
