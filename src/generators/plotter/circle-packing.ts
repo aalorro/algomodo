@@ -113,13 +113,13 @@ export const circlePacking: Generator = {
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const bufW = ctx.canvas.width, bufH = ctx.canvas.height;
 
-    // Work in a fixed 1080-based coordinate space; scale context to fill buffer
+    // Work in a fixed 1080-based coordinate space; uniform scale to fill buffer
     const refSize = 1080;
-    const sx = bufW / refSize, sy = bufH / refSize;
-    const w = refSize, h = Math.round(bufH / sx);  // logical height
+    const scale = bufW / refSize;
+    const w = refSize, h = Math.round(bufH / scale);
 
     ctx.save();
-    ctx.setTransform(sx, 0, 0, sy, 0, 0);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
     ctx.fillStyle = BG[params.background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
