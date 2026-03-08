@@ -119,7 +119,7 @@ export const RightSidebar: React.FC = () => {
   const [importError, setImportError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [mp4MaxDuration, setMp4MaxDuration] = useState(30);
+  const [mp4MaxDuration, setMp4MaxDuration] = useState(8);
   const [isMp4Exporting, setIsMp4Exporting] = useState(false);
   const [mp4Progress, setMp4Progress] = useState(0);
   const [mp4Elapsed, setMp4Elapsed] = useState(0);
@@ -406,6 +406,13 @@ export const RightSidebar: React.FC = () => {
     const abortController = new AbortController();
     mp4AbortRef.current = abortController;
 
+    // Pause live animation to prevent shared state conflicts
+    const wasAnimating = isAnimating;
+    if (wasAnimating) {
+      setAnimating(false);
+      await new Promise(r => setTimeout(r, 100)); // Let React flush the effect cleanup
+    }
+
     try {
       setIsMp4Exporting(true);
       setMp4Progress(0);
@@ -460,6 +467,8 @@ export const RightSidebar: React.FC = () => {
       setMp4Progress(0);
       setMp4Elapsed(0);
       mp4AbortRef.current = null;
+      // Restore animation if it was running before export
+      if (wasAnimating) setAnimating(true);
     }
   };
 
@@ -987,7 +996,7 @@ export const RightSidebar: React.FC = () => {
                 <div className="mb-2">
                   <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Max Duration</label>
                   <div className="flex gap-1">
-                    {[15, 30, 60, 120].map((sec) => (
+                    {[8, 15, 30, 45].map((sec) => (
                       <button
                         key={sec}
                         onClick={() => setMp4MaxDuration(sec)}
