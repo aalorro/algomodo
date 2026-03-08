@@ -22,6 +22,36 @@ export function isWebCodecsSupported(): boolean {
   return typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined';
 }
 
+/**
+ * Snapshot ~3000 pixel RGB values from evenly-spaced positions across the canvas.
+ * Returns a Uint8Array for direct byte-by-byte comparison (no hash collisions).
+ */
+function canvasSnapshot(ctx: CanvasRenderingContext2D, w: number, h: number): Uint8Array {
+  const step = Math.max(1, Math.floor(Math.sqrt(w * h / 3000)));
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const cols = Math.ceil(w / step);
+  const rows = Math.ceil(h / step);
+  const out = new Uint8Array(cols * rows * 3);
+  let idx = 0;
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const i = (y * w + x) * 4;
+      out[idx++] = data[i];
+      out[idx++] = data[i + 1];
+      out[idx++] = data[i + 2];
+    }
+  }
+  return out;
+}
+
+function snapshotsEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export async function exportMp4(options: Mp4ExportOptions): Promise<Blob> {
   const {
     generator, params, seed, palette, quality, postFX,
@@ -107,6 +137,11 @@ export async function exportMp4(options: Mp4ExportOptions): Promise<Blob> {
   const frameDuration = Math.round(1_000_000 / fps); // microseconds per frame
   let frameIndex = 0;
 
+  // Stagnation detection: stop when canvas hasn't changed for 3 seconds
+  const stagnationThreshold = fps * 3;
+  let prevSnapshot: Uint8Array | null = null;
+  let staleFrames = 0;
+
   try {
     while (frameIndex < maxFrames) {
       if (abortSignal?.aborted) {
@@ -145,10 +180,27 @@ export async function exportMp4(options: Mp4ExportOptions): Promise<Blob> {
 
       frameIndex++;
 
-      // Check for generator completion signal
+      // Check for explicit generator completion signal
       if (result === true) {
         onProgress?.(100, frameIndex / fps);
         break;
+      }
+
+      // Stagnation detection: compare canvas snapshot to previous frame
+      // Skip first 2 seconds to let the animation warm up, check every 5th frame for performance
+      if (frameIndex > fps * 2 && frameIndex % 5 === 0 && !hasPostFX) {
+        const snap = canvasSnapshot(ctx, width, height);
+        if (prevSnapshot && snapshotsEqual(snap, prevSnapshot)) {
+          staleFrames += 5;
+          if (staleFrames >= stagnationThreshold) {
+            console.log(`MP4 export: animation stagnated after ${(frameIndex / fps).toFixed(1)}s`);
+            onProgress?.(100, frameIndex / fps);
+            break;
+          }
+        } else {
+          staleFrames = 0;
+        }
+        prevSnapshot = snap;
       }
 
       // Report progress
