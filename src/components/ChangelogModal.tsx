@@ -20,6 +20,31 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.6.1 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.6.1] - 2026-03-08
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Roadmap modal</strong> — view planned enhancements from the left sidebar</li>
+                  <li><strong>Use Cases modal</strong> — 8 practical applications of algorithmic art with recommended generators</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Improved</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Voronoi Ridges</strong> — fixed multi-octave algorithm for genuine fine detail; added crisp/smooth styles, contrast control, mean-based normalization</li>
+                  <li><strong>Voronoi Ridges performance</strong> — flat array site storage, 5×5 grid search (was 7×7), quality-aware stepping; ~4× faster</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.6.0 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
