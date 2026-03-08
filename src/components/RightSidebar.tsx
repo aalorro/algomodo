@@ -862,32 +862,40 @@ export const RightSidebar: React.FC = () => {
         {activeTab === 'export' && (
           <div className="flex flex-col h-full">
             <div className="px-4 py-4 space-y-3 overflow-y-auto pb-[30px] flex-1">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-1">Filename Prefix</label>
+
+            {/* ── Output Settings ─────────────────────────────────── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Output Settings</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                Custom prefix for all exported files. Leave blank for default naming.
+              </p>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Filename Prefix</label>
               <input
                 type="text"
                 value={filePrefix}
                 onChange={(e) => setFilePrefix(e.target.value)}
                 placeholder={`algomodo-${new Date().toISOString().slice(0,10).replace(/-/g,'')}…`}
-                className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
+                className="w-full px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                Leave blank for <span className="font-mono">algomodo-date-time</span>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                Canvas: {canvasSettings.width} x {canvasSettings.height}px @ {canvasSettings.devicePixelRatio}x DPR
               </p>
             </div>
 
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Still Image</h3>
-              <div className="flex gap-2 mb-2">
+            {/* ── Still Image ─────────────────────────────────────── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Still Image</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Export current frame as a 1080 x 1080 image.</p>
+              <div className="flex gap-2">
                 <button
                   onClick={handleExportPNG}
-                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium"
                 >
                   PNG
                 </button>
                 <button
                   onClick={handleExportJPG}
-                  className="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm"
+                  className="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm font-medium"
                 >
                   JPG
                 </button>
@@ -895,20 +903,22 @@ export const RightSidebar: React.FC = () => {
               {generator?.supportsVector && (
                 <button
                   onClick={handleExportSVG}
-                  className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm mb-2"
+                  className="w-full mt-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium"
                 >
-                  SVG
+                  SVG (Vector)
                 </button>
               )}
             </div>
 
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Animation</h3>
+            {/* ── GIF Export ──────────────────────────────────────── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">GIF Export</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Records live canvas animation as a GIF.</p>
               {!isAnimating && (
-                <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2">Enable animation in Settings first</p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2 font-medium">Enable animation in Settings tab first.</p>
               )}
               <div className="mb-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Duration</label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Duration</label>
                 <div className="flex gap-1">
                   {[3, 5, 8].map((sec) => (
                     <button
@@ -926,121 +936,147 @@ export const RightSidebar: React.FC = () => {
                   ))}
                 </div>
               </div>
-              <label className="flex items-center gap-2 mb-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={boomerangGif}
-                  onChange={(e) => { setBoomerangGif(e.target.checked); if (e.target.checked) setEndlessGif(false); }}
-                  disabled={!isAnimating}
-                  className="accent-blue-600"
-                />
-                <span className="text-xs text-gray-600 dark:text-gray-400">Boomerang loop</span>
-              </label>
-              <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={endlessGif}
-                  onChange={(e) => { setEndlessGif(e.target.checked); if (e.target.checked) setBoomerangGif(false); }}
-                  disabled={!isAnimating}
-                  className="accent-blue-600"
-                />
-                <span className="text-xs text-gray-600 dark:text-gray-400">Endless loop</span>
-              </label>
+              <div className="mb-2">
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Resolution</label>
+                <div className="flex gap-1">
+                  {([600, 800, 1000] as const).map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => setGifSize(size)}
+                      disabled={isRecording || !isAnimating}
+                      className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
+                        gifSize === size
+                          ? 'bg-yellow-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      } disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                      {size}px
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Loop Mode</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={boomerangGif}
+                      onChange={(e) => { setBoomerangGif(e.target.checked); if (e.target.checked) setEndlessGif(false); }}
+                      disabled={!isAnimating}
+                      className="accent-blue-600"
+                    />
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Boomerang</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={endlessGif}
+                      onChange={(e) => { setEndlessGif(e.target.checked); if (e.target.checked) setBoomerangGif(false); }}
+                      disabled={!isAnimating}
+                      className="accent-blue-600"
+                    />
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Endless</span>
+                  </label>
+                </div>
+              </div>
               <button
                 onClick={handleExportGIF}
-                className={`w-full px-3 py-2 rounded text-sm ${
+                className={`w-full px-3 py-2 rounded text-sm font-medium ${
                   isRecording || !isAnimating
                     ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
                     : 'bg-yellow-600 hover:bg-yellow-700 text-white'
                 }`}
                 disabled={isRecording || !isAnimating}
               >
-                {isRecording ? `Recording... (${recordingProgress}%)` : 'GIF (may take 1-2 min)'}
+                {isRecording ? `Recording... (${recordingProgress}%)` : 'Export GIF'}
               </button>
-              <div className="flex gap-1 mt-1 mb-3">
-                {([600, 800, 1000] as const).map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => setGifSize(size)}
-                    disabled={isRecording || !isAnimating}
-                    className={`flex-1 py-1 rounded text-xs font-medium transition-colors ${
-                      gifSize === size
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    } disabled:opacity-40 disabled:cursor-not-allowed`}
-                  >
-                    {size}px
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={handleExportWebM}
-                className={`w-full px-3 py-2 rounded text-sm ${
-                  isRecording || !isAnimating
-                    ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
-                    : 'bg-orange-600 hover:bg-orange-700 text-white'
-                }`}
-                disabled={isRecording || !isAnimating}
-              >
-                {isRecording ? `Recording... (${recordingProgress}%)` : 'WebM Video'}
-              </button>
+              {isAnimating && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">GIF export may take 1-2 minutes.</p>}
             </div>
 
-            {/* MP4 Export — offscreen faster-than-realtime */}
-            {generator?.supportsAnimation && (
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">MP4 (Record to Completion)</h3>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                  Renders animation offscreen at full speed. Stops when animation completes or max duration is reached.
-                </p>
-                <div className="mb-2">
-                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Max Duration</label>
-                  <div className="flex gap-1">
-                    {[8, 15, 30, 45].map((sec) => (
-                      <button
-                        key={sec}
-                        onClick={() => setMp4MaxDuration(sec)}
-                        disabled={isMp4Exporting}
-                        className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
-                          mp4MaxDuration === sec
-                            ? 'bg-red-600 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        {sec}s
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  onClick={isMp4Exporting ? () => mp4AbortRef.current?.abort() : handleExportMP4}
-                  disabled={isMp4Exporting ? false : !generator?.renderCanvas2D}
-                  className={`w-full px-3 py-2 rounded text-sm ${
-                    isMp4Exporting
-                      ? 'bg-red-700 hover:bg-red-800 text-white'
-                      : !generator?.renderCanvas2D
-                        ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : 'bg-red-600 hover:bg-red-700 text-white'
-                  }`}
-                >
-                  {isMp4Exporting
-                    ? `Exporting... ${mp4Progress}% (${mp4Elapsed.toFixed(1)}s) — click to cancel`
-                    : 'MP4 Video (H.264)'}
-                </button>
-                {!isWebCodecsSupported() && (
-                  <p className="text-xs text-red-400 mt-1">
-                    WebCodecs not supported in this browser. Use Chrome, Edge, or Safari 16.4+.
-                  </p>
-                )}
-              </div>
-            )}
+            {/* ── Video Export ─────────────────────────────────────── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Video Export</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Record animation as video.</p>
 
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Data</h3>
-              <div className="flex gap-2 mb-1">
+              {/* WebM */}
+              <div className="mb-3">
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">WebM</label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5">Records live canvas using the GIF duration setting above.</p>
+                {!isAnimating && (
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-1.5 font-medium">Enable animation in Settings tab first.</p>
+                )}
+                <button
+                  onClick={handleExportWebM}
+                  className={`w-full px-3 py-2 rounded text-sm font-medium ${
+                    isRecording || !isAnimating
+                      ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : 'bg-orange-600 hover:bg-orange-700 text-white'
+                  }`}
+                  disabled={isRecording || !isAnimating}
+                >
+                  {isRecording ? `Recording... (${recordingProgress}%)` : 'Export WebM'}
+                </button>
+              </div>
+
+              {/* MP4 — offscreen faster-than-realtime */}
+              {generator?.supportsAnimation && (
+                <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">MP4 (H.264)</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                    Renders offscreen at full speed. Stops automatically when the animation completes or max duration is reached.
+                  </p>
+                  <div className="mb-2">
+                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Max Duration</label>
+                    <div className="flex gap-1">
+                      {[8, 15, 30, 45].map((sec) => (
+                        <button
+                          key={sec}
+                          onClick={() => setMp4MaxDuration(sec)}
+                          disabled={isMp4Exporting}
+                          className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
+                            mp4MaxDuration === sec
+                              ? 'bg-red-600 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          {sec}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={isMp4Exporting ? () => mp4AbortRef.current?.abort() : handleExportMP4}
+                    disabled={isMp4Exporting ? false : !generator?.renderCanvas2D}
+                    className={`w-full px-3 py-2 rounded text-sm font-medium ${
+                      isMp4Exporting
+                        ? 'bg-red-700 hover:bg-red-800 text-white'
+                        : !generator?.renderCanvas2D
+                          ? 'bg-gray-200 dark:bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-red-600 hover:bg-red-700 text-white'
+                    }`}
+                  >
+                    {isMp4Exporting
+                      ? `Exporting... ${mp4Progress}% (${mp4Elapsed.toFixed(1)}s) — click to cancel`
+                      : 'Export MP4'}
+                  </button>
+                  {!isWebCodecsSupported() && (
+                    <p className="text-xs text-red-400 mt-1">
+                      WebCodecs not supported in this browser. Use Chrome, Edge, or Safari 16.4+.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Recipe Data ─────────────────────────────────────── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Recipe Data</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Save or load a complete generator configuration (seed, params, palette, effects).</p>
+              <div className="flex gap-2 mb-2">
                 <button
                   onClick={handleExportRecipe}
-                  className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm"
+                  className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-medium"
                 >
                   Export Recipe
                 </button>
@@ -1063,27 +1099,19 @@ export const RightSidebar: React.FC = () => {
                 />
                 <button
                   onClick={() => document.getElementById('export-recipe-upload')?.click()}
-                  className="flex-1 px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-sm"
+                  className="flex-1 px-3 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-sm font-medium"
                 >
                   Import Recipe
                 </button>
               </div>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Recipe Filename Prefix</label>
               <input
                 type="text"
                 value={recipePrefix}
                 onChange={(e) => setRecipePrefix(e.target.value)}
                 placeholder="algomodo-json-YYYYMMDD-HHMMSS"
-                className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
+                className="w-full px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               />
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Canvas</h3>
-              <div className="space-y-2 text-xs text-gray-500 dark:text-gray-400">
-                <p>Width: {canvasSettings.width}px</p>
-                <p>Height: {canvasSettings.height}px</p>
-                <p>DPR: {canvasSettings.devicePixelRatio}x</p>
-              </div>
             </div>
             </div>
           </div>
