@@ -25,7 +25,7 @@ export const LeftSidebar: React.FC = () => {
       </div>
 
       {/* Families and Generators */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
         {families.map((family) => {
           const generators = getGeneratorsByFamily(family.id);
           const isExpanded = expandedFamily === family.id;
