@@ -337,7 +337,11 @@ export const attractorTrails: Generator = {
     // ── Find max density for normalisation ────────────────────────────────
     let maxDens = 0;
     for (let i = 0; i < size; i++) if (hist[i] > maxDens) maxDens = hist[i];
-    if (maxDens === 0) return;
+    if (maxDens === 0) {
+      ctx.fillStyle = '#080808';
+      ctx.fillRect(0, 0, w, h);
+      return;
+    }
     const logMax = Math.log(maxDens + 1);
 
     // ── Render ────────────────────────────────────────────────────────────
