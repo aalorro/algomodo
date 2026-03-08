@@ -5,6 +5,23 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-08
+
+### Added
+
+- **MP4 video export (H.264)** — renders animation offscreen at full speed using WebCodecs API + mp4-muxer; auto-stops when animation completes or max duration is reached (8s / 15s / 30s / 45s options)
+- **Generator completion signals** — `renderCanvas2D` can now return `true` to signal animation complete; DLA signals done when aggregate reaches boundary; Game of Life signals done after 3 consecutive stable frames (when perturbRate is 0)
+- **Stagnation detection** — MP4 exporter samples ~3000 pixels per frame and detects when canvas stops changing for 3 seconds, stopping recording automatically
+- **JSON recipe import button** — load recipe files directly from the Export tab alongside the existing Export Recipe button
+- **DLA visual improvements** — glow effect, edge highlighting, background styles (solid / gradient / radial), neighbors color mode, depth shading
+
+### Improved
+
+- **Export tab UI redesign** — card-based sections with clear uppercase headers, descriptive helper text, and higher-contrast input fields; GIF and Video export controls separated into distinct sections for clarity; Canvas info merged into Output Settings section
+- **Input field styling** — stronger borders, white/dark backgrounds, and focus ring for better visibility in both light and dark themes
+
+---
+
 ## [1.5.0] - 2026-03-05
 
 ### Added

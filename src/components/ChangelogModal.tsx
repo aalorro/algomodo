@@ -20,6 +20,36 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.6.0 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.6.0] - 2026-03-08
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>MP4 video export (H.264)</strong> — renders animation offscreen at full speed using WebCodecs API + mp4-muxer; auto-stops when animation completes or max duration is reached</li>
+                  <li><strong>Generator completion signals</strong> — DLA signals done when aggregate reaches boundary; Game of Life signals done after 3 stable frames</li>
+                  <li><strong>Stagnation detection</strong> — MP4 exporter detects when canvas stops changing (3-second threshold) and stops recording automatically</li>
+                  <li><strong>MP4 max duration selector</strong> — 8s / 15s / 30s / 45s options</li>
+                  <li><strong>JSON recipe import button</strong> — load recipe files directly from the Export tab</li>
+                  <li><strong>DLA visual improvements</strong> — glow, edge highlighting, background styles, neighbors color mode, depth shading</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Improved</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Export tab UI redesign</strong> — card-based sections with clear headers, descriptions, and better input field visibility</li>
+                  <li>GIF and Video export controls separated into distinct sections for clarity</li>
+                  <li>Canvas info merged into Output Settings section</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.5.0 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
