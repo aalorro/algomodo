@@ -34,6 +34,7 @@ let _anim: {
   // positive = consecutive frames alive; negative = frames since death (trail)
   age: Int16Array;
   size: number;
+  stableFrames: number;
 } | null = null;
 
 function initGrid(seed: number, size: number, density: number) {
@@ -50,7 +51,7 @@ function initGrid(seed: number, size: number, density: number) {
 function stepGrid(
   grid: Uint8Array, next: Uint8Array, age: Int16Array,
   size: number, wrap: boolean, rule: RuleMask,
-): void {
+): boolean {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let n = 0;
@@ -73,7 +74,9 @@ function stepGrid(
         : ((rule.birth   >> n) & 1);
     }
   }
+  let changed = false;
   for (let i = 0; i < size * size; i++) {
+    if (next[i] !== grid[i]) changed = true;
     if (next[i]) {
       age[i] = age[i] <= 0 ? 1 : Math.min(age[i] + 1, 32767);
     } else {
@@ -81,6 +84,7 @@ function stepGrid(
     }
     grid[i] = next[i];
   }
+  return changed;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,19 +276,29 @@ export const gameOfLife: Generator = {
     const key = `${seed}|${size}|${density}|${wrap}|${params.ruleSet ?? 'conway'}|${params._renderKey ?? 0}`;
     if (!_anim || _anim.key !== key) {
       const { grid, next, age } = initGrid(seed, size, density);
-      _anim = { key, grid, next, age, size };
+      _anim = { key, grid, next, age, size, stableFrames: 0 };
     }
 
     const spf         = Math.max(1, (params.stepsPerFrame  ?? 1)   | 0);
     const perturbRate = params.perturbRate ?? 0;
     const perturbRng  = new SeededRNG(seed ^ (time | 0));
 
+    let anyChanged = false;
     for (let s = 0; s < spf; s++) {
       if (perturbRate > 0) perturbGrid(_anim.grid, _anim.age, perturbRng, perturbRate);
-      stepGrid(_anim.grid, _anim.next, _anim.age, _anim.size, wrap, rule);
+      if (stepGrid(_anim.grid, _anim.next, _anim.age, _anim.size, wrap, rule)) anyChanged = true;
+    }
+
+    if (!anyChanged && perturbRate === 0) {
+      _anim.stableFrames++;
+    } else {
+      _anim.stableFrames = 0;
     }
 
     renderGoL(ctx, _anim.grid, _anim.age, _anim.size, colorMode, palette);
+
+    // Signal completion after 3 consecutive stable frames (no perturbation)
+    if (_anim.stableFrames >= 3) return true;
   },
 
   renderWebGL2(gl) {
