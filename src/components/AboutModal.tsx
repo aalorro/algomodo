@@ -38,10 +38,11 @@ export const AboutModal: React.FC = () => {
               <li>Canvas SAVE: Export PNG at 1080x1080 or record WebM animations</li>
               <li>GIF export with 3 resolutions (600/800/1000px), boomerang and endless loop options</li>
               <li>WebM video export recorded directly from the live canvas</li>
+              <li>MP4 video export (H.264) — offscreen faster-than-realtime recording with auto-stop on animation completion</li>
               <li>Custom text input for Text family generators</li>
               <li>Image input: Drop, paste, or URL-load images for the Image family</li>
               <li>Preset export/import: Save presets as text files and load them back</li>
-              <li>JSON recipe import: Load recipe files to restore canvas state</li>
+              <li>JSON recipe export and import: Save/load full canvas state as JSON files</li>
               <li>Undo / Redo with 50-step parameter history</li>
               <li>PostFX pipeline: Grain, Vignette, Dither, Posterize</li>
             </ul>
@@ -49,7 +50,7 @@ export const AboutModal: React.FC = () => {
 
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Version</h3>
-            <p>v1.5.0</p>
+            <p>v1.6.0</p>
           </div>
 
           <div>

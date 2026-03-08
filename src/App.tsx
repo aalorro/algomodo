@@ -180,7 +180,7 @@ function App() {
         <p className="text-xs md:text-sm font-bold text-white">
           &copy; 2026 ArtMondo &mdash; MIT License
         </p>
-        <p className="text-xs md:text-sm font-bold text-gray-400">v1.4.0</p>
+        <p className="text-xs md:text-sm font-bold text-gray-400">v1.6.0</p>
       </div>
 
       {/* Modals */}

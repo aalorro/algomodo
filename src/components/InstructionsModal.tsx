@@ -88,7 +88,7 @@ export const InstructionsModal: React.FC = () => {
               <li>
                 <strong>Export</strong>
                 <br />
-                <span className="text-gray-500 dark:text-gray-400">Download your artwork in multiple formats. Static formats (PNG, JPG, SVG) are always available. Animation formats (GIF, WebM) require animation to be enabled first. You can also export a JSON recipe file that saves every setting so the artwork can be recreated exactly.</span>
+                <span className="text-gray-500 dark:text-gray-400">Download your artwork in multiple formats. Static formats (PNG, JPG, SVG) are always available. Animation formats (GIF, WebM) require animation to be enabled first. MP4 export renders offscreen at full speed and auto-stops when the animation completes. You can also export/import JSON recipe files that save every setting so the artwork can be recreated exactly.</span>
               </li>
               <li>
                 <strong>Settings</strong>
@@ -142,7 +142,8 @@ export const InstructionsModal: React.FC = () => {
             <p className="mb-2">Enable animation first, then go to the Export tab. Choose a duration (3, 5, or 8 seconds).</p>
             <ul className="list-disc list-inside space-y-1">
               <li><strong>GIF</strong> &mdash; Records an animated GIF. Choose a resolution: 600px (fastest), 800px, or 1000px (highest quality, may take longer). Encoding uses multiple workers for larger sizes.</li>
-              <li><strong>WebM</strong> &mdash; Records video directly from the live canvas at its native resolution. Smaller file size and higher quality than GIF.</li>
+              <li><strong>WebM</strong> &mdash; Records video directly from the live canvas at its native resolution. Smaller file size and higher quality than GIF. Uses the same duration as GIF.</li>
+              <li><strong>MP4 (H.264)</strong> &mdash; Renders the animation offscreen at full speed, much faster than real-time. Automatically stops when the animation completes (e.g. DLA fills the canvas, Game of Life stabilizes) or when the max duration is reached (8 / 15 / 30 / 45 seconds). Does not require live animation to be enabled.</li>
             </ul>
             <p className="mt-2 font-medium text-gray-900 dark:text-white">GIF loop options:</p>
             <ul className="list-disc list-inside space-y-1 mt-1">
