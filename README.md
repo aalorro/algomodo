@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.6.1 · © 2026 ArtMondo
+MIT License · v1.6.2 · © 2026 ArtMondo
 
 ---
 
@@ -10,7 +10,7 @@ MIT License · v1.6.1 · © 2026 ArtMondo
 
 | Feature | Details |
 |---|---|
-| **93 generators** | Across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs |
+| **105 generators** | Across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs |
 | **Live animation** | requestAnimationFrame loop with persistent simulation state; per-generator steps/frame control |
 | **Seeded RNG** | xorshift128+ — every output is fully reproducible from its integer seed |
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
@@ -154,6 +154,41 @@ Generative transformations applied to a user-supplied source image. Drop or past
 | **Lino Cut** | Two-tone linocut / woodblock print via luminance thresholding and edge detection |
 | **Dither** | Floyd-Steinberg and ordered dithering snapping colours to the active palette |
 | **ASCII Art** | Source image rendered as a grid of ASCII or Unicode block characters scaled by local luminance |
+
+### Fractals (10)
+
+Escape-time fractals, iterated function systems, and chaotic attractors rendered as high-detail pixel art.
+
+| Name | Key Feature |
+|---|---|
+| **Mandelbrot Set** | The classic Mandelbrot set and variants — iterate z = z² + c and color by smooth escape time |
+| **Julia Set** | Julia sets — fix c, iterate z = z² + c from each pixel and color by escape time |
+| **Newton Fractal** | Newton's method fractal — color by which root each pixel converges to under z^n − 1 = 0 |
+| **IFS / Barnsley Fern** | Iterated Function Systems — chaos game with affine transforms producing ferns, dragons, spirals, and more |
+| **Recursive Subdivision** | Recursively subdivide space into smaller cells with random perturbation |
+| **Burning Ship** | The Burning Ship fractal — z = (\|Re(z)\| + i\|Im(z)\|)² + c with ship-shaped structures and asymmetric detail |
+| **Fractal Flames** | Fractal flame — iterated function system with nonlinear variation functions and density histogram rendering |
+| **Multibrot** | Multibrot set — generalized Mandelbrot with variable exponent z^d + c creating d-fold symmetric fractals |
+| **Orbit Traps** | Orbit trap fractal — Mandelbrot iteration colored by proximity of orbit points to geometric trap shapes |
+| **Strange Attractor Density** | Strange attractor density plot — chaotic iterated maps rendered as luminous density histograms |
+
+### Graphs (11)
+
+Graph-theory-based generators — tessellations, triangulations, proximity graphs, and network structures.
+
+| Name | Key Feature |
+|---|---|
+| **Tessellations** | Regular and semi-regular tilings — triangular, square, hexagonal, Penrose, and Cairo |
+| **Low-Poly** | Delaunay triangulation with noise-based elevation coloring and simulated directional lighting |
+| **Ecosystems** | Agent-based predator/prey simulation visualized as a graph network |
+| **Steiner Networks** | Minimum Steiner tree networks — shortest connection of terminal points with optimized junction nodes |
+| **Geodesic** | Geodesic sphere — subdivided icosahedron projected onto 2D with depth shading |
+| **Constrained** | Constrained Delaunay triangulation — forced constraint edges partition the triangulation into zones |
+| **Anisotropic** | Anisotropic proximity graph — edges filtered by a direction field, creating oriented flow patterns |
+| **Euler Trails** | Euler trail on a graph — a path that visits every edge exactly once, drawn as a continuous flowing line |
+| **k-Nearest Neighbor** | k-NN graph — each node connects to its k closest neighbors, revealing local structure and cluster boundaries |
+| **Gabriel Graph** | Gabriel graph — edge (i,j) exists iff no other point lies inside the diametral circle of i and j |
+| **Planar Graph** | Planar graph from Delaunay triangulation — density controls edge thinning by removing longest edges |
 
 ---
 
