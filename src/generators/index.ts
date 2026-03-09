@@ -94,6 +94,10 @@ import { steinerNetworks } from './graphs/steiner-networks';
 import { kNearestNeighbor } from './graphs/k-nearest-neighbor';
 import { gabrielGraph } from './graphs/gabriel-graph';
 import { planarGraph } from './graphs/planar-graph';
+import { geodesic } from './graphs/geodesic';
+import { constrained } from './graphs/constrained';
+import { anisotropic } from './graphs/anisotropic';
+import { eulerTrails } from './graphs/euler-trails';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -191,6 +195,10 @@ export function initializeGenerators() {
   registerGenerator(kNearestNeighbor);
   registerGenerator(gabrielGraph);
   registerGenerator(planarGraph);
+  registerGenerator(geodesic);
+  registerGenerator(constrained);
+  registerGenerator(anisotropic);
+  registerGenerator(eulerTrails);
 }
 
 export {
@@ -212,4 +220,6 @@ export {
   mandelbrot, julia, newtonFractal, ifsBarnsley, recursiveSubdivision,
   textConcrete, textMatrix, textGrid, textRewrite, textPoem,
   tessellations, lowPoly, ecosystems, steinerNetworks,
+  kNearestNeighbor, gabrielGraph, planarGraph,
+  geodesic, constrained, anisotropic, eulerTrails,
 };
