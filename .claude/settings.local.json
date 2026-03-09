@@ -13,7 +13,8 @@
       "Bash(npx eslint:*)",
       "WebFetch(domain:mediabunny.dev)",
       "Bash(npm install:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(wc:*)"
     ]
   }
 }
