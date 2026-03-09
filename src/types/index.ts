@@ -155,7 +155,7 @@ export interface AppState {
   boomerangGif: boolean;
   endlessGif: boolean;
   renderKey: number;
-  openModal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | null;
+  openModal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | 'report-bug' | null;
 
   // PostFX
   postFX: Record<string, any>;
