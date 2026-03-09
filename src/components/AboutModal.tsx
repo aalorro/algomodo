@@ -30,7 +30,7 @@ export const AboutModal: React.FC = () => {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Key Features</h3>
             <ul className="list-disc list-inside space-y-1">
-              <li>93 generators across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs</li>
+              <li>105 generators across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs</li>
               <li>Deterministic: Results are reproducible with the same seed</li>
               <li>Offline: Works entirely in your browser</li>
               <li>Open Source: Available under the MIT license</li>
@@ -50,7 +50,7 @@ export const AboutModal: React.FC = () => {
 
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Version</h3>
-            <p>v1.6.1</p>
+            <p>v1.6.2</p>
           </div>
 
           <div>

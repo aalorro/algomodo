@@ -1,8 +1,8 @@
 {
   "name": "algomodo",
   "private": true,
-  "version": "1.6.1",
-  "description": "Algorithmic art generator — 73+ procedural generators using pure mathematics",
+  "version": "1.6.2",
+  "description": "Algorithmic art generator — 100+ procedural generators using pure mathematics",
   "homepage": "https://algomodo.work",
   "type": "module",
   "scripts": {

@@ -5,6 +5,30 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-03-09
+
+### Added
+
+**New Graphs generators (7):**
+
+- **Geodesic** — geodesic sphere from subdivided icosahedron projected onto 2D with depth shading
+- **Constrained** — constrained Delaunay triangulation with forced constraint edges partitioning into zones
+- **Anisotropic** — anisotropic proximity graph with direction-field-filtered edges creating oriented flow patterns
+- **Euler Trails** — Euler trail on a graph, a path visiting every edge exactly once drawn as a continuous flowing line
+- **k-Nearest Neighbor** — k-NN graph connecting each node to its k closest neighbors, revealing cluster boundaries
+- **Gabriel Graph** — edge (i,j) exists iff no other point lies inside the diametral circle of i and j
+- **Planar Graph** — planar graph from Delaunay triangulation with density-controlled edge thinning
+
+**New Fractals generators (5):**
+
+- **Burning Ship** — z = (|Re(z)| + i|Im(z)|)² + c with ship-shaped structures and asymmetric detail
+- **Fractal Flames** — iterated function system with nonlinear variation functions and density histogram rendering
+- **Multibrot** — generalized Mandelbrot with variable exponent z^d + c creating d-fold symmetric fractals
+- **Orbit Traps** — Mandelbrot iteration colored by proximity of orbit points to geometric trap shapes
+- **Strange Attractor Density** — chaotic iterated maps rendered as luminous density histograms
+
+---
+
 ## [1.6.1] - 2026-03-08
 
 ### Added

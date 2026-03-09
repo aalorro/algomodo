@@ -20,6 +20,23 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.6.2 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.6.2] - 2026-03-09
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>7 new Graphs generators</strong> — Geodesic, Constrained, Anisotropic, Euler Trails, k-Nearest Neighbor, Gabriel Graph, Planar Graph</li>
+                  <li><strong>5 new Fractals generators</strong> — Burning Ship, Fractal Flames, Multibrot, Orbit Traps, Strange Attractor Density</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.6.1 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
