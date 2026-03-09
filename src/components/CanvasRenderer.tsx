@@ -636,7 +636,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             {isSaving ? '💾 SAVING...' : '💾 SAVE'}
           </button>
         </div>
-        <p className="text-white/40 text-sm font-medium pointer-events-none">
+        <p className="text-white/60 text-sm font-medium pointer-events-none" style={{ textShadow: '-1px -1px 0 rgba(0,0,0,0.6), 1px -1px 0 rgba(0,0,0,0.6), -1px 1px 0 rgba(0,0,0,0.6), 1px 1px 0 rgba(0,0,0,0.6)' }}>
           {getGenerator(selectedGeneratorId)?.styleName}
         </p>
       </div>
