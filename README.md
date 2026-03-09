@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.6.0 · © 2026 ArtMondo
+MIT License · v1.6.1 · © 2026 ArtMondo
 
 ---
 

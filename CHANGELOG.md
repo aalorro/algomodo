@@ -5,6 +5,21 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-03-08
+
+### Added
+
+- **Roadmap modal** — view planned near-term, mid-term, and long-term enhancements from the left sidebar
+- **Use Cases modal** — 8 practical applications of algorithmic art with recommended generators for each
+- **ROADMAP.md** and **USE-CASES.md** — project documentation for future enhancements and practical applications
+
+### Improved
+
+- **Voronoi Ridges generator** — fixed multi-octave algorithm (each octave now generates independent sites at increasing density for genuine fine detail); added crisp/smooth style modes, contrast control, and mean-based normalization for much sharper output
+- **Voronoi Ridges performance** — flat Float64Array site storage, 5×5 grid search (down from 7×7), quality-aware stepping; ~4× faster rendering without visual quality loss
+
+---
+
 ## [1.6.0] - 2026-03-08
 
 ### Added

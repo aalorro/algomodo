@@ -18,7 +18,7 @@ export const CURATED_PALETTES: Palette[] = [
     colors: ['#1B4332', '#2D6A4F', '#40916C', '#74C69D', '#D8F3DC'],
   },
   {
-    name: 'Monochrome',
+    name: 'Mono',
     colors: ['#111111', '#333333', '#666666', '#999999', '#EEEEEE'],
   },
   {
@@ -40,5 +40,13 @@ export const CURATED_PALETTES: Palette[] = [
   {
     name: 'Cosmic',
     colors: ['#0D0221', '#0A0548', '#450920', '#A2095B', '#E9178A'],
+  },
+  {
+    name: 'Rainbow',
+    colors: ['#FF0000', '#FF8800', '#FFFF00', '#00CC44', '#0066FF'],
+  },
+  {
+    name: 'Contrast',
+    colors: ['#000000', '#FFFFFF', '#FF0000', '#FFFF00', '#0000FF'],
   },
 ];
