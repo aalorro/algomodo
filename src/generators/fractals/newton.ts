@@ -29,7 +29,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 16, max: 64, step: 8, default: 32,
+    name: 'Max Iterations', type: 'number', min: 8, max: 48, step: 4, default: 20,
     help: 'Maximum Newton iterations per pixel',
     group: 'Composition',
   },
@@ -62,7 +62,7 @@ export const newtonFractal: Generator = {
     'iteration count. The damping factor d alters convergence behavior — values ≠ 1 produce "nova" fractals ' +
     'with elaborate boundary patterns. Animation oscillates the damping factor.',
   parameterSchema,
-  defaultParams: { power: 3, zoom: 1, maxIterations: 32, damping: 1, colorMode: 'blended', speed: 0.5 },
+  defaultParams: { power: 3, zoom: 1, maxIterations: 20, damping: 1, colorMode: 'blended', speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
@@ -70,12 +70,13 @@ export const newtonFractal: Generator = {
     if (w === 0 || h === 0) return;
     const colors = palette.colors.map(hexToRgb);
     const power = Math.max(2, Math.min(6, (params.power ?? 3) | 0));
-    const maxIter = quality === 'draft' ? Math.max(16, (params.maxIterations ?? 32) >> 1)
-                  : quality === 'ultra' ? (params.maxIterations ?? 32) * 2
-                  : (params.maxIterations ?? 32);
+    const baseMaxIter = params.maxIterations ?? 20;
+    const maxIter = quality === 'draft' ? Math.max(8, baseMaxIter >> 1)
+                  : quality === 'ultra' ? Math.min(48, baseMaxIter * 2)
+                  : baseMaxIter;
     const colorMode = params.colorMode ?? 'blended';
     const zoom = params.zoom ?? 1;
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 3 : 2;
 
     // Animate damping
     const speed = params.speed ?? 0.5;
@@ -93,7 +94,7 @@ export const newtonFractal: Generator = {
 
     const scale = 3.0 / (zoom * Math.min(w, h));
     const halfW = w * 0.5, halfH = h * 0.5;
-    const tolerance = 1e-6;
+    const tolerance = 1e-4;
 
     const img = ctx.createImageData(w, h);
     const d = img.data;

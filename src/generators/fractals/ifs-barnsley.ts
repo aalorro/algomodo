@@ -145,7 +145,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   iterations: {
-    name: 'Iterations', type: 'number', min: 50000, max: 500000, step: 50000, default: 300000,
+    name: 'Iterations', type: 'number', min: 20000, max: 200000, step: 20000, default: 80000,
     help: 'More iterations = denser, more detailed image',
     group: 'Composition',
   },
@@ -181,7 +181,7 @@ export const ifsBarnsley: Generator = {
     'y-position gradient, or log-density histogram mapping. Presets include Barnsley fern, Sierpinski triangle, ' +
     'dragon curve, tree, spiral, crystal, and Koch curve.',
   parameterSchema,
-  defaultParams: { preset: 'barnsley', iterations: 300000, pointSize: 2, rotation: 0, colorMode: 'flame', speed: 0.5 },
+  defaultParams: { preset: 'barnsley', iterations: 80000, pointSize: 2, rotation: 0, colorMode: 'flame', speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
@@ -198,9 +198,9 @@ export const ifsBarnsley: Generator = {
     const cosR = Math.cos(rotation), sinR = Math.sin(rotation);
     const ptSize = Math.max(1, (params.pointSize ?? 2) | 0);
 
-    const iterCount = quality === 'draft' ? Math.max(20000, (params.iterations ?? 300000) >> 2)
-                    : quality === 'ultra' ? (params.iterations ?? 300000) * 2
-                    : (params.iterations ?? 300000);
+    const iterCount = quality === 'draft' ? Math.max(10000, (params.iterations ?? 80000) >> 2)
+                    : quality === 'ultra' ? Math.min(200000, (params.iterations ?? 80000) * 2)
+                    : (params.iterations ?? 80000);
 
     const transforms = preset === 'random'
       ? generateRandomIFS(rng)
@@ -211,110 +211,97 @@ export const ifsBarnsley: Generator = {
     let sum = 0;
     for (const t of transforms) { sum += t[6]; cumP.push(sum); }
 
-    // Run chaos game
+    // Two-pass approach: bounds pass then render pass (avoids huge intermediate arrays)
+    const warmup = 50;
+    const rng2 = new SeededRNG(seed); // second RNG for replay
+
+    // Pass 1: determine bounds
     let x = 0, y = 0;
-    const warmup = 100;
-    const pointCount = iterCount - warmup;
-    const pointsX = new Float32Array(pointCount);
-    const pointsY = new Float32Array(pointCount);
-    const pointColor = new Float32Array(pointCount); // 0-1 color value per point
-
-    // Flame-style running color
-    let flameColor = 0.5;
-
-    for (let i = 0; i < iterCount; i++) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const boundSample = Math.min(5000, iterCount);
+    for (let i = 0; i < boundSample; i++) {
       const r = rng.random();
       let ti = 0;
-      for (; ti < cumP.length - 1; ti++) {
-        if (r < cumP[ti]) break;
-      }
+      for (; ti < cumP.length - 1; ti++) { if (r < cumP[ti]) break; }
       const t = transforms[ti];
-      const nx = t[0] * x + t[1] * y + t[4];
-      const ny = t[2] * x + t[3] * y + t[5];
-      x = nx; y = ny;
-
-      // Flame-style color: blend running color with transform index
-      const tc = transforms.length > 1 ? ti / (transforms.length - 1) : 0.5;
-      flameColor = (flameColor + tc) * 0.5;
-
+      x = t[0] * x + t[1] * y + t[4];
+      y = t[2] * x + t[3] * y + t[5];
       if (i >= warmup) {
-        const idx = i - warmup;
-        pointsX[idx] = x * cosR - y * sinR;
-        pointsY[idx] = x * sinR + y * cosR;
-        pointColor[idx] = flameColor;
+        const rx = x * cosR - y * sinR;
+        const ry = x * sinR + y * cosR;
+        if (rx < minX) minX = rx; if (rx > maxX) maxX = rx;
+        if (ry < minY) minY = ry; if (ry > maxY) maxY = ry;
       }
     }
+    const rangeX = (maxX - minX) || 1;
+    const rangeY = (maxY - minY) || 1;
 
-    // Find bounds
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (let i = 0; i < pointCount; i++) {
-      const px = pointsX[i], py = pointsY[i];
-      if (px < minX) minX = px;
-      if (px > maxX) maxX = px;
-      if (py < minY) minY = py;
-      if (py > maxY) maxY = py;
-    }
-    const rangeX = maxX - minX || 1;
-    const rangeY = maxY - minY || 1;
-
-    // Compute mapping
     const margin = 0.05;
-    const scaleX = (1 - 2 * margin) * w / rangeX;
-    const scaleY = (1 - 2 * margin) * h / rangeY;
-    const sc = Math.min(scaleX, scaleY);
+    const scaleXv = (1 - 2 * margin) * w / rangeX;
+    const scaleYv = (1 - 2 * margin) * h / rangeY;
+    const sc = Math.min(scaleXv, scaleYv);
     const offX = (w - rangeX * sc) * 0.5;
     const offY = (h - rangeY * sc) * 0.5;
 
     // Create image with black background
     const img = ctx.createImageData(w, h);
     const d = img.data;
-    // Set all alpha to 255 (opaque black background)
     for (let i = 3; i < d.length; i += 4) d[i] = 255;
 
-    if (colorMode === 'density') {
-      // Density histogram mode: accumulate hits, then log-normalize to palette
-      const density = new Float32Array(w * h);
-      let maxDensity = 0;
-      for (let i = 0; i < pointCount; i++) {
-        const px = ((pointsX[i] - minX) * sc + offX) | 0;
-        const py = (h - 1 - ((pointsY[i] - minY) * sc + offY)) | 0;
-        if (px >= 0 && px < w && py >= 0 && py < h) {
-          const di = py * w + px;
-          density[di]++;
-          if (density[di] > maxDensity) maxDensity = density[di];
-        }
-      }
-      if (maxDensity > 0) {
-        const logMax = Math.log(maxDensity + 1);
-        for (let i = 0; i < w * h; i++) {
-          if (density[i] > 0) {
-            const v = Math.pow(Math.log(density[i] + 1) / logMax, 0.4);
-            const [cr, cg, cb] = paletteSample(v, colors);
-            const idx = i * 4;
+    // For density mode, allocate histogram
+    const isDensity = colorMode === 'density';
+    const density = isDensity ? new Float32Array(w * h) : null;
+    let maxDensity = 0;
+
+    // Pass 2: render directly (replay RNG from same seed)
+    x = 0; y = 0;
+    let flameColor = 0.5;
+
+    for (let i = 0; i < iterCount; i++) {
+      const r = rng2.random();
+      let ti = 0;
+      for (; ti < cumP.length - 1; ti++) { if (r < cumP[ti]) break; }
+      const t = transforms[ti];
+      const nx = t[0] * x + t[1] * y + t[4];
+      const ny = t[2] * x + t[3] * y + t[5];
+      x = nx; y = ny;
+
+      const tc = transforms.length > 1 ? ti / (transforms.length - 1) : 0.5;
+      flameColor = (flameColor + tc) * 0.5;
+
+      if (i < warmup) continue;
+
+      const rx = x * cosR - y * sinR;
+      const ry = x * sinR + y * cosR;
+      const px = ((rx - minX) * sc + offX) | 0;
+      const py = (h - 1 - ((ry - minY) * sc + offY)) | 0;
+      if (px < 0 || px >= w || py < 0 || py >= h) continue;
+
+      if (density) {
+        const di = py * w + px;
+        density[di]++;
+        if (density[di] > maxDensity) maxDensity = density[di];
+      } else {
+        const v = colorMode === 'flame' ? flameColor : (ry - minY) / rangeY;
+        const [cr, cg, cb] = paletteSample(v, colors);
+        for (let dy = 0; dy < ptSize && py + dy < h; dy++) {
+          for (let dx = 0; dx < ptSize && px + dx < w; dx++) {
+            const idx = ((py + dy) * w + (px + dx)) * 4;
             d[idx] = cr; d[idx + 1] = cg; d[idx + 2] = cb;
           }
         }
       }
-    } else {
-      // Flame or height mode: stamp points with color
-      for (let i = 0; i < pointCount; i++) {
-        const px = ((pointsX[i] - minX) * sc + offX) | 0;
-        const py = (h - 1 - ((pointsY[i] - minY) * sc + offY)) | 0;
-        if (px >= 0 && px < w && py >= 0 && py < h) {
-          let v: number;
-          if (colorMode === 'flame') {
-            v = pointColor[i];
-          } else {
-            v = (pointsY[i] - minY) / rangeY;
-          }
+    }
+
+    // Finalize density mode
+    if (density && maxDensity > 0) {
+      const logMax = Math.log(maxDensity + 1);
+      for (let i = 0; i < w * h; i++) {
+        if (density[i] > 0) {
+          const v = Math.pow(Math.log(density[i] + 1) / logMax, 0.4);
           const [cr, cg, cb] = paletteSample(v, colors);
-          // Stamp ptSize×ptSize block
-          for (let dy = 0; dy < ptSize && py + dy < h; dy++) {
-            for (let dx = 0; dx < ptSize && px + dx < w; dx++) {
-              const idx = ((py + dy) * w + (px + dx)) * 4;
-              d[idx] = cr; d[idx + 1] = cg; d[idx + 2] = cb;
-            }
-          }
+          const idx = i * 4;
+          d[idx] = cr; d[idx + 1] = cg; d[idx + 2] = cb;
         }
       }
     }
