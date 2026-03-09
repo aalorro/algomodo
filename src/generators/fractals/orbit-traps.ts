@@ -17,24 +17,26 @@ function paletteSample(t: number, colors: [number, number, number][]): [number, 
   ];
 }
 
-// Distance from point (zr, zi) to trap shape
-function trapDistance(zr: number, zi: number, shape: string, size: number): number {
+// Distance from point (zr, zi) to trap shape — avoids sqrt where possible
+function trapDistance(zr: number, zi: number, shape: string, size: number, r2: number): number {
   switch (shape) {
     case 'point':
-      return Math.sqrt(zr * zr + zi * zi);
-    case 'circle':
-      return Math.abs(Math.sqrt(zr * zr + zi * zi) - size);
+      return r2; // squared distance, compared consistently
+    case 'circle': {
+      // |sqrt(r2) - size| but approximate: use r2 vs size² comparison
+      const r = Math.sqrt(r2);
+      return Math.abs(r - size);
+    }
     case 'cross':
       return Math.min(Math.abs(zr), Math.abs(zi));
     case 'ring': {
-      const r = Math.sqrt(zr * zr + zi * zi);
-      const band = Math.abs(r - size);
-      return band;
+      const r = Math.sqrt(r2);
+      return Math.abs(r - size);
     }
     case 'square':
       return Math.abs(Math.max(Math.abs(zr), Math.abs(zi)) - size);
     default:
-      return Math.sqrt(zr * zr + zi * zi);
+      return r2;
   }
 }
 
@@ -64,7 +66,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 512, step: 16, default: 128,
+    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
     group: 'Composition',
   },
   colorMode: {
@@ -104,7 +106,7 @@ export const orbitTraps: Generator = {
   parameterSchema,
   defaultParams: {
     trapShape: 'circle', trapSize: 0.5, centerX: -0.5, centerY: 0, zoom: 1,
-    maxIterations: 128, colorMode: 'distance', speed: 0.5,
+    maxIterations: 48, colorMode: 'distance', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -116,11 +118,11 @@ export const orbitTraps: Generator = {
     const trapShape = (params.trapShape ?? 'circle') as string;
     let trapSize = params.trapSize ?? 0.5;
     const colorMode = (params.colorMode ?? 'distance') as string;
-    const baseMaxIter = params.maxIterations ?? 128;
-    const maxIter = quality === 'draft' ? Math.max(32, baseMaxIter >> 2)
-                  : quality === 'ultra' ? baseMaxIter * 2
+    const baseMaxIter = params.maxIterations ?? 48;
+    const maxIter = quality === 'draft' ? Math.max(16, baseMaxIter >> 2)
+                  : quality === 'ultra' ? Math.min(128, baseMaxIter * 2)
                   : baseMaxIter;
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 3 : 2;
 
     const zoomParam = params.zoom ?? 1;
     const target = ZOOM_TARGETS[Math.abs(seed) % ZOOM_TARGETS.length];
@@ -149,7 +151,8 @@ export const orbitTraps: Generator = {
 
     const pixelSize = 3.0 / (viewZoom * Math.min(w, h));
     const halfW = w * 0.5, halfH = h * 0.5;
-    const BAILOUT_SQ = 256 * 256;
+    const BAILOUT_SQ = 16; // r=4, much lighter than 256²
+    const hasRotation = trapRotation !== 0;
 
     const img = ctx.createImageData(w, h);
     const d = img.data;
@@ -162,22 +165,36 @@ export const orbitTraps: Generator = {
         let zr = 0, zi = 0;
         let iter = 0;
         let minDist = Infinity;
-        let minAngle = 0;
+        let minTZr = 0, minTZi = 0;
         let minIter = 0;
-        let minZr = 0, minZi = 0;
+        // Periodicity checking
+        let pzr = 0, pzi = 0, period = 8, pCheck = 0;
+        const needsAngle = colorMode === 'angle' || colorMode === 'composite';
+
+        // Cardioid/bulb check — skip main Mandelbrot interior cheaply
+        const q = (cReal - 0.25) * (cReal - 0.25) + cImag * cImag;
+        const inCardioid = q * (q + (cReal - 0.25)) < 0.25 * cImag * cImag;
+        const inBulb = (cReal + 1) * (cReal + 1) + cImag * cImag < 0.0625;
+        if (inCardioid || inBulb) {
+          iter = maxIter; // skip iteration entirely
+        }
 
         while (zr * zr + zi * zi <= BAILOUT_SQ && iter < maxIter) {
-          // Rotate orbit point for trap evaluation
-          const rZr = zr * cosRot - zi * sinRot;
-          const rZi = zr * sinRot + zi * cosRot;
+          // Rotate orbit point for trap evaluation only when animating
+          let tZr: number, tZi: number;
+          if (hasRotation) {
+            tZr = zr * cosRot - zi * sinRot;
+            tZi = zr * sinRot + zi * cosRot;
+          } else {
+            tZr = zr; tZi = zi;
+          }
 
-          const dist = trapDistance(rZr, rZi, trapShape, trapSize);
+          const tR2 = tZr * tZr + tZi * tZi;
+          const dist = trapDistance(tZr, tZi, trapShape, trapSize, tR2);
           if (dist < minDist) {
             minDist = dist;
-            minAngle = Math.atan2(rZi, rZr);
+            minTZr = tZr; minTZi = tZi;
             minIter = iter;
-            minZr = rZr;
-            minZi = rZi;
           }
 
           // Standard Mandelbrot iteration
@@ -185,13 +202,23 @@ export const orbitTraps: Generator = {
           zi = 2 * zr * zi + cImag;
           zr = newZr;
           iter++;
+
+          // Periodicity check
+          if (Math.abs(zr - pzr) < 1e-10 && Math.abs(zi - pzi) < 1e-10) {
+            iter = maxIter; break;
+          }
+          pCheck++;
+          if (pCheck >= period) {
+            pzr = zr; pzi = zi; pCheck = 0;
+            if (period < 512) period <<= 1;
+          }
         }
 
         let r: number, g: number, b: number;
 
         // Clamp min distance for color mapping
         const distT = Math.min(1, minDist / (trapSize * 2 + 0.5));
-        const angleT = ((minAngle / Math.PI) + 1) * 0.5 % 1;
+        const angleT = needsAngle ? ((Math.atan2(minTZi, minTZr) / Math.PI) + 1) * 0.5 % 1 : 0;
         const iterT = minIter / maxIter;
 
         if (colorMode === 'distance') {

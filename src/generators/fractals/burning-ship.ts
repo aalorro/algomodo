@@ -34,7 +34,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 512, step: 16, default: 200,
+    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
     help: 'Higher = more detail but slower',
     group: 'Composition',
   },
@@ -86,7 +86,7 @@ export const burningShip: Generator = {
     'flipped vertically to show the canonical "ship" orientation.',
   parameterSchema,
   defaultParams: {
-    centerX: -1.7, centerY: -0.03, zoom: 0.5, maxIterations: 200,
+    centerX: -1.7, centerY: -0.03, zoom: 0.5, maxIterations: 48,
     colorCycles: 4, colorMode: 'smooth', invert: false, speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
@@ -96,14 +96,14 @@ export const burningShip: Generator = {
     if (w === 0 || h === 0) return;
 
     const colors = palette.colors.map(hexToRgb);
-    const baseMaxIter = params.maxIterations ?? 200;
-    const maxIter = quality === 'draft' ? Math.max(32, baseMaxIter >> 2)
-                  : quality === 'ultra' ? baseMaxIter * 2
+    const baseMaxIter = params.maxIterations ?? 48;
+    const maxIter = quality === 'draft' ? Math.max(16, baseMaxIter >> 2)
+                  : quality === 'ultra' ? Math.min(128, baseMaxIter * 2)
                   : baseMaxIter;
     const colorCycles = Math.max(1, params.colorCycles ?? 4);
     const colorMode = (params.colorMode ?? 'smooth') as string;
     const invertPalette = params.invert ?? false;
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 3 : 2;
 
     const zoomParam = params.zoom ?? 0.5;
     const target = ZOOM_TARGETS[Math.abs(seed) % ZOOM_TARGETS.length];
@@ -127,8 +127,7 @@ export const burningShip: Generator = {
     const pixelSize = 3.0 / (viewZoom * Math.min(w, h));
     const halfW = w * 0.5, halfH = h * 0.5;
     const LOG2 = Math.log(2);
-    const BAILOUT = 256;
-    const BAILOUT_SQ = BAILOUT * BAILOUT;
+    const BAILOUT_SQ = 16; // bailout r=4, much cheaper than 256²
 
     const img = ctx.createImageData(w, h);
     const d = img.data;
@@ -146,6 +145,8 @@ export const burningShip: Generator = {
         // Distance estimation derivative
         let dzr = 0, dzi = 0;
         const trackDist = colorMode === 'distance';
+        // Periodicity checking — detect cycles to skip interior pixels early
+        let pzr = 0, pzi = 0, period = 8, pCheck = 0;
 
         while (zr2 + zi2 <= BAILOUT_SQ && iter < maxIter) {
           const orbitDist = zr2 + zi2;
@@ -164,6 +165,16 @@ export const burningShip: Generator = {
           zr2 = zr * zr;
           zi2 = zi * zi;
           iter++;
+
+          // Periodicity check: if orbit returns to a saved point, it's interior
+          if (Math.abs(zr - pzr) < 1e-10 && Math.abs(zi - pzi) < 1e-10) {
+            iter = maxIter; break;
+          }
+          pCheck++;
+          if (pCheck >= period) {
+            pzr = zr; pzi = zi; pCheck = 0;
+            if (period < 512) period <<= 1;
+          }
         }
 
         let r: number, g: number, b: number;
