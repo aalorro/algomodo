@@ -29,7 +29,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 512, step: 16, default: 128,
+    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
     help: 'Higher = more detail in boundary regions but slower',
     group: 'Composition',
   },
@@ -107,7 +107,7 @@ export const mandelbrot: Generator = {
   parameterSchema,
   defaultParams: {
     variant: 'mandelbrot', centerX: -0.5, centerY: 0, zoom: 1,
-    maxIterations: 128, colorCycles: 3, interiorColor: 'black',
+    maxIterations: 48, colorCycles: 3, interiorColor: 'black',
     edgeGlow: 0.3, speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
@@ -119,14 +119,16 @@ export const mandelbrot: Generator = {
     const colors = palette.colors.map(hexToRgb);
     const nColors = colors.length;
     const variant = (params.variant ?? 'mandelbrot') as string;
-    const baseMaxIter = params.maxIterations ?? 128;
-    const maxIter = quality === 'draft' ? Math.max(32, baseMaxIter >> 2)
-                  : quality === 'ultra' ? baseMaxIter * 2
+    const baseMaxIter = params.maxIterations ?? 48;
+    const maxIter = quality === 'draft' ? Math.max(16, baseMaxIter >> 2)
+                  : quality === 'ultra' ? Math.min(128, baseMaxIter * 2)
                   : baseMaxIter;
     const colorCycles = Math.max(1, params.colorCycles ?? 3);
     const interiorColor = (params.interiorColor ?? 'black') as string;
     const edgeGlow = params.edgeGlow ?? 0.3;
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 3 : 2;
+    const trackOrbit = interiorColor !== 'black';
+    const trackEdge = edgeGlow > 0;
 
     // Julia c-value from seed
     const juliaC = JULIA_C[Math.abs(seed) % JULIA_C.length];
@@ -163,8 +165,7 @@ export const mandelbrot: Generator = {
     const halfW = w * 0.5, halfH = h * 0.5;
 
     const LOG2 = Math.log(2);
-    const BAILOUT = 256; // Higher bailout for smoother coloring
-    const BAILOUT_SQ = BAILOUT * BAILOUT;
+    const BAILOUT_SQ = 16; // r=4
 
     const img = ctx.createImageData(w, h);
     const d = img.data;
@@ -187,33 +188,40 @@ export const mandelbrot: Generator = {
         let zr2 = zr * zr, zi2 = zi * zi;
         let iter = 0;
         let minOrbitDist = Infinity;
-        // Track derivative for distance estimation (edge glow)
         let dzr = 1, dzi = 0;
+        // Periodicity checking
+        let pzr = 0, pzi = 0, period = 8, pCheck = 0;
+
+        // Cardioid/bulb skip for standard Mandelbrot variant
+        if (variant === 'mandelbrot') {
+          const q = (cReal - 0.25) * (cReal - 0.25) + cImag * cImag;
+          if (q * (q + (cReal - 0.25)) < 0.25 * cImag * cImag ||
+              (cReal + 1) * (cReal + 1) + cImag * cImag < 0.0625) {
+            iter = maxIter;
+          }
+        }
 
         while (zr2 + zi2 <= BAILOUT_SQ && iter < maxIter) {
-          // Track minimum orbit distance to origin (for interior coloring)
-          const orbitDist = zr2 + zi2;
-          if (orbitDist < minOrbitDist) minOrbitDist = orbitDist;
+          if (trackOrbit) {
+            const orbitDist = zr2 + zi2;
+            if (orbitDist < minOrbitDist) minOrbitDist = orbitDist;
+          }
 
-          // Distance estimation derivative: dz = 2*z*dz + 1
-          if (edgeGlow > 0) {
+          if (trackEdge) {
             const newDzr = 2 * (zr * dzr - zi * dzi) + 1;
             const newDzi = 2 * (zr * dzi + zi * dzr);
             dzr = newDzr; dzi = newDzi;
           }
 
           if (variant === 'burning-ship') {
-            zr = Math.abs(zr); zi = Math.abs(zi);
-            const newZr = zr2 - zi2 + cReal;
-            zi = 2 * zr * zi + cImag;
-            zr = newZr;
+            const azr = Math.abs(zr), azi = Math.abs(zi);
+            zr = azr * azr - azi * azi + cReal;
+            zi = 2 * azr * azi + cImag;
           } else if (variant === 'tricorn') {
-            // Conjugate: use -zi
             const newZr = zr2 - zi2 + cReal;
             zi = -2 * zr * zi + cImag;
             zr = newZr;
           } else {
-            // Standard Mandelbrot / Julia
             const newZr = zr2 - zi2 + cReal;
             zi = 2 * zr * zi + cImag;
             zr = newZr;
@@ -222,6 +230,16 @@ export const mandelbrot: Generator = {
           zr2 = zr * zr;
           zi2 = zi * zi;
           iter++;
+
+          // Periodicity check
+          if (Math.abs(zr - pzr) < 1e-10 && Math.abs(zi - pzi) < 1e-10) {
+            iter = maxIter; break;
+          }
+          pCheck++;
+          if (pCheck >= period) {
+            pzr = zr; pzi = zi; pCheck = 0;
+            if (period < 512) period <<= 1;
+          }
         }
 
         let r: number, g: number, b: number;

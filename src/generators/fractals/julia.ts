@@ -34,7 +34,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 256, step: 16, default: 100,
+    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
     help: 'Higher = more detail but slower',
     group: 'Composition',
   },
@@ -72,20 +72,21 @@ export const julia: Generator = {
     'morphing the fractal between connected and disconnected Julia sets. Smooth coloring uses renormalized ' +
     'iteration count.',
   parameterSchema,
-  defaultParams: { cReal: -0.7, cImag: 0.27, zoom: 1, maxIterations: 100, colorMode: 'smooth', colorCycles: 3, bandCount: 8, speed: 0.5 },
+  defaultParams: { cReal: -0.7, cImag: 0.27, zoom: 1, maxIterations: 48, colorMode: 'smooth', colorCycles: 3, bandCount: 8, speed: 0.5 },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
     if (w === 0 || h === 0) return;
     const colors = palette.colors.map(hexToRgb);
-    const maxIter = quality === 'draft' ? Math.max(32, (params.maxIterations ?? 100) >> 2)
-                  : quality === 'ultra' ? (params.maxIterations ?? 100) * 2
-                  : (params.maxIterations ?? 100);
+    const baseMaxIter = params.maxIterations ?? 48;
+    const maxIter = quality === 'draft' ? Math.max(16, baseMaxIter >> 2)
+                  : quality === 'ultra' ? Math.min(128, baseMaxIter * 2)
+                  : baseMaxIter;
     const colorMode = params.colorMode ?? 'smooth';
     const colorCycles = params.colorCycles ?? 3;
     const bandCount = Math.max(2, (params.bandCount ?? 8) | 0);
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 3 : 2;
     const zoom = params.zoom ?? 1;
 
     // Animate c along an orbit in parameter space
@@ -117,6 +118,8 @@ export const julia: Generator = {
 
         let iter = 0;
         let zr2 = zr * zr, zi2 = zi * zi;
+        // Periodicity checking
+        let pzr = 0, pzi = 0, period = 8, pCheck = 0;
 
         while (zr2 + zi2 <= escapeR && iter < maxIter) {
           zi = 2 * zr * zi + ci;
@@ -124,6 +127,15 @@ export const julia: Generator = {
           zr2 = zr * zr;
           zi2 = zi * zi;
           iter++;
+
+          if (Math.abs(zr - pzr) < 1e-10 && Math.abs(zi - pzi) < 1e-10) {
+            iter = maxIter; break;
+          }
+          pCheck++;
+          if (pCheck >= period) {
+            pzr = zr; pzi = zi; pCheck = 0;
+            if (period < 512) period <<= 1;
+          }
         }
 
         let r: number, g: number, b: number;
