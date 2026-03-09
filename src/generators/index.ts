@@ -91,6 +91,9 @@ import { tessellations } from './graphs/tessellations';
 import { lowPoly } from './graphs/low-poly';
 import { ecosystems } from './graphs/ecosystems';
 import { steinerNetworks } from './graphs/steiner-networks';
+import { kNearestNeighbor } from './graphs/k-nearest-neighbor';
+import { gabrielGraph } from './graphs/gabriel-graph';
+import { planarGraph } from './graphs/planar-graph';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -185,6 +188,9 @@ export function initializeGenerators() {
   registerGenerator(lowPoly);
   registerGenerator(ecosystems);
   registerGenerator(steinerNetworks);
+  registerGenerator(kNearestNeighbor);
+  registerGenerator(gabrielGraph);
+  registerGenerator(planarGraph);
 }
 
 export {
