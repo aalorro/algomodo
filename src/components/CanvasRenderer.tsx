@@ -295,9 +295,13 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             fpsRef.current.frames = 0;
             fpsRef.current.lastTime = now;
           }
-          ctx.fillStyle = '#00ff00';
-          ctx.font = '14px monospace';
-          ctx.fillText(`${fpsRef.current.fps} / ${rd.animationFps} fps`, 10, 20);
+          ctx.fillStyle = '#39ff14';
+          ctx.font = 'bold 48px monospace';
+          ctx.shadowColor = '#39ff14';
+          ctx.shadowBlur = 10;
+          ctx.fillText(`${fpsRef.current.fps} / ${rd.animationFps} fps`, 16, 36);
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
         }
       }
 

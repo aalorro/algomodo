@@ -179,6 +179,9 @@ export const InstructionsModal: React.FC = () => {
               <li>Use JSON recipes to save and share exact artwork configurations.</li>
               <li>PostFX (Grain, Vignette, Dither, Posterize) work with every generator &mdash; try stacking them.</li>
               <li>SVG export is available for vector-compatible generators (Plotter, Geometry, some others).</li>
+              <li><strong>Performance Mode</strong> reduces the canvas resolution to half, making renders and animations significantly faster. This is ideal for previewing complex generators in real time &mdash; turn it off before exporting for full-quality output.</li>
+              <li><strong>Quality</strong> (Draft / Balanced / High) controls how many iterations, particles, or detail passes a generator performs. Draft renders are fast but coarse; High renders are rich in detail but take longer. Balanced is the default sweet spot.</li>
+              <li><strong>Why are some generators slow?</strong> Generators vary widely in computational cost. Simple noise or geometry renders are nearly instant, while generators like Reaction Diffusion, DLA, Stippling, and Flow Fields simulate thousands of particles or run multi-pass algorithms that take more time. Animations compound this &mdash; each frame must be computed from scratch or advanced from the previous state. If a generator feels sluggish, try enabling Performance Mode, lowering Quality to Draft, or reducing the iteration/particle count in its parameters.</li>
             </ul>
           </div>
 
