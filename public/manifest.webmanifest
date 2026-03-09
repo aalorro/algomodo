@@ -10,7 +10,7 @@
   "background_color": "#0a0a0a",
   "icons": [
     {
-      "src": "/algomodo-logo.png",
+      "src": "/algomodo_light_mode.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
