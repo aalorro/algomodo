@@ -29,7 +29,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 512, step: 16, default: 128,
+    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
     help: 'Higher = more detail in boundary regions but slower',
     group: 'Composition',
   },
@@ -107,7 +107,7 @@ export const mandelbrot: Generator = {
   parameterSchema,
   defaultParams: {
     variant: 'mandelbrot', centerX: -0.5, centerY: 0, zoom: 1,
-    maxIterations: 128, colorCycles: 3, interiorColor: 'black',
+    maxIterations: 48, colorCycles: 3, interiorColor: 'black',
     edgeGlow: 0.3, speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
