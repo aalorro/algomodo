@@ -36,7 +36,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   maxIterations: {
-    name: 'Max Iterations', type: 'number', min: 32, max: 512, step: 16, default: 128,
+    name: 'Max Iterations', type: 'number', min: 16, max: 128, step: 8, default: 48,
     group: 'Composition',
   },
   colorCycles: {
@@ -79,7 +79,7 @@ export const multibrot: Generator = {
   parameterSchema,
   defaultParams: {
     exponent: 3, centerX: 0, centerY: 0, zoom: 1,
-    maxIterations: 128, colorCycles: 3, interiorMode: 'black', speed: 0.5,
+    maxIterations: 48, colorCycles: 3, interiorMode: 'black', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -89,13 +89,15 @@ export const multibrot: Generator = {
 
     const colors = palette.colors.map(hexToRgb);
     const d = params.exponent ?? 3;
-    const baseMaxIter = params.maxIterations ?? 128;
-    const maxIter = quality === 'draft' ? Math.max(32, baseMaxIter >> 2)
-                  : quality === 'ultra' ? baseMaxIter * 2
+    const baseMaxIter = params.maxIterations ?? 48;
+    const maxIter = quality === 'draft' ? Math.max(16, baseMaxIter >> 2)
+                  : quality === 'ultra' ? Math.min(128, baseMaxIter * 2)
                   : baseMaxIter;
     const colorCycles = Math.max(1, params.colorCycles ?? 3);
     const interiorMode = (params.interiorMode ?? 'black') as string;
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 3 : 2;
+    // Fast path flag: integer exponents use repeated multiplication (no trig)
+    const isIntExp = d === Math.floor(d) && d >= 2 && d <= 8;
 
     const zoomParam = params.zoom ?? 1;
     const target = ZOOM_TARGETS[Math.abs(seed) % ZOOM_TARGETS.length];
@@ -116,11 +118,10 @@ export const multibrot: Generator = {
       viewZoom = zoomParam;
     }
 
-    // Escape radius depends on exponent
-    const escapeR = Math.max(2, Math.pow(2, 1 / (d - 1)) + 1);
-    const escapeR2 = escapeR * escapeR;
+    // Escape radius — keep it small for speed
+    const escapeR2 = 16; // r=4
     const logD = Math.log(d);
-    const logEscape = Math.log(escapeR);
+    const logEscape = Math.log(4);
 
     const pixelSize = 3.0 / (viewZoom * Math.min(w, h));
     const halfW = w * 0.5, halfH = h * 0.5;
@@ -136,6 +137,8 @@ export const multibrot: Generator = {
         let zr = 0, zi = 0;
         let iter = 0;
         let minOrbitDist = Infinity;
+        // Periodicity checking
+        let pzr = 0, pzi = 0, period = 8, pCheck = 0;
 
         while (iter < maxIter) {
           const r2 = zr * zr + zi * zi;
@@ -143,14 +146,35 @@ export const multibrot: Generator = {
 
           if (r2 < minOrbitDist) minOrbitDist = r2;
 
-          // z^d using polar form: r^d * (cos(d*theta) + i*sin(d*theta))
-          const r = Math.sqrt(r2);
-          const theta = Math.atan2(zi, zr);
-          const rd = Math.pow(r, d);
-          const dTheta = d * theta;
-          zr = rd * Math.cos(dTheta) + cReal;
-          zi = rd * Math.sin(dTheta) + cImag;
+          // z^d: use fast repeated multiplication for integer exponents
+          if (isIntExp) {
+            let wr = zr, wi = zi;
+            for (let k = 1; k < d; k++) {
+              const tr = wr * zr - wi * zi;
+              wi = wr * zi + wi * zr;
+              wr = tr;
+            }
+            zr = wr + cReal;
+            zi = wi + cImag;
+          } else {
+            const r = Math.sqrt(r2);
+            const theta = Math.atan2(zi, zr);
+            const rd = Math.pow(r, d);
+            const dTheta = d * theta;
+            zr = rd * Math.cos(dTheta) + cReal;
+            zi = rd * Math.sin(dTheta) + cImag;
+          }
           iter++;
+
+          // Periodicity check: if orbit returns to a saved point, it's interior
+          if (Math.abs(zr - pzr) < 1e-10 && Math.abs(zi - pzi) < 1e-10) {
+            iter = maxIter; break;
+          }
+          pCheck++;
+          if (pCheck >= period) {
+            pzr = zr; pzi = zi; pCheck = 0;
+            if (period < 512) period <<= 1;
+          }
         }
 
         let pr: number, pg: number, pb: number;
