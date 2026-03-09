@@ -200,7 +200,7 @@ export interface AppState {
   setEndlessGif: (on: boolean) => void;
   forceReload: () => void;
   updatePostFX: (key: string, value: any) => void;
-  setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | null) => void;
+  setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | 'report-bug' | null) => void;
 
   // History (undo/redo)
   historyPast: HistorySnapshot[];
