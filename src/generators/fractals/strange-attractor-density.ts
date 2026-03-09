@@ -36,7 +36,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   iterations: {
-    name: 'Iterations', type: 'number', min: 200000, max: 5000000, step: 200000, default: 1000000,
+    name: 'Iterations', type: 'number', min: 50000, max: 800000, step: 50000, default: 200000,
     help: 'More iterations = denser, more detailed image',
     group: 'Composition',
   },
@@ -135,7 +135,7 @@ export const strangeAttractorDensity: Generator = {
     'for richer visual information.',
   parameterSchema,
   defaultParams: {
-    attractor: 'clifford', iterations: 1000000,
+    attractor: 'clifford', iterations: 200000,
     paramA: -1.7, paramB: 1.3, paramC: -0.1, paramD: -1.2,
     gamma: 2.2, colorMode: 'density', background: 'black', speed: 0.5,
   },
@@ -155,9 +155,10 @@ export const strangeAttractorDensity: Generator = {
     const colorMode = (params.colorMode ?? 'density') as string;
     const speed = params.speed ?? 0.5;
 
-    let totalIter = params.iterations ?? 1000000;
-    if (quality === 'draft') totalIter = Math.max(50000, totalIter >> 2);
-    else if (quality === 'ultra') totalIter = Math.min(10000000, totalIter * 2);
+    let totalIter = params.iterations ?? 200000;
+    if (quality === 'draft') totalIter = Math.max(20000, totalIter >> 2);
+    else if (quality === 'ultra') totalIter = Math.min(800000, totalIter * 2);
+    const trackAux = colorMode !== 'density';
 
     // Blend seed-based random params with user params
     const ranges = PARAM_RANGES[attractorType] || PARAM_RANGES.clifford;
@@ -180,23 +181,43 @@ export const strangeAttractorDensity: Generator = {
       d += Math.cos(time * speed * 0.18 + 2.0) * 0.2;
     }
 
-    // Density + auxiliary histograms
+    // Density + auxiliary histograms (only alloc aux when needed)
     const hist = new Float32Array(w * h);
-    const auxHist = new Float32Array(w * h); // velocity or angle accumulator
+    const auxHist = trackAux ? new Float32Array(w * h) : null;
 
-    // First pass: determine bounds
+    // Inline attractor iteration to avoid function call + array allocation per step
+    const iterate = (ix: number, iy: number): [number, number] => {
+      switch (attractorType) {
+        case 'de-jong':
+          return [Math.sin(a * iy) - Math.cos(b * ix), Math.sin(c * ix) - Math.cos(d * iy)];
+        case 'svensson':
+          return [d * Math.sin(a * ix) - Math.sin(b * iy), c * Math.cos(a * ix) + Math.cos(b * iy)];
+        case 'bedhead': {
+          const bAbs = Math.abs(b) + 0.01;
+          return [Math.sin(ix * iy / bAbs) * iy + Math.cos(a * ix - iy), ix + Math.sin(iy) / bAbs];
+        }
+        case 'hopalong': {
+          const s = ix >= 0 ? 1 : -1;
+          return [iy - s * Math.sqrt(Math.abs(b * ix - c)), a - ix];
+        }
+        default: // clifford
+          return [Math.sin(a * iy) + c * Math.cos(a * ix), Math.sin(b * ix) + d * Math.cos(b * iy)];
+      }
+    };
+
+    // First pass: determine bounds (small sample)
     let x = 0.1, y = 0.1;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const boundSample = Math.min(20000, totalIter);
+    const boundSample = Math.min(3000, totalIter);
     for (let i = 0; i < boundSample; i++) {
-      const [nx, ny] = iterateAttractor(attractorType, x, y, a, b, c, d);
-      // Guard against divergence
+      const res = iterate(x, y);
+      const nx = res[0], ny = res[1];
       if (!isFinite(nx) || !isFinite(ny) || Math.abs(nx) > 1e6 || Math.abs(ny) > 1e6) {
         x = rng.range(-1, 1); y = rng.range(-1, 1);
         continue;
       }
       x = nx; y = ny;
-      if (i > 100) {
+      if (i > 50) {
         if (x < minX) minX = x; if (x > maxX) maxX = x;
         if (y < minY) minY = y; if (y > maxY) maxY = y;
       }
@@ -218,9 +239,9 @@ export const strangeAttractorDensity: Generator = {
 
     // Main accumulation pass
     x = 0.1; y = 0.1;
-    const WARMUP = 100;
     for (let i = 0; i < totalIter; i++) {
-      const [nx, ny] = iterateAttractor(attractorType, x, y, a, b, c, d);
+      const res = iterate(x, y);
+      const nx = res[0], ny = res[1];
       if (!isFinite(nx) || !isFinite(ny) || Math.abs(nx) > 1e6 || Math.abs(ny) > 1e6) {
         x = rng.range(-1, 1); y = rng.range(-1, 1);
         continue;
@@ -229,7 +250,7 @@ export const strangeAttractorDensity: Generator = {
       const prevX = x, prevY = y;
       x = nx; y = ny;
 
-      if (i < WARMUP) continue;
+      if (i < 50) continue; // Skip warmup
 
       const px = ((x - minX) * scale + offX) | 0;
       const py = ((y - minY) * scale + offY) | 0;
@@ -238,12 +259,13 @@ export const strangeAttractorDensity: Generator = {
       const idx = py * w + px;
       hist[idx]++;
 
-      if (colorMode === 'velocity') {
-        const vel = Math.sqrt((x - prevX) ** 2 + (y - prevY) ** 2);
-        auxHist[idx] += vel;
-      } else if (colorMode === 'angle') {
-        const ang = Math.atan2(y - prevY, x - prevX);
-        auxHist[idx] += ang;
+      if (auxHist) {
+        if (colorMode === 'velocity') {
+          const dx = x - prevX, dy = y - prevY;
+          auxHist[idx] += Math.sqrt(dx * dx + dy * dy);
+        } else {
+          auxHist[idx] += Math.atan2(y - prevY, x - prevX);
+        }
       }
     }
 
@@ -251,8 +273,8 @@ export const strangeAttractorDensity: Generator = {
     let maxDensity = 0, maxAux = 0;
     for (let i = 0; i < w * h; i++) {
       if (hist[i] > maxDensity) maxDensity = hist[i];
-      if (colorMode !== 'density') {
-        const avgAux = hist[i] > 0 ? Math.abs(auxHist[i] / hist[i]) : 0;
+      if (auxHist && hist[i] > 0) {
+        const avgAux = Math.abs(auxHist[i] / hist[i]);
         if (avgAux > maxAux) maxAux = avgAux;
       }
     }
@@ -277,10 +299,10 @@ export const strangeAttractorDensity: Generator = {
       const clampAlpha = Math.min(1, gammaAlpha);
 
       let colorT: number;
-      if (colorMode === 'velocity') {
+      if (auxHist && colorMode === 'velocity') {
         const avgVel = auxHist[i] / density;
         colorT = maxAux > 0 ? Math.min(1, avgVel / maxAux) : 0;
-      } else if (colorMode === 'angle') {
+      } else if (auxHist && colorMode === 'angle') {
         const avgAngle = auxHist[i] / density;
         colorT = (avgAngle / Math.PI + 1) * 0.5 % 1;
       } else {

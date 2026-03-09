@@ -126,7 +126,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   iterations: {
-    name: 'Iterations', type: 'number', min: 100000, max: 2000000, step: 100000, default: 500000,
+    name: 'Iterations', type: 'number', min: 50000, max: 500000, step: 50000, default: 150000,
     help: 'More iterations = denser, more detailed image',
     group: 'Composition',
   },
@@ -170,7 +170,7 @@ export const fractalFlames: Generator = {
     'to produce rich, organic flame structures.',
   parameterSchema,
   defaultParams: {
-    preset: 'random', iterations: 500000, variations: 'mixed',
+    preset: 'random', iterations: 150000, variations: 'mixed',
     gamma: 2.5, brightness: 1.5, background: 'black', speed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
@@ -190,9 +190,9 @@ export const fractalFlames: Generator = {
     const brightness = params.brightness ?? 1.5;
     const speed = params.speed ?? 0.5;
 
-    let totalIter = params.iterations ?? 500000;
-    if (quality === 'draft') totalIter = Math.max(50000, totalIter >> 2);
-    else if (quality === 'ultra') totalIter = totalIter * 2;
+    let totalIter = params.iterations ?? 150000;
+    if (quality === 'draft') totalIter = Math.max(20000, totalIter >> 2);
+    else if (quality === 'ultra') totalIter = Math.min(500000, totalIter * 2);
 
     // Generate transforms (morph over time for animation)
     const transforms = generateTransforms(rng, preset, variationMix);
@@ -211,6 +211,11 @@ export const fractalFlames: Generator = {
     let cp = 0;
     for (const t of transforms) { cp += t.prob; cumProb.push(cp); }
 
+    // Pre-cache color per transform (avoids paletteSample per iteration)
+    const tColors: [number, number, number][] = transforms.map(t => paletteSample(t.colorIdx, colors));
+    // Resolve variation functions once
+    const tVarFns: VarFn[] = transforms.map(t => variations[t.variation] || variations.linear);
+
     // Density + color histograms
     const hist = new Float32Array(w * h);
     const histR = new Float32Array(w * h);
@@ -219,11 +224,10 @@ export const fractalFlames: Generator = {
 
     // Chaos game
     let x = rng.range(-1, 1), y = rng.range(-1, 1);
-    let colorVal = 0.5;
 
     // Determine bounding box by running a small sample
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    const sampleIter = Math.min(10000, totalIter);
+    const sampleIter = Math.min(3000, totalIter);
     for (let i = 0; i < sampleIter; i++) {
       const rv = rng.random();
       let ti = 0;
@@ -231,11 +235,11 @@ export const fractalFlames: Generator = {
       const t = transforms[ti];
       const nx = t.a * x + t.b * y + t.e;
       const ny = t.c * x + t.d * y + t.f;
-      const r = Math.sqrt(nx * nx + ny * ny) || 0.0001;
+      const r2 = nx * nx + ny * ny;
+      const r = Math.sqrt(r2) || 0.0001;
       const theta = Math.atan2(ny, nx);
-      const varFn = variations[t.variation] || variations.linear;
-      [x, y] = varFn(nx, ny, r, theta);
-      colorVal = (colorVal + t.colorIdx) * 0.5;
+      const res = tVarFns[ti](nx, ny, r, theta);
+      x = res[0]; y = res[1];
       if (i > 20) {
         if (x < minX) minX = x; if (x > maxX) maxX = x;
         if (y < minY) minY = y; if (y > maxY) maxY = y;
@@ -260,7 +264,6 @@ export const fractalFlames: Generator = {
 
     // Reset and accumulate
     x = rng.range(-1, 1); y = rng.range(-1, 1);
-    colorVal = 0.5;
 
     for (let i = 0; i < totalIter; i++) {
       const rv = rng.random();
@@ -271,9 +274,8 @@ export const fractalFlames: Generator = {
       const ny = t.c * x + t.d * y + t.f;
       const r = Math.sqrt(nx * nx + ny * ny) || 0.0001;
       const theta = Math.atan2(ny, nx);
-      const varFn = variations[t.variation] || variations.linear;
-      [x, y] = varFn(nx, ny, r, theta);
-      colorVal = (colorVal + t.colorIdx) * 0.5;
+      const res = tVarFns[ti](nx, ny, r, theta);
+      x = res[0]; y = res[1];
 
       if (i < 20) continue; // Skip warmup
 
@@ -283,10 +285,10 @@ export const fractalFlames: Generator = {
 
       const idx = py * w + px;
       hist[idx]++;
-      const [cr, cg, cb] = paletteSample(colorVal, colors);
-      histR[idx] += cr;
-      histG[idx] += cg;
-      histB[idx] += cb;
+      const tc = tColors[ti];
+      histR[idx] += tc[0];
+      histG[idx] += tc[1];
+      histB[idx] += tc[2];
     }
 
     // Find max density
