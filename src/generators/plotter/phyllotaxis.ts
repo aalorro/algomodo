@@ -47,7 +47,7 @@ const parameterSchema: ParameterSchema = {
     type: 'select',
     options: ['circle', 'petal', 'star', 'square'],
     default: 'circle',
-    help: 'circle: round dots | petal: teardrop pointing outward | star: 4-point star | square: rotated rect',
+    help: 'circle: round dots | petal: teardrop pointing outward | star: 5-point star | square: rotated rect',
     group: 'Geometry',
   },
   connectLines: {
@@ -55,6 +55,18 @@ const parameterSchema: ParameterSchema = {
     type: 'boolean',
     default: false,
     help: 'Draw a line connecting sequential dots — creates beautiful spiral line art',
+    group: 'Texture',
+  },
+  glow: {
+    name: 'Glow',
+    type: 'number', min: 0, max: 1, step: 0.1, default: 0.3,
+    help: 'Radial halo around each dot — creates bioluminescent or watercolor bloom effect',
+    group: 'Texture',
+  },
+  depthFade: {
+    name: 'Depth Fade',
+    type: 'number', min: 0, max: 1, step: 0.1, default: 0.2,
+    help: 'Center-to-edge opacity falloff — creates atmospheric perspective',
     group: 'Texture',
   },
   colorMode: {
@@ -91,6 +103,7 @@ export const phyllotaxis: Generator = {
   defaultParams: {
     pointCount: 1500, spread: 3.0, angleOffset: 0, dotSize: 3.5,
     sizeMode: 'uniform', shape: 'circle', connectLines: false,
+    glow: 0.3, depthFade: 0.2,
     colorMode: 'palette-radius', background: 'cream', spinSpeed: 0.05,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
@@ -111,6 +124,8 @@ export const phyllotaxis: Generator = {
     const sizeMode = params.sizeMode || 'uniform';
     const shape = params.shape || 'circle';
     const connectLines = params.connectLines ?? false;
+    const glowAmount = params.glow ?? 0.3;
+    const depthFade = params.depthFade ?? 0.2;
     const colors = palette.colors.map(hexToRgb);
     const isDark = params.background === 'dark';
     const spin = time * spinSpeed;
@@ -121,7 +136,7 @@ export const phyllotaxis: Generator = {
     // Effective divergence angle
     const divergence = GOLDEN_ANGLE + angleOff;
 
-    // Pre-compute positions for connect-lines
+    // Pre-compute positions
     const points: Array<{ x: number; y: number; r: number; dotR: number; i: number; angle: number }> = [];
 
     for (let i = 0; i < n; i++) {
@@ -131,7 +146,7 @@ export const phyllotaxis: Generator = {
 
       const x = cxc + r * Math.cos(angle);
       const y = cyc + r * Math.sin(angle);
-      if (x < -baseDotR * 2 || x > w + baseDotR * 2 || y < -baseDotR * 2 || y > h + baseDotR * 2) continue;
+      if (x < -baseDotR * 4 || x > w + baseDotR * 4 || y < -baseDotR * 4 || y > h + baseDotR * 4) continue;
 
       // Size mode
       const t = r / maxR; // 0 = center, 1 = edge
@@ -147,75 +162,96 @@ export const phyllotaxis: Generator = {
       points.push({ x, y, r, dotR, i, angle });
     }
 
-    const alpha = isDark ? 0.88 : 0.85;
+    const baseAlpha = isDark ? 0.88 : 0.85;
 
     // Draw connecting lines first (behind dots)
     if (connectLines && points.length > 1) {
-      ctx.lineWidth = Math.max(0.5, baseDotR * 0.3);
       ctx.lineCap = 'round';
-      const lineAlpha = isDark ? 0.35 : 0.25;
 
-      // Draw as gradient segments
-      const segLen = Math.max(1, Math.floor(points.length / 80));
-      for (let si = 0; si < points.length - 1; si += segLen) {
-        const end = Math.min(si + segLen + 1, points.length);
-        const t0 = si / points.length;
-        const [cr, cg, cb] = interpolateColor(colors, t0);
+      for (let si = 1; si < points.length; si++) {
+        const t = si / points.length;
+        const [cr, cg, cb] = interpolateColor(colors, t);
+        const lineAlpha = (isDark ? 0.45 : 0.30) * (1 - t * 0.5);
+        const lineWidth = Math.max(0.3, baseDotR * 0.4 * (1 - t * 0.6));
+
         ctx.strokeStyle = `rgba(${cr},${cg},${cb},${lineAlpha})`;
+        ctx.lineWidth = lineWidth;
         ctx.beginPath();
-        ctx.moveTo(points[si].x, points[si].y);
-        for (let j = si + 1; j < end; j++) {
-          ctx.lineTo(points[j].x, points[j].y);
-        }
+
+        const prev = points[si - 1];
+        const curr = points[si];
+        const midX = (prev.x + curr.x) / 2;
+        const midY = (prev.y + curr.y) / 2;
+        ctx.moveTo(prev.x, prev.y);
+        ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
         ctx.stroke();
       }
     }
 
-    // Draw shapes
+    // Glow pass (behind solid shapes, uses additive compositing)
+    if (glowAmount > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = isDark ? 'lighter' : 'screen';
+
+      for (const p of points) {
+        const t = p.r / maxR;
+        let cr: number, cg: number, cb: number;
+        [cr, cg, cb] = getPointColor(p, t, colorMode, isDark, colors, noise, w, h, cxc, cyc, maxR);
+
+        const glowPulse = time > 0 ? (1 + 0.12 * Math.sin(time * 1.5 + p.i * 0.02)) : 1;
+        const glowR = p.dotR * (1.5 + glowAmount * 2.5) * glowPulse;
+        const depthAlpha = 1 - t * depthFade;
+
+        const grad = ctx.createRadialGradient(p.x, p.y, p.dotR * 0.2, p.x, p.y, glowR);
+        grad.addColorStop(0, `rgba(${cr},${cg},${cb},${(0.4 * glowAmount * depthAlpha).toFixed(3)})`);
+        grad.addColorStop(0.4, `rgba(${cr},${cg},${cb},${(0.12 * glowAmount * depthAlpha).toFixed(3)})`);
+        grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // Draw solid shapes
     for (const p of points) {
       const t = p.r / maxR;
       let cr: number, cg: number, cb: number;
+      [cr, cg, cb] = getPointColor(p, t, colorMode, isDark, colors, noise, w, h, cxc, cyc, maxR);
 
-      if (colorMode === 'monochrome') {
-        [cr, cg, cb] = isDark ? [220, 220, 220] : [30, 30, 30];
-      } else if (colorMode === 'palette-angle') {
-        [cr, cg, cb] = colors[p.i % colors.length];
-      } else if (colorMode === 'palette-noise') {
-        const nv = noise.fbm((p.x / w - 0.5) * 3 + 5, (p.y / h - 0.5) * 3 + 5, 3, 2, 0.5);
-        const nt = Math.max(0, nv * 0.5 + 0.5);
-        [cr, cg, cb] = interpolateColor(colors, nt);
-      } else if (colorMode === 'palette-fibonacci') {
-        // Color by which Fibonacci spiral arm the point falls on
-        const armIndex = p.i % 13; // 13 is a Fibonacci number
-        [cr, cg, cb] = colors[armIndex % colors.length];
-      } else {
-        // palette-radius
-        [cr, cg, cb] = interpolateColor(colors, t);
-      }
-
-      ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+      const depthAlpha = baseAlpha * (1 - t * depthFade);
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},${depthAlpha.toFixed(3)})`;
 
       if (shape === 'petal') {
-        // Teardrop pointing radially outward
         const outAngle = Math.atan2(p.y - cyc, p.x - cxc);
+        const noiseWarp = noise.noise2D(p.i * 0.1 + 7.3, seed * 0.01) * 0.15;
+        const petalLen = p.dotR * (1.8 + noiseWarp);
+        const petalW = p.dotR * (0.65 + noiseWarp * 0.3);
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(outAngle);
         ctx.beginPath();
-        ctx.moveTo(p.dotR * 1.5, 0);
-        ctx.quadraticCurveTo(0, -p.dotR * 0.7, -p.dotR * 0.5, 0);
-        ctx.quadraticCurveTo(0, p.dotR * 0.7, p.dotR * 1.5, 0);
+        ctx.moveTo(petalLen, 0);
+        ctx.bezierCurveTo(petalLen * 0.4, -petalW * 1.1, -p.dotR * 0.3, -petalW * 0.5, -p.dotR * 0.4, 0);
+        ctx.bezierCurveTo(-p.dotR * 0.3, petalW * 0.5, petalLen * 0.4, petalW * 1.1, petalLen, 0);
         ctx.fill();
         ctx.restore();
       } else if (shape === 'star') {
         const outAngle = Math.atan2(p.y - cyc, p.x - cxc);
+        const noiseRot = noise.noise2D(p.i * 0.05, seed * 0.01) * 0.3;
+        const rays = 5;
+        const outerR = p.dotR;
+        const innerR = p.dotR * 0.35;
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(outAngle);
+        ctx.rotate(outAngle + noiseRot);
         ctx.beginPath();
-        for (let v = 0; v < 8; v++) {
-          const sa = (v / 8) * Math.PI * 2;
-          const sr = v % 2 === 0 ? p.dotR : p.dotR * 0.4;
+        for (let v = 0; v < rays * 2; v++) {
+          const sa = (v / (rays * 2)) * Math.PI * 2;
+          const sr = v % 2 === 0 ? outerR : innerR;
           const sx = Math.cos(sa) * sr, sy = Math.sin(sa) * sr;
           if (v === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
         }
@@ -247,6 +283,34 @@ export const phyllotaxis: Generator = {
     return ((params.pointCount ?? 1500) * 0.05) | 0;
   },
 };
+
+function getPointColor(
+  p: { x: number; y: number; r: number; i: number },
+  t: number,
+  colorMode: string,
+  isDark: boolean,
+  colors: [number, number, number][],
+  noise: SimplexNoise,
+  w: number, h: number,
+  _cxc: number, _cyc: number,
+  _maxR: number,
+): [number, number, number] {
+  if (colorMode === 'monochrome') {
+    return isDark ? [220, 220, 220] : [30, 30, 30];
+  } else if (colorMode === 'palette-angle') {
+    return colors[p.i % colors.length];
+  } else if (colorMode === 'palette-noise') {
+    const nv = noise.fbm((p.x / w - 0.5) * 3 + 5, (p.y / h - 0.5) * 3 + 5, 3, 2, 0.5);
+    const nt = Math.max(0, nv * 0.5 + 0.5);
+    return interpolateColor(colors, nt);
+  } else if (colorMode === 'palette-fibonacci') {
+    const armIndex = p.i % 13;
+    return colors[armIndex % colors.length];
+  } else {
+    // palette-radius
+    return interpolateColor(colors, t);
+  }
+}
 
 function interpolateColor(colors: [number, number, number][], t: number): [number, number, number] {
   const ct = Math.max(0, Math.min(1, t)) * (colors.length - 1);
