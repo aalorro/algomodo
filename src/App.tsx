@@ -9,6 +9,7 @@ import { DonationModal } from './components/DonationModal';
 import { InstructionsModal } from './components/InstructionsModal';
 import { RoadmapModal } from './components/RoadmapModal';
 import { UseCasesModal } from './components/UseCasesModal';
+import { ReportBugModal } from './components/ReportBugModal';
 import { initializeGenerators } from './generators';
 import { getAllGenerators } from './core/registry';
 import { useStore } from './store';
@@ -193,6 +194,7 @@ function App() {
       {openModal === 'instructions' && <InstructionsModal />}
       {openModal === 'roadmap' && <RoadmapModal />}
       {openModal === 'use-cases' && <UseCasesModal />}
+      {openModal === 'report-bug' && <ReportBugModal />}
     </div>
   );
 }

@@ -1282,12 +1282,18 @@ export const RightSidebar: React.FC = () => {
       </div>
 
       {/* Footer */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+      <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
         <button
           onClick={() => setOpenModal('instructions')}
-          className="w-full px-3 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
+          className="flex-1 px-3 py-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
         >
           Instructions
+        </button>
+        <button
+          onClick={() => setOpenModal('report-bug')}
+          className="flex-1 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition"
+        >
+          Report Bug
         </button>
       </div>
 
