@@ -82,6 +82,11 @@ import { julia } from './fractals/julia';
 import { newtonFractal } from './fractals/newton';
 import { ifsBarnsley } from './fractals/ifs-barnsley';
 import { recursiveSubdivision } from './fractals/recursive-subdivision';
+import { burningShip } from './fractals/burning-ship';
+import { fractalFlames } from './fractals/fractal-flames';
+import { multibrot } from './fractals/multibrot';
+import { orbitTraps } from './fractals/orbit-traps';
+import { strangeAttractorDensity } from './fractals/strange-attractor-density';
 import { textConcrete } from './text/text-concrete';
 import { textMatrix } from './text/text-matrix';
 import { textGrid } from './text/text-grid';
@@ -183,6 +188,11 @@ export function initializeGenerators() {
   registerGenerator(newtonFractal);
   registerGenerator(ifsBarnsley);
   registerGenerator(recursiveSubdivision);
+  registerGenerator(burningShip);
+  registerGenerator(fractalFlames);
+  registerGenerator(multibrot);
+  registerGenerator(orbitTraps);
+  registerGenerator(strangeAttractorDensity);
   registerGenerator(textConcrete);
   registerGenerator(textMatrix);
   registerGenerator(textGrid);
@@ -218,6 +228,7 @@ export {
   voronoiCells, crackle, ridges, voronoiMosaic, delaunayMesh, centroidalVoronoi, contourBands,
   fractured, depthCells, weightedVoronoi, neighborBands,
   mandelbrot, julia, newtonFractal, ifsBarnsley, recursiveSubdivision,
+  burningShip, fractalFlames, multibrot, orbitTraps, strangeAttractorDensity,
   textConcrete, textMatrix, textGrid, textRewrite, textPoem,
   tessellations, lowPoly, ecosystems, steinerNetworks,
   kNearestNeighbor, gabrielGraph, planarGraph,
