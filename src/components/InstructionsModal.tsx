@@ -173,8 +173,8 @@ export const InstructionsModal: React.FC = () => {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Tips</h3>
             <ul className="list-disc list-inside space-y-1">
-              <li>Everything is saved locally &mdash; your settings and presets persist across browser sessions.</li>
-              <li>The SAVE button on the canvas exports at 1080x1080. For custom sizes, use the Export tab.</li>
+              <li>Everything is saved locally &mdash; your settings and presets persist across browser sessions. Clearing your browser cache will delete them, so export your presets or save individual renders as JSON recipes first.</li>
+              <li>The <strong>SAVE button on the canvas</strong> is a quick export at 1080x1080 &mdash; it saves a PNG when static or a WebM when animation is enabled. The <strong>Export tab</strong> gives you more control: multiple formats (PNG, JPG, SVG, GIF, WebM, MP4), custom resolutions, duration settings, and loop options.</li>
               <li>Lock a palette, then use SURPRISE ME to see random generators in your favorite colors.</li>
               <li>Use JSON recipes to save and share exact artwork configurations.</li>
               <li>PostFX (Grain, Vignette, Dither, Posterize) work with every generator &mdash; try stacking them.</li>
