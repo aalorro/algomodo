@@ -21,7 +21,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0 });
+  const fpsRef = useRef({ frames: 0, lastTime: 0, fps: 0, lastRenderedFps: -1 });
   const animationRef = useRef<number | undefined>(undefined);
   const overlayAnimRef = useRef<number | undefined>(undefined);
   const lastFrameTimeRef = useRef(0);
@@ -163,9 +163,18 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const renderDataRef = useRef({
     selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage, renderKey,
   });
-  renderDataRef.current = {
-    selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage, renderKey,
-  };
+  // Update individual properties instead of allocating a new object every render
+  const rd = renderDataRef.current;
+  rd.selectedGeneratorId = selectedGeneratorId;
+  rd.seed = seed;
+  rd.params = params;
+  rd.palette = palette;
+  rd.quality = quality;
+  rd.postFX = postFX;
+  rd.showFPS = showFPS;
+  rd.animationFps = animationFps;
+  rd.loadedImage = loadedImage;
+  rd.renderKey = renderKey;
 
   const canvasSizeRef = useRef({ w: 0, h: 0 });
   const staticTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -275,7 +284,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     if (!ctx) return;
 
     lastFrameTimeRef.current = 0;
-    fpsRef.current = { frames: 0, lastTime: 0, fps: 0 };
+    fpsRef.current = { frames: 0, lastTime: 0, fps: 0, lastRenderedFps: -1 };
 
     const animate = (timestamp: number) => {
       const rd = renderDataRef.current;
@@ -301,11 +310,15 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             fpsRef.current.frames = 0;
             fpsRef.current.lastTime = now;
           }
+          // Only update overlay text styling once per FPS update
+          if (fpsRef.current.lastRenderedFps !== fpsRef.current.fps) {
+            fpsRef.current.lastRenderedFps = fpsRef.current.fps;
+          }
           ctx.fillStyle = '#39ff14';
           ctx.font = 'bold 48px monospace';
           ctx.shadowColor = '#39ff14';
           ctx.shadowBlur = 10;
-          ctx.fillText(`${fpsRef.current.fps} / ${rd.animationFps} fps`, 16, 36);
+          ctx.fillText(`${fpsRef.current.lastRenderedFps} / ${rd.animationFps} fps`, 16, 36);
           ctx.shadowColor = 'transparent';
           ctx.shadowBlur = 0;
         }

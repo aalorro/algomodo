@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { getAllFamilies, getGeneratorsByFamily, getAllGenerators } from '../core/registry';
-export const LeftSidebar: React.FC = () => {
+export const LeftSidebar: React.FC = React.memo(() => {
   const { selectedFamilyId, selectedGeneratorId, selectFamily, selectGenerator, setOpenModal, theme } = useStore(useShallow(s => ({
     selectedFamilyId: s.selectedFamilyId,
     selectedGeneratorId: s.selectedGeneratorId,
@@ -186,4 +186,4 @@ export const LeftSidebar: React.FC = () => {
       </div>
     </div>
   );
-};
+});

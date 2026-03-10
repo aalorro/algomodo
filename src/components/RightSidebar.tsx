@@ -10,7 +10,7 @@ import { exportMp4, isWebCodecsSupported } from '../utils/mp4-exporter';
 import { CURATED_PALETTES } from '../data/palettes';
 import { loadImageFromUrl } from '../utils/imageUrl';
 
-export const RightSidebar: React.FC = () => {
+export const RightSidebar: React.FC = React.memo(() => {
   const {
     selectedGeneratorId,
     selectedPresetId,
@@ -1334,4 +1334,4 @@ export const RightSidebar: React.FC = () => {
 
     </div>
   );
-};
+});

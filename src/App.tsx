@@ -24,7 +24,12 @@ function App() {
   const touchStartY = useRef(0);
   const mobileContainerRef = useRef<HTMLDivElement>(null);
 
-  const { showFPS, theme, undo, redo, selectGenerator, openModal } = useStore();
+  const showFPS = useStore(s => s.showFPS);
+  const theme = useStore(s => s.theme);
+  const openModal = useStore(s => s.openModal);
+  const undo = useStore(s => s.undo);
+  const redo = useStore(s => s.redo);
+  const selectGenerator = useStore(s => s.selectGenerator);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
