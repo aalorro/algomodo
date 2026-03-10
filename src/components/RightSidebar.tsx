@@ -120,6 +120,7 @@ export const RightSidebar: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [mp4MaxDuration, setMp4MaxDuration] = useState(8);
+  const [mp4CustomInput, setMp4CustomInput] = useState(String(8));
   const [isMp4Exporting, setIsMp4Exporting] = useState(false);
   const [mp4Progress, setMp4Progress] = useState(0);
   const [mp4Elapsed, setMp4Elapsed] = useState(0);
@@ -546,7 +547,7 @@ export const RightSidebar: React.FC = () => {
                   value={urlInputValue}
                   onChange={e => setUrlInputValue(e.target.value)}
                   placeholder="https://example.com/image.jpg"
-                  className="w-full px-2 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
+                  className="w-full px-2 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-white focus:outline-none focus:border-blue-500"
                   onKeyDown={e => {
                     if (e.key === 'Enter' && urlInputValue.trim()) {
                       loadFromUrl(urlInputValue.trim());
@@ -614,7 +615,7 @@ export const RightSidebar: React.FC = () => {
               type="number"
               value={seed}
               onChange={(e) => setSeed(parseInt(e.target.value) || 0)}
-              className="flex-1 px-2 py-2 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm font-mono border border-gray-200 dark:border-transparent"
+              className="flex-1 px-2 py-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm font-mono border border-white"
             />
             <button
               onClick={() => setSeedLocked(!seedLocked)}
@@ -696,7 +697,7 @@ export const RightSidebar: React.FC = () => {
                   value={presetName}
                   onChange={e => setPresetName(e.target.value)}
                   placeholder="Preset name..."
-                  className="flex-1 px-2 py-2 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
+                  className="flex-1 px-2 py-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-white focus:outline-none focus:border-blue-500"
                   onKeyDown={e => {
                     if (e.key === 'Enter' && presetName.trim()) {
                       savePreset(presetName.trim());
@@ -773,7 +774,7 @@ export const RightSidebar: React.FC = () => {
                   value={presetPrefix}
                   onChange={(e) => setPresetPrefix(e.target.value)}
                   placeholder="algomodo-preset-YYYYMMDD-HHMMSS.txt"
-                  className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent placeholder-gray-400 dark:placeholder-gray-600"
+                  className="w-full px-2 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm border border-white placeholder-gray-400 dark:placeholder-gray-600"
                 />
               </div>
             )}
@@ -875,7 +876,7 @@ export const RightSidebar: React.FC = () => {
                 value={filePrefix}
                 onChange={(e) => setFilePrefix(e.target.value)}
                 placeholder={`algomodo-${new Date().toISOString().slice(0,10).replace(/-/g,'')}…`}
-                className="w-full px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                className="w-full px-2 py-2.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded text-sm border border-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               />
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                 Canvas: {canvasSettings.width} x {canvasSettings.height}px @ {canvasSettings.devicePixelRatio}x DPR
@@ -1029,10 +1030,10 @@ export const RightSidebar: React.FC = () => {
                   <div className="mb-2">
                     <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Max Duration</label>
                     <div className="flex gap-1">
-                      {[8, 15, 30, 45].map((sec) => (
+                      {[8, 15, 30].map((sec) => (
                         <button
                           key={sec}
-                          onClick={() => setMp4MaxDuration(sec)}
+                          onClick={() => { setMp4MaxDuration(sec); setMp4CustomInput(''); }}
                           disabled={isMp4Exporting}
                           className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
                             mp4MaxDuration === sec
@@ -1043,6 +1044,39 @@ export const RightSidebar: React.FC = () => {
                           {sec}s
                         </button>
                       ))}
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Custom (1-60)"
+                        value={![8, 15, 30].includes(mp4MaxDuration) ? mp4CustomInput : ''}
+                        onFocus={() => {
+                          if ([8, 15, 30].includes(mp4MaxDuration)) setMp4CustomInput('');
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
+                          setMp4CustomInput(raw);
+                          if (raw !== '') {
+                            const v = Math.max(1, Math.min(60, parseInt(raw)));
+                            setMp4MaxDuration(v);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (mp4CustomInput === '' || parseInt(mp4CustomInput) < 1) {
+                            setMp4MaxDuration(8);
+                            setMp4CustomInput('');
+                          } else {
+                            const v = Math.max(1, Math.min(60, parseInt(mp4CustomInput)));
+                            setMp4MaxDuration(v);
+                            setMp4CustomInput(String(v));
+                          }
+                        }}
+                        disabled={isMp4Exporting}
+                        className={`flex-1 py-1 rounded text-sm font-medium text-center border border-white focus:outline-none focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed ${
+                          ![8, 15, 30].includes(mp4MaxDuration)
+                            ? 'bg-red-600 text-white placeholder-red-300'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500'
+                        }`}
+                      />
                     </div>
                   </div>
                   <button
@@ -1110,7 +1144,7 @@ export const RightSidebar: React.FC = () => {
                 value={recipePrefix}
                 onChange={(e) => setRecipePrefix(e.target.value)}
                 placeholder="algomodo-json-YYYYMMDD-HHMMSS"
-                className="w-full px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded text-sm border border-gray-300 dark:border-gray-600 placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                className="w-full px-2 py-2.5 bg-white dark:bg-gray-900 text-gray-900 dark:text-white rounded text-sm border border-white placeholder-gray-400 dark:placeholder-gray-500 focus:border-blue-500 focus:outline-none"
               />
             </div>
             </div>
@@ -1200,7 +1234,7 @@ export const RightSidebar: React.FC = () => {
               <select
                 value={quality}
                 onChange={(e) => setQuality(e.target.value as any)}
-                className="w-full px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded text-sm border border-gray-200 dark:border-transparent"
+                className="w-full px-2 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded text-sm border border-white"
               >
                 <option value="draft">Draft</option>
                 <option value="balanced">Balanced</option>
