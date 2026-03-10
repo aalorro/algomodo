@@ -206,6 +206,7 @@ export const useStore = create<AppState>()(
 
       savePreset: (name: string) => {
         const s = get();
+        if (!s.selectedGeneratorId) return;
         const gen = getGenerator(s.selectedGeneratorId);
         const preset: Preset = {
           id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),

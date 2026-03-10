@@ -285,7 +285,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       if (elapsed >= fpsInterval) {
         lastFrameTimeRef.current = timestamp - (elapsed % fpsInterval);
 
-        const generator = getGenerator(rd.selectedGeneratorId);
+        const generator = rd.selectedGeneratorId ? getGenerator(rd.selectedGeneratorId) : undefined;
         if (generator?.renderCanvas2D) {
           const finalParams: Record<string, any> = { ...generator.defaultParams, ...rd.params };
           if (rd.loadedImage) finalParams._sourceImage = rd.loadedImage;
@@ -437,6 +437,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const exportSize = 1080;
 
+    if (!selectedGeneratorId) return;
     const generator = getGenerator(selectedGeneratorId);
     if (!generator) return;
     const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
@@ -607,7 +608,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             {isAnimating ? '⏸ ANIMATE' : '▶ ANIMATE'}
           </button>
           <button
-            onClick={() => randomizeParams(getGenerator(selectedGeneratorId)?.parameterSchema || {})}
+            onClick={() => selectedGeneratorId && randomizeParams(getGenerator(selectedGeneratorId)?.parameterSchema || {})}
             className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
           >
             🎲 RANDOM
@@ -653,7 +654,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           </button>
         </div>
         <p className="text-white/60 text-sm font-medium pointer-events-none" style={{ textShadow: '-1px -1px 0 rgba(0,0,0,0.6), 1px -1px 0 rgba(0,0,0,0.6), -1px 1px 0 rgba(0,0,0,0.6), 1px 1px 0 rgba(0,0,0,0.6)' }}>
-          {getGenerator(selectedGeneratorId)?.styleName}
+          {selectedGeneratorId ? getGenerator(selectedGeneratorId)?.styleName : ''}
         </p>
       </div>
 
