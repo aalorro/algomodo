@@ -293,6 +293,19 @@ export const useStore = create<AppState>()(
 
       forceReload: () => set((state) => ({ renderKey: state.renderKey + 1 })),
 
+      clearCanvas: () => {
+        const state = get();
+        set({
+          selectedGeneratorId: null,
+          params: {},
+          lockedParams: [],
+          isAnimating: false,
+          postFX: { grain: 0, vignette: 0, dither: 0, posterize: 0 },
+          historyPast: [...state.historyPast.slice(-49), captureSnapshot(state)],
+          historyFuture: [],
+        });
+      },
+
       updatePostFX: (key, value) =>
         set((state) => ({
           postFX: { ...state.postFX, [key]: value },

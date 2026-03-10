@@ -120,7 +120,7 @@ export interface HistorySnapshot {
   params: Record<string, any>;
   palette: Palette;
   seed: number;
-  selectedGeneratorId: string;
+  selectedGeneratorId: string | null;
   selectedFamilyId: string;
   postFX: Record<string, any>;
 }
@@ -133,7 +133,7 @@ export interface AppState {
   
   // Generator selection
   selectedFamilyId: string;
-  selectedGeneratorId: string;
+  selectedGeneratorId: string | null;
   selectedPresetId?: string;
   
   // Parameters
@@ -199,6 +199,7 @@ export interface AppState {
   setBoomerangGif: (on: boolean) => void;
   setEndlessGif: (on: boolean) => void;
   forceReload: () => void;
+  clearCanvas: () => void;
   updatePostFX: (key: string, value: any) => void;
   setOpenModal: (modal: 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | 'report-bug' | null) => void;
 

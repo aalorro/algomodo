@@ -51,6 +51,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     redo,
     renderKey,
     forceReload,
+    clearCanvas,
   } = useStore(useShallow(s => ({
     canvasSettings: s.canvasSettings,
     selectedGeneratorId: s.selectedGeneratorId,
@@ -72,6 +73,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     redo: s.redo,
     renderKey: s.renderKey,
     forceReload: s.forceReload,
+    clearCanvas: s.clearCanvas,
   })));
 
   // Decode source image data-URL → HTMLImageElement
@@ -197,6 +199,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    if (!selectedGeneratorId) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
     const generator = getGenerator(selectedGeneratorId);
     if (!generator?.renderCanvas2D) return;
 
@@ -638,6 +644,12 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             className="px-5 py-2 bg-green-500/60 hover:bg-green-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? '💾 SAVING...' : '💾 SAVE'}
+          </button>
+          <button
+            onClick={clearCanvas}
+            className="px-5 py-2 bg-red-500/60 hover:bg-red-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+          >
+            CLEAR
           </button>
         </div>
         <p className="text-white/60 text-sm font-medium pointer-events-none" style={{ textShadow: '-1px -1px 0 rgba(0,0,0,0.6), 1px -1px 0 rgba(0,0,0,0.6), -1px 1px 0 rgba(0,0,0,0.6), 1px 1px 0 rgba(0,0,0,0.6)' }}>
