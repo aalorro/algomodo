@@ -103,7 +103,7 @@ export const RightSidebar: React.FC = () => {
     setOpenModal: s.setOpenModal,
   })));
 
-  const generator = getGenerator(selectedGeneratorId);
+  const generator = selectedGeneratorId ? getGenerator(selectedGeneratorId) : undefined;
   const [activeTab, setActiveTab] = useState<'params' | 'presets' | 'export' | 'settings'>('params');
   const [presetName, setPresetName] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -486,6 +486,7 @@ export const RightSidebar: React.FC = () => {
   };
 
   const handleExportRecipe = () => {
+    if (!selectedGeneratorId) return;
     const recipe = createRecipe(
       selectedGeneratorId,
       seed,
