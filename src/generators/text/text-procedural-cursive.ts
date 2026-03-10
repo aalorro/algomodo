@@ -1,9 +1,25 @@
-import type { Generator, ParameterSchema } from '../../types';
+import type { Generator, ParameterSchema, Palette } from '../../types';
 import { SeededRNG, SimplexNoise } from '../../core/rng';
 
-function hexToRgba(hex: string, alpha: number): string {
+function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgba(r: number, g: number, b: number, a: number): string {
+  return `rgba(${r},${g},${b},${a.toFixed(2)})`;
+}
+
+function lerpRgb(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number,
+): [number, number, number] {
+  return [
+    (a[0] + (b[0] - a[0]) * t) | 0,
+    (a[1] + (b[1] - a[1]) * t) | 0,
+    (a[2] + (b[2] - a[2]) * t) | 0,
+  ];
 }
 
 /** Generate a single cursive letter-form as control points */
@@ -14,182 +30,256 @@ function generateLetterForm(
   letterW: number,
   letterH: number,
   loopiness: number,
-): { x: number; y: number }[] {
-  const pts: { x: number; y: number }[] = [];
-  const form = rng.integer(0, 7);
+): number[] {
+  // Returns flat array [x0,y0, x1,y1, ...] for zero-allocation
+  const form = rng.integer(0, 9);
+  // Add slight random perturbation to proportions for variety
+  const v1 = 0.9 + rng.random() * 0.2;
+  const v2 = 0.85 + rng.random() * 0.3;
 
   switch (form) {
     case 0: // hump (n-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.1, y: baseY - letterH * 0.8 });
-      pts.push({ x: baseX + letterW * 0.5, y: baseY - letterH * 0.9 * loopiness });
-      pts.push({ x: baseX + letterW * 0.7, y: baseY - letterH * 0.5 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.1, baseY - letterH * 0.8 * v1,
+        baseX + letterW * 0.5, baseY - letterH * 0.9 * loopiness,
+        baseX + letterW * 0.7, baseY - letterH * 0.5 * v2,
+        baseX + letterW, baseY,
+      ];
     case 1: // loop (o-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.2, y: baseY - letterH * 0.9 * loopiness });
-      pts.push({ x: baseX + letterW * 0.8, y: baseY - letterH * 0.85 * loopiness });
-      pts.push({ x: baseX + letterW * 0.85, y: baseY - letterH * 0.2 });
-      pts.push({ x: baseX + letterW * 0.3, y: baseY + letterH * 0.1 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.2, baseY - letterH * 0.9 * loopiness * v1,
+        baseX + letterW * 0.8, baseY - letterH * 0.85 * loopiness,
+        baseX + letterW * 0.85, baseY - letterH * 0.2 * v2,
+        baseX + letterW * 0.3, baseY + letterH * 0.1,
+        baseX + letterW, baseY,
+      ];
     case 2: // ascender loop (l-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.3, y: baseY - letterH * 1.5 * loopiness });
-      pts.push({ x: baseX + letterW * 0.6, y: baseY - letterH * 1.35 * loopiness });
-      pts.push({ x: baseX + letterW * 0.4, y: baseY - letterH * 0.5 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.3, baseY - letterH * 1.5 * loopiness * v1,
+        baseX + letterW * 0.6, baseY - letterH * 1.35 * loopiness,
+        baseX + letterW * 0.4, baseY - letterH * 0.5 * v2,
+        baseX + letterW, baseY,
+      ];
     case 3: // valley (u-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.1, y: baseY + letterH * 0.3 });
-      pts.push({ x: baseX + letterW * 0.5, y: baseY + letterH * 0.5 * loopiness });
-      pts.push({ x: baseX + letterW * 0.9, y: baseY + letterH * 0.2 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.1, baseY + letterH * 0.3 * v1,
+        baseX + letterW * 0.5, baseY + letterH * 0.5 * loopiness,
+        baseX + letterW * 0.9, baseY + letterH * 0.2 * v2,
+        baseX + letterW, baseY,
+      ];
     case 4: // descender loop (g-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.3, y: baseY - letterH * 0.6 });
-      pts.push({ x: baseX + letterW * 0.7, y: baseY - letterH * 0.5 });
-      pts.push({ x: baseX + letterW * 0.8, y: baseY + letterH * 0.3 });
-      pts.push({ x: baseX + letterW * 0.5, y: baseY + letterH * 0.8 * loopiness });
-      pts.push({ x: baseX + letterW * 0.3, y: baseY + letterH * 0.3 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.3, baseY - letterH * 0.6 * v1,
+        baseX + letterW * 0.7, baseY - letterH * 0.5,
+        baseX + letterW * 0.8, baseY + letterH * 0.3 * v2,
+        baseX + letterW * 0.5, baseY + letterH * 0.8 * loopiness,
+        baseX + letterW * 0.3, baseY + letterH * 0.3,
+        baseX + letterW, baseY,
+      ];
     case 5: // double valley (w-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.2, y: baseY + letterH * 0.4 * loopiness });
-      pts.push({ x: baseX + letterW * 0.35, y: baseY - letterH * 0.2 });
-      pts.push({ x: baseX + letterW * 0.55, y: baseY + letterH * 0.4 * loopiness });
-      pts.push({ x: baseX + letterW * 0.75, y: baseY - letterH * 0.25 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.2, baseY + letterH * 0.4 * loopiness * v1,
+        baseX + letterW * 0.35, baseY - letterH * 0.2,
+        baseX + letterW * 0.55, baseY + letterH * 0.4 * loopiness * v2,
+        baseX + letterW * 0.75, baseY - letterH * 0.25,
+        baseX + letterW, baseY,
+      ];
     case 6: // tall form (f-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.2, y: baseY - letterH * 1.2 * loopiness });
-      pts.push({ x: baseX + letterW * 0.5, y: baseY - letterH * 1.25 * loopiness });
-      pts.push({ x: baseX + letterW * 0.4, y: baseY - letterH * 0.3 });
-      pts.push({ x: baseX + letterW * 0.7, y: baseY - letterH * 0.5 });
-      pts.push({ x: baseX + letterW * 0.6, y: baseY });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
-    default: // small loop (e-shape)
-      pts.push({ x: baseX, y: baseY });
-      pts.push({ x: baseX + letterW * 0.4, y: baseY - letterH * 0.5 });
-      pts.push({ x: baseX + letterW * 0.7, y: baseY - letterH * 0.6 * loopiness });
-      pts.push({ x: baseX + letterW * 0.6, y: baseY - letterH * 0.3 });
-      pts.push({ x: baseX + letterW * 0.3, y: baseY - letterH * 0.1 });
-      pts.push({ x: baseX + letterW, y: baseY });
-      break;
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.2, baseY - letterH * 1.2 * loopiness * v1,
+        baseX + letterW * 0.5, baseY - letterH * 1.25 * loopiness,
+        baseX + letterW * 0.4, baseY - letterH * 0.3 * v2,
+        baseX + letterW * 0.7, baseY - letterH * 0.5,
+        baseX + letterW * 0.6, baseY,
+        baseX + letterW, baseY,
+      ];
+    case 7: // small loop (e-shape)
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.4 * v1, baseY - letterH * 0.5,
+        baseX + letterW * 0.7, baseY - letterH * 0.6 * loopiness,
+        baseX + letterW * 0.6, baseY - letterH * 0.3 * v2,
+        baseX + letterW * 0.3, baseY - letterH * 0.1,
+        baseX + letterW, baseY,
+      ];
+    case 8: // sharp (v-shape)
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.15, baseY - letterH * 0.3 * v1,
+        baseX + letterW * 0.45, baseY + letterH * 0.5 * loopiness,
+        baseX + letterW * 0.75, baseY - letterH * 0.35 * v2,
+        baseX + letterW, baseY,
+      ];
+    default: // wide arc (m-shape)
+      return [
+        baseX, baseY,
+        baseX + letterW * 0.15, baseY - letterH * 0.7 * v1,
+        baseX + letterW * 0.35, baseY - letterH * 0.3,
+        baseX + letterW * 0.5, baseY - letterH * 0.75 * loopiness * v2,
+        baseX + letterW * 0.7, baseY - letterH * 0.3,
+        baseX + letterW * 0.85, baseY - letterH * 0.6,
+        baseX + letterW, baseY,
+      ];
   }
-
-  return pts;
 }
 
-/** Catmull-Rom spline interpolation through control points */
-function catmullRom(
-  points: { x: number; y: number }[],
-  segments: number = 16,
-): { x: number; y: number }[] {
-  if (points.length < 2) return [...points];
+/** Catmull-Rom spline — writes into flat output arrays for speed */
+function catmullRomFlat(
+  pts: number[], // flat [x0,y0, x1,y1, ...]
+  segments: number,
+  outX: number[],
+  outY: number[],
+) {
+  const n = pts.length / 2;
+  if (n < 2) {
+    if (n === 1) { outX.push(pts[0]); outY.push(pts[1]); }
+    return;
+  }
 
-  const result: { x: number; y: number }[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const i0 = Math.max(0, i - 1) * 2;
+    const i1 = i * 2;
+    const i2 = (i + 1) * 2;
+    const i3 = Math.min(n - 1, i + 2) * 2;
 
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(0, i - 1)];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[Math.min(points.length - 1, i + 2)];
+    const p0x = pts[i0], p0y = pts[i0 + 1];
+    const p1x = pts[i1], p1y = pts[i1 + 1];
+    const p2x = pts[i2], p2y = pts[i2 + 1];
+    const p3x = pts[i3], p3y = pts[i3 + 1];
 
     for (let t = 0; t < segments; t++) {
       const f = t / segments;
       const f2 = f * f;
       const f3 = f2 * f;
 
-      result.push({
-        x: 0.5 * (
-          (2 * p1.x) +
-          (-p0.x + p2.x) * f +
-          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * f2 +
-          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * f3
-        ),
-        y: 0.5 * (
-          (2 * p1.y) +
-          (-p0.y + p2.y) * f +
-          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * f2 +
-          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * f3
-        ),
-      });
+      outX.push(0.5 * (
+        2 * p1x + (-p0x + p2x) * f +
+        (2 * p0x - 5 * p1x + 4 * p2x - p3x) * f2 +
+        (-p0x + 3 * p1x - 3 * p2x + p3x) * f3
+      ));
+      outY.push(0.5 * (
+        2 * p1y + (-p0y + p2y) * f +
+        (2 * p0y - 5 * p1y + 4 * p2y - p3y) * f2 +
+        (-p0y + 3 * p1y - 3 * p2y + p3y) * f3
+      ));
     }
   }
 
-  result.push(points[points.length - 1]);
-  return result;
+  outX.push(pts[pts.length - 2]);
+  outY.push(pts[pts.length - 1]);
 }
 
-/** Draw a variable-width calligraphic stroke as a filled polygon */
+/** Draw a variable-width calligraphic stroke using flat path arrays */
 function drawCalligraphicStroke(
   ctx: CanvasRenderingContext2D,
-  path: { x: number; y: number }[],
+  pathX: number[],
+  pathY: number[],
   baseWidth: number,
   nibAngleRad: number,
   color: string,
   alpha: number,
+  pressureVary: boolean,
 ) {
-  if (path.length < 2) return;
+  const len = pathX.length;
+  if (len < 2) return;
 
-  const leftEdge: { x: number; y: number }[] = [];
-  const rightEdge: { x: number; y: number }[] = [];
+  // Build outline points inline
+  const leftX: number[] = [], leftY: number[] = [];
+  const rightX: number[] = [], rightY: number[] = [];
 
-  for (let i = 0; i < path.length; i++) {
-    const p = path[i];
+  const cosNib = Math.cos(nibAngleRad);
+  const sinNib = Math.sin(nibAngleRad);
 
-    // Tangent direction
+  for (let i = 0; i < len; i++) {
+    // Tangent
     let dx: number, dy: number;
     if (i === 0) {
-      dx = path[1].x - p.x;
-      dy = path[1].y - p.y;
-    } else if (i === path.length - 1) {
-      dx = p.x - path[i - 1].x;
-      dy = p.y - path[i - 1].y;
+      dx = pathX[1] - pathX[0]; dy = pathY[1] - pathY[0];
+    } else if (i === len - 1) {
+      dx = pathX[i] - pathX[i - 1]; dy = pathY[i] - pathY[i - 1];
     } else {
-      dx = path[i + 1].x - path[i - 1].x;
-      dy = path[i + 1].y - path[i - 1].y;
+      dx = pathX[i + 1] - pathX[i - 1]; dy = pathY[i + 1] - pathY[i - 1];
     }
 
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const tangentAngle = Math.atan2(dy, dx);
+    const invLen = 1 / (Math.sqrt(dx * dx + dy * dy) || 1);
+    const ndx = dx * invLen, ndy = dy * invLen;
 
-    // Width varies with angle relative to nib
-    const angleDiff = tangentAngle - nibAngleRad;
-    const widthFactor = 0.25 + 0.75 * Math.abs(Math.sin(angleDiff));
-    const halfW = baseWidth * widthFactor * 0.5;
+    // Calligraphic width: |sin(tangent - nib)|
+    // sin(a-b) = sin(a)cos(b) - cos(a)sin(b)
+    // tangent: ndy = sin(angle), ndx = cos(angle) (already normalized)
+    const sinDiff = ndy * cosNib - ndx * sinNib;
+    const widthFactor = 0.2 + 0.8 * Math.abs(sinDiff);
+
+    // Optional velocity-based pressure: distance between consecutive points
+    let pressureFactor = 1;
+    if (pressureVary && i > 0 && i < len - 1) {
+      const segDx = pathX[i] - pathX[i - 1], segDy = pathY[i] - pathY[i - 1];
+      const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+      // Short segments (slow movement) = thick; long segments (fast) = thin
+      pressureFactor = Math.max(0.4, Math.min(1.5, 3 / (segLen + 1)));
+    }
+
+    const halfW = baseWidth * widthFactor * pressureFactor * 0.5;
 
     // Taper at start and end
-    const t = i / (path.length - 1);
-    const taper = Math.min(1, Math.min(t * 6, (1 - t) * 6));
+    const t = i / (len - 1);
+    const taper = Math.min(1, Math.min(t * 5, (1 - t) * 5));
     const finalHalfW = halfW * taper;
 
-    // Normal perpendicular to tangent
-    const nx = -dy / len;
-    const ny = dx / len;
+    // Normal perpendicular to tangent: (-dy, dx) / len
+    const nx = -dy * invLen, ny = dx * invLen;
 
-    leftEdge.push({ x: p.x + nx * finalHalfW, y: p.y + ny * finalHalfW });
-    rightEdge.push({ x: p.x - nx * finalHalfW, y: p.y - ny * finalHalfW });
+    leftX.push(pathX[i] + nx * finalHalfW);
+    leftY.push(pathY[i] + ny * finalHalfW);
+    rightX.push(pathX[i] - nx * finalHalfW);
+    rightY.push(pathY[i] - ny * finalHalfW);
   }
 
   ctx.beginPath();
-  ctx.moveTo(leftEdge[0].x, leftEdge[0].y);
-  for (let i = 1; i < leftEdge.length; i++) {
-    ctx.lineTo(leftEdge[i].x, leftEdge[i].y);
-  }
-  for (let i = rightEdge.length - 1; i >= 0; i--) {
-    ctx.lineTo(rightEdge[i].x, rightEdge[i].y);
-  }
+  ctx.moveTo(leftX[0], leftY[0]);
+  for (let i = 1; i < leftX.length; i++) ctx.lineTo(leftX[i], leftY[i]);
+  for (let i = rightX.length - 1; i >= 0; i--) ctx.lineTo(rightX[i], rightY[i]);
   ctx.closePath();
-  ctx.fillStyle = hexToRgba(color, alpha);
+  ctx.fillStyle = color.replace(/,[^,)]+\)$/, `,${alpha.toFixed(2)})`);
   ctx.fill();
+}
+
+// Fast parchment background: render noise at 1/8 resolution, scale up
+function drawParchmentBackground(
+  ctx: CanvasRenderingContext2D,
+  w: number, h: number,
+  noise: SimplexNoise,
+) {
+  const scale = 8;
+  const bw = (w / scale) | 0, bh = (h / scale) | 0;
+  if (bw < 1 || bh < 1) return;
+  const bgImg = ctx.createImageData(bw, bh);
+  const bd = bgImg.data;
+
+  for (let py = 0; py < bh; py++) {
+    const sy = py * scale;
+    for (let px = 0; px < bw; px++) {
+      const sx = px * scale;
+      const n = noise.noise2D(sx * 0.015, sy * 0.015) * 5;
+      const base = 248 + n;
+      const idx = (py * bw + px) * 4;
+      bd[idx] = base; bd[idx + 1] = base - 3; bd[idx + 2] = base - 14; bd[idx + 3] = 255;
+    }
+  }
+
+  const tmp = document.createElement('canvas');
+  tmp.width = bw; tmp.height = bh;
+  tmp.getContext('2d')!.putImageData(bgImg, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'medium';
+  ctx.drawImage(tmp, 0, 0, w, h);
 }
 
 const parameterSchema: ParameterSchema = {
@@ -218,6 +308,11 @@ const parameterSchema: ParameterSchema = {
     help: 'Enable thick-thin stroke variation like a nib pen',
     group: 'Texture',
   },
+  inkPooling: {
+    name: 'Ink Pooling', type: 'boolean', default: true,
+    help: 'Add ink spots at stroke endpoints',
+    group: 'Texture',
+  },
   nibAngle: {
     name: 'Nib Angle', type: 'number', min: 0, max: 90, step: 5, default: 45,
     help: 'Pen nib angle in degrees (affects thick-thin distribution)',
@@ -234,16 +329,17 @@ export const textProceduralCursive: Generator = {
   id: 'text-procedural-cursive',
   family: 'text',
   styleName: 'Procedural Cursive',
-  definition: 'Flowing calligraphic cursive with variable-width nib strokes and elegant loops',
+  definition: 'Flowing calligraphic cursive with variable-width nib strokes, ink pooling, and elegant loops',
   algorithmNotes:
-    'Generates connected cursive letter-forms using Catmull-Rom splines through procedurally placed control points. ' +
-    'Each letter-form is an archetype (humps, loops, ascenders, descenders) with randomized proportions. ' +
-    'Calligraphic stroke variation simulates a broad-nib pen by varying width based on stroke angle relative to the nib. ' +
-    'Strokes taper at entry and exit points. Animation reveals lines progressively as if being written.',
+    'Generates connected cursive letter-forms (10 archetypes with random variation) using Catmull-Rom splines. ' +
+    'Calligraphic stroke width varies via broad-nib simulation (sin of angle between stroke and nib). ' +
+    'Optional velocity-based pressure makes slow strokes thick and fast strokes thin. Ink pooling draws ' +
+    'dark gradient spots at stroke endpoints. Color gradients flow along each line. Background uses ' +
+    'downscaled noise for fast parchment texture.',
   parameterSchema,
   defaultParams: {
     lineCount: 5, complexity: 10, strokeWidth: 4, loopiness: 1.0,
-    calligraphic: true, nibAngle: 45, speed: 0.5,
+    calligraphic: true, inkPooling: true, nibAngle: 45, speed: 0.5,
   },
   supportsVector: false,
   supportsWebGPU: false,
@@ -259,25 +355,15 @@ export const textProceduralCursive: Generator = {
     const strokeWidth = params.strokeWidth ?? 4;
     const loopiness = params.loopiness ?? 1.0;
     const calligraphic = params.calligraphic ?? true;
+    const inkPooling = params.inkPooling ?? true;
     const nibAngle = (params.nibAngle ?? 45) * Math.PI / 180;
     const speed = params.speed ?? 0.5;
 
-    // Warm parchment background with noise texture
-    const imgData = ctx.createImageData(w, h);
-    const dd = imgData.data;
-    for (let py = 0; py < h; py++) {
-      for (let px = 0; px < w; px++) {
-        const n = noise.noise2D(px * 0.015, py * 0.015) * 5;
-        const n2 = noise.noise2D(px * 0.08, py * 0.08) * 3;
-        const base = 248 + n + n2;
-        const idx = (py * w + px) * 4;
-        dd[idx] = base;
-        dd[idx + 1] = base - 3;
-        dd[idx + 2] = base - 14;
-        dd[idx + 3] = 255;
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
+    // Fast parchment background
+    drawParchmentBackground(ctx, w, h, noise);
+
+    const paletteRgb = palette.colors.map(hexToRgb);
+    const numColors = paletteRgb.length;
 
     const margin = w * 0.1;
     const lineSpacing = (h - margin * 2) / (lineCount + 1);
@@ -291,17 +377,25 @@ export const textProceduralCursive: Generator = {
       : totalStrokes;
     let strokesSoFar = 0;
 
+    // Reusable arrays for spline output
+    const splineX: number[] = [];
+    const splineY: number[] = [];
+
     for (let lineIdx = 0; lineIdx < lineCount; lineIdx++) {
       const baseY = margin + (lineIdx + 1) * lineSpacing;
-      const colorIdx = lineIdx % palette.colors.length;
-      const color = palette.colors[colorIdx];
 
-      // Build continuous path for the line
-      const allPoints: { x: number; y: number }[] = [];
+      // Gradient color: interpolate between two palette colors along the line
+      const c1 = paletteRgb[lineIdx % numColors];
+      const c2 = paletteRgb[(lineIdx + 1) % numColors];
 
+      // Build continuous path for the line — flat array
+      const allPts: number[] = [];
+
+      let lettersRendered = 0;
       for (let letterIdx = 0; letterIdx < complexity; letterIdx++) {
         if (strokesSoFar >= revealCount) break;
         strokesSoFar++;
+        lettersRendered++;
 
         const baseX = margin + letterIdx * letterW;
 
@@ -310,7 +404,7 @@ export const textProceduralCursive: Generator = {
           letterIdx * 0.3 + lineIdx * 5.1, seed * 0.01,
         ) * letterH * 0.2;
 
-        const letterPoints = generateLetterForm(
+        const letterPts = generateLetterForm(
           rng,
           baseX,
           baseY + yWobble,
@@ -320,64 +414,128 @@ export const textProceduralCursive: Generator = {
         );
 
         // Smooth connection from previous letter
-        if (allPoints.length > 0) {
-          const lastPt = allPoints[allPoints.length - 1];
-          const firstPt = letterPoints[0];
-          allPoints.push({
-            x: (lastPt.x + firstPt.x) / 2,
-            y: (lastPt.y + firstPt.y) / 2,
-          });
+        if (allPts.length > 0) {
+          const lastX = allPts[allPts.length - 2];
+          const lastY = allPts[allPts.length - 1];
+          allPts.push((lastX + letterPts[0]) / 2, (lastY + letterPts[1]) / 2);
         }
 
-        allPoints.push(...letterPoints);
+        // Append flat points
+        for (let k = 0; k < letterPts.length; k++) allPts.push(letterPts[k]);
       }
 
-      if (allPoints.length < 2) continue;
+      if (allPts.length < 4) continue; // need at least 2 points
 
-      // Smooth the path
-      const smoothPath = catmullRom(allPoints, 12);
+      // Add opening swash before the line
+      const swashPts: number[] = [
+        allPts[0] - letterW * 0.6, allPts[1] + letterH * 0.4 * loopiness,
+        allPts[0] - letterW * 0.4, allPts[1] - letterH * 0.5 * loopiness,
+        allPts[0] - letterW * 0.15, allPts[1] + letterH * 0.1,
+        allPts[0], allPts[1],
+      ];
+
+      // Smooth the main path
+      splineX.length = 0;
+      splineY.length = 0;
+      catmullRomFlat(allPts, 8, splineX, splineY);
+
+      // Color for this line (gradient midpoint)
+      const t = lettersRendered / complexity;
+      const [mr, mg, mb] = lerpRgb(c1, c2, t * 0.5);
+      const mainColor = rgba(mr, mg, mb, 1);
 
       if (calligraphic) {
-        drawCalligraphicStroke(ctx, smoothPath, strokeWidth, nibAngle, color, 0.85);
+        drawCalligraphicStroke(ctx, splineX, splineY, strokeWidth, nibAngle, mainColor, 0.85, true);
       } else {
         ctx.beginPath();
-        ctx.moveTo(smoothPath[0].x, smoothPath[0].y);
-        for (let i = 1; i < smoothPath.length; i++) {
-          ctx.lineTo(smoothPath[i].x, smoothPath[i].y);
-        }
-        ctx.strokeStyle = hexToRgba(color, 0.85);
+        ctx.moveTo(splineX[0], splineY[0]);
+        for (let i = 1; i < splineX.length; i++) ctx.lineTo(splineX[i], splineY[i]);
+        ctx.strokeStyle = rgba(mr, mg, mb, 0.85);
         ctx.lineWidth = strokeWidth;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
       }
 
-      // Decorative flourish at the end of the line
-      if (strokesSoFar > 0 && allPoints.length > 2) {
-        const lastPt = allPoints[allPoints.length - 1];
-        const flourish = [
-          lastPt,
-          { x: lastPt.x + letterW * 0.4, y: lastPt.y - letterH * 0.35 },
-          { x: lastPt.x + letterW * 0.7, y: lastPt.y + letterH * 0.25 * loopiness },
-          { x: lastPt.x + letterW * 0.5, y: lastPt.y + letterH * 0.45 * loopiness },
+      // Opening swash
+      const swashSpX: number[] = [], swashSpY: number[] = [];
+      catmullRomFlat(swashPts, 8, swashSpX, swashSpY);
+      if (calligraphic) {
+        drawCalligraphicStroke(ctx, swashSpX, swashSpY, strokeWidth * 0.6, nibAngle, mainColor, 0.55, true);
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(swashSpX[0], swashSpY[0]);
+        for (let i = 1; i < swashSpX.length; i++) ctx.lineTo(swashSpX[i], swashSpY[i]);
+        ctx.strokeStyle = rgba(mr, mg, mb, 0.55);
+        ctx.lineWidth = strokeWidth * 0.6;
+        ctx.stroke();
+      }
+
+      // End flourish
+      if (allPts.length > 4) {
+        const lx = allPts[allPts.length - 2], ly = allPts[allPts.length - 1];
+        const flourishPts: number[] = [
+          lx, ly,
+          lx + letterW * 0.4, ly - letterH * 0.4,
+          lx + letterW * 0.8, ly + letterH * 0.3 * loopiness,
+          lx + letterW * 0.6, ly + letterH * 0.6 * loopiness,
         ];
-        const flourishSmooth = catmullRom(flourish, 10);
+        const flX: number[] = [], flY: number[] = [];
+        catmullRomFlat(flourishPts, 8, flX, flY);
         if (calligraphic) {
-          drawCalligraphicStroke(ctx, flourishSmooth, strokeWidth * 0.65, nibAngle, color, 0.55);
+          drawCalligraphicStroke(ctx, flX, flY, strokeWidth * 0.55, nibAngle, mainColor, 0.5, true);
         } else {
           ctx.beginPath();
-          ctx.moveTo(flourishSmooth[0].x, flourishSmooth[0].y);
-          for (let i = 1; i < flourishSmooth.length; i++) {
-            ctx.lineTo(flourishSmooth[i].x, flourishSmooth[i].y);
-          }
-          ctx.strokeStyle = hexToRgba(color, 0.55);
-          ctx.lineWidth = strokeWidth * 0.65;
+          ctx.moveTo(flX[0], flY[0]);
+          for (let i = 1; i < flX.length; i++) ctx.lineTo(flX[i], flY[i]);
+          ctx.strokeStyle = rgba(mr, mg, mb, 0.5);
+          ctx.lineWidth = strokeWidth * 0.55;
           ctx.stroke();
+        }
+      }
+
+      // Ink pooling: dark spots at stroke endpoints
+      if (inkPooling && splineX.length > 0) {
+        const poolRadius = strokeWidth * 0.8;
+        const poolColor = rgba(mr, mg, mb, 0.3);
+
+        // Start of line
+        const g1 = ctx.createRadialGradient(splineX[0], splineY[0], 0, splineX[0], splineY[0], poolRadius);
+        g1.addColorStop(0, rgba(mr, mg, mb, 0.5));
+        g1.addColorStop(1, rgba(mr, mg, mb, 0));
+        ctx.fillStyle = g1;
+        ctx.beginPath();
+        ctx.arc(splineX[0], splineY[0], poolRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // End of line
+        const ex = splineX[splineX.length - 1], ey = splineY[splineY.length - 1];
+        const g2 = ctx.createRadialGradient(ex, ey, 0, ex, ey, poolRadius * 1.2);
+        g2.addColorStop(0, rgba(mr, mg, mb, 0.55));
+        g2.addColorStop(1, rgba(mr, mg, mb, 0));
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.arc(ex, ey, poolRadius * 1.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // A few spots along the baseline at random intervals
+        const spotRng = new SeededRNG(seed + lineIdx * 31);
+        const spotCount = 2 + (complexity / 5) | 0;
+        for (let s = 0; s < spotCount; s++) {
+          const si = (spotRng.random() * (splineX.length - 1)) | 0;
+          const sr = poolRadius * (0.3 + spotRng.random() * 0.5);
+          const g = ctx.createRadialGradient(splineX[si], splineY[si], 0, splineX[si], splineY[si], sr);
+          g.addColorStop(0, rgba(mr, mg, mb, 0.25));
+          g.addColorStop(1, rgba(mr, mg, mb, 0));
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(splineX[si], splineY[si], sr, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
     }
   },
 
   renderWebGL2(gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
-  estimateCost(params) { return Math.floor((params.lineCount ?? 5) * (params.complexity ?? 10) * 20); },
+  estimateCost(params) { return Math.floor((params.lineCount ?? 5) * (params.complexity ?? 10) * 15); },
 };
