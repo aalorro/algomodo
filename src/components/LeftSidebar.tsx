@@ -49,7 +49,7 @@ export const LeftSidebar: React.FC = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             placeholder="Search generators..."
-            className="w-full px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
+            className="w-full px-3 py-2.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-white rounded focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
           />
           {searchFocused && searchQuery.trim() && (
             <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-lg">
