@@ -92,6 +92,9 @@ import { textMatrix } from './text/text-matrix';
 import { textGrid } from './text/text-grid';
 import { textRewrite } from './text/text-rewrite';
 import { textPoem } from './text/text-poem';
+import { textGlyphs } from './text/text-glyphs';
+import { textNaiveHandwriting } from './text/text-naive-handwriting';
+import { textProceduralCursive } from './text/text-procedural-cursive';
 import { tessellations } from './graphs/tessellations';
 import { lowPoly } from './graphs/low-poly';
 import { ecosystems } from './graphs/ecosystems';
@@ -198,6 +201,9 @@ export function initializeGenerators() {
   registerGenerator(textGrid);
   registerGenerator(textRewrite);
   registerGenerator(textPoem);
+  registerGenerator(textGlyphs);
+  registerGenerator(textNaiveHandwriting);
+  registerGenerator(textProceduralCursive);
   registerGenerator(tessellations);
   registerGenerator(lowPoly);
   registerGenerator(ecosystems);
@@ -230,6 +236,7 @@ export {
   mandelbrot, julia, newtonFractal, ifsBarnsley, recursiveSubdivision,
   burningShip, fractalFlames, multibrot, orbitTraps, strangeAttractorDensity,
   textConcrete, textMatrix, textGrid, textRewrite, textPoem,
+  textGlyphs, textNaiveHandwriting, textProceduralCursive,
   tessellations, lowPoly, ecosystems, steinerNetworks,
   kNearestNeighbor, gabrielGraph, planarGraph,
   geodesic, constrained, anisotropic, eulerTrails,

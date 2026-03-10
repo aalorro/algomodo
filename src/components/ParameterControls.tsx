@@ -8,14 +8,14 @@ interface ParameterControlsProps {
 }
 
 export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator }) => {
-  const { params, updateParam, resetParams, randomizeParams, pushToHistory, historyPast, historyFuture, undo, redo, isAnimating, setAnimating, lockedParams: rawLocked, toggleLockedParam } = useStore(useShallow(s => ({
+  const { params, updateParam, resetParams, randomizeParams, pushToHistory, canUndo, canRedo, undo, redo, isAnimating, setAnimating, lockedParams: rawLocked, toggleLockedParam } = useStore(useShallow(s => ({
     params: s.params,
     updateParam: s.updateParam,
     resetParams: s.resetParams,
     randomizeParams: s.randomizeParams,
     pushToHistory: s.pushToHistory,
-    historyPast: s.historyPast,
-    historyFuture: s.historyFuture,
+    canUndo: s.historyPast.length > 0,
+    canRedo: s.historyFuture.length > 0,
     undo: s.undo,
     redo: s.redo,
     isAnimating: s.isAnimating,
@@ -24,8 +24,6 @@ export const ParameterControls: React.FC<ParameterControlsProps> = ({ generator 
     toggleLockedParam: s.toggleLockedParam,
   })));
   const lockedParams = Array.isArray(rawLocked) ? rawLocked : [];
-  const canUndo = historyPast.length > 0;
-  const canRedo = historyFuture.length > 0;
   const supportsAnim = generator?.supportsAnimation ?? false;
 
   if (!generator) {

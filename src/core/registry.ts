@@ -4,9 +4,20 @@ import type { Generator, GeneratorFamily } from '../types';
 const generators: Map<string, Generator> = new Map();
 const families: Map<string, GeneratorFamily> = new Map();
 
+// Cached lookup results — invalidated on registration
+let cachedAllGenerators: Generator[] | null = null;
+let cachedAllFamilies: GeneratorFamily[] | null = null;
+const cachedByFamily: Map<string, Generator[]> = new Map();
+
+function invalidateCaches() {
+  cachedAllGenerators = null;
+  cachedAllFamilies = null;
+  cachedByFamily.clear();
+}
+
 export function registerGenerator(generator: Generator) {
   generators.set(generator.id, generator);
-  
+
   // Auto-register family if not exists
   if (!families.has(generator.family)) {
     families.set(generator.family, {
@@ -15,6 +26,8 @@ export function registerGenerator(generator: Generator) {
       description: '',
     });
   }
+
+  invalidateCaches();
 }
 
 export function getGenerator(id: string): Generator | undefined {
@@ -22,17 +35,29 @@ export function getGenerator(id: string): Generator | undefined {
 }
 
 export function getGeneratorsByFamily(familyId: string): Generator[] {
-  return Array.from(generators.values()).filter(g => g.family === familyId);
+  let cached = cachedByFamily.get(familyId);
+  if (!cached) {
+    cached = Array.from(generators.values()).filter(g => g.family === familyId);
+    cachedByFamily.set(familyId, cached);
+  }
+  return cached;
 }
 
 export function getAllFamilies(): GeneratorFamily[] {
-  return Array.from(families.values()).sort((a, b) => a.name.localeCompare(b.name));
+  if (!cachedAllFamilies) {
+    cachedAllFamilies = Array.from(families.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return cachedAllFamilies;
 }
 
 export function getAllGenerators(): Generator[] {
-  return Array.from(generators.values());
+  if (!cachedAllGenerators) {
+    cachedAllGenerators = Array.from(generators.values());
+  }
+  return cachedAllGenerators;
 }
 
 export function registerFamily(family: GeneratorFamily) {
   families.set(family.id, family);
+  invalidateCaches();
 }

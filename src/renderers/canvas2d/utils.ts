@@ -132,6 +132,9 @@ export function applyGrain(
   return imageData;
 }
 
+// Vignette multiplier cache — avoids recomputing 4.6M values when dimensions/amount unchanged
+let vignetteCache: { w: number; h: number; a: number; map: Float32Array } | null = null;
+
 export function applyVignette(
   _ctx: CanvasRenderingContext2D,
   imageData: ImageData,
@@ -142,26 +145,38 @@ export function applyVignette(
   if (amount <= 0) return imageData;
 
   const data = imageData.data;
-  const cx = width / 2;
-  const cy = height / 2;
-  // Use squared distance — avoids 4.7M sqrt calls at 2160×2160
-  const maxD2 = cx * cx + cy * cy;
-  const invMaxD2 = amount / maxD2;
+  const total = width * height;
 
-  for (let y = 0; y < height; y++) {
-    const dy = y - cy;
-    const dy2 = dy * dy;
-    for (let x = 0; x < width; x++) {
-      const dx = x - cx;
-      const d2 = dx * dx + dy2;
-      // Squared falloff: visually similar to linear, much cheaper
-      const vignette = Math.max(0, 1 - d2 * invMaxD2);
+  // Reuse cached multiplier map if dimensions and amount match
+  let map: Float32Array;
+  if (vignetteCache && vignetteCache.w === width && vignetteCache.h === height && vignetteCache.a === amount) {
+    map = vignetteCache.map;
+  } else {
+    map = new Float32Array(total);
+    const cx = width / 2;
+    const cy = height / 2;
+    const maxD2 = cx * cx + cy * cy;
+    const invMaxD2 = amount / maxD2;
 
-      const idx = (y * width + x) * 4;
-      data[idx] *= vignette;
-      data[idx + 1] *= vignette;
-      data[idx + 2] *= vignette;
+    for (let y = 0; y < height; y++) {
+      const dy = y - cy;
+      const dy2 = dy * dy;
+      const rowOffset = y * width;
+      for (let x = 0; x < width; x++) {
+        const dx = x - cx;
+        map[rowOffset + x] = Math.max(0, 1 - (dx * dx + dy2) * invMaxD2);
+      }
     }
+    vignetteCache = { w: width, h: height, a: amount, map };
+  }
+
+  // Apply cached multipliers
+  for (let i = 0; i < total; i++) {
+    const v = map[i];
+    const idx = i * 4;
+    data[idx] *= v;
+    data[idx + 1] *= v;
+    data[idx + 2] *= v;
   }
 
   return imageData;
