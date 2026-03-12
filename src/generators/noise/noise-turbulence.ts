@@ -50,7 +50,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Flow/Motion',
   },
   speed: {
-    name: 'Speed', type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
+    name: 'Speed', type: 'number', min: 0.25, max: 3.0, step: 0.05, default: 0.5,
     group: 'Flow/Motion',
   },
 };

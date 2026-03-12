@@ -74,9 +74,9 @@ const parameterSchema: ParameterSchema = {
   speed: {
     name: 'Speed',
     type: 'number',
-    min: 0.1,
+    min: 0.25,
     max: 3.0,
-    step: 0.1,
+    step: 0.05,
     default: 0.5,
     help: 'Animation speed multiplier',
     group: 'Flow/Motion',
