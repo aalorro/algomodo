@@ -35,6 +35,7 @@ export const RightSidebar: React.FC = React.memo(() => {
     setUseWebGL,
     isAnimating,
     setAnimating,
+    setPausedTime,
     animationFps,
     setAnimationFps,
     theme,
@@ -80,6 +81,7 @@ export const RightSidebar: React.FC = React.memo(() => {
     setUseWebGL: s.setUseWebGL,
     isAnimating: s.isAnimating,
     setAnimating: s.setAnimating,
+    setPausedTime: s.setPausedTime,
     animationFps: s.animationFps,
     setAnimationFps: s.setAnimationFps,
     theme: s.theme,
@@ -1249,7 +1251,7 @@ export const RightSidebar: React.FC = React.memo(() => {
                   <input
                     type="checkbox"
                     checked={isAnimating}
-                    onChange={(e) => setAnimating(e.target.checked)}
+                    onChange={(e) => { setPausedTime(null); setAnimating(e.target.checked); }}
                     className="w-4 h-4"
                   />
                   Animate

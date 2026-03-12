@@ -150,6 +150,7 @@ export interface AppState {
   showFPS: boolean;
   interactionEnabled: boolean;
   isAnimating: boolean;
+  pausedTime: number | null;
   animationFps: number;
   recordingDuration: number;
   boomerangGif: boolean;
@@ -194,6 +195,7 @@ export interface AppState {
   setUseWebGL: (enabled: boolean) => void;
   setShowFPS: (show: boolean) => void;
   setAnimating: (animating: boolean) => void;
+  setPausedTime: (time: number | null) => void;
   setAnimationFps: (fps: number) => void;
   setRecordingDuration: (duration: number) => void;
   setBoomerangGif: (on: boolean) => void;

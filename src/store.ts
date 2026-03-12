@@ -65,6 +65,7 @@ export const useStore = create<AppState>()(
       showFPS: false,
       interactionEnabled: false,
       isAnimating: false,
+      pausedTime: null as number | null,
       animationFps: 24,
       recordingDuration: 5,
       boomerangGif: false,
@@ -285,6 +286,8 @@ export const useStore = create<AppState>()(
 
       setAnimating: (animating) => set({ isAnimating: animating }),
 
+      setPausedTime: (time) => set({ pausedTime: time }),
+
       setAnimationFps: (fps) => set({ animationFps: fps }),
 
       setRecordingDuration: (duration) => set({ recordingDuration: duration }),
@@ -301,6 +304,7 @@ export const useStore = create<AppState>()(
           params: {},
           lockedParams: [],
           isAnimating: false,
+          pausedTime: null,
           postFX: { grain: 0, vignette: 0, dither: 0, posterize: 0 },
           historyPast: [...state.historyPast.slice(-49), captureSnapshot(state)],
           historyFuture: [],
