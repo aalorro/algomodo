@@ -57,6 +57,18 @@ body {
   to   { width: 92%; }
 }
 
+/* Stepped progress bar for slow renders (>1s) — uses transform so
+   the compositor thread can animate it even while main thread is blocked */
+@keyframes render-progress-slow {
+  0%    { transform: scaleX(0);    opacity: 0; }
+  1%    { transform: scaleX(0.25); opacity: 1; }
+  39%   { transform: scaleX(0.25); }
+  40%   { transform: scaleX(0.6); }
+  79%   { transform: scaleX(0.6); }
+  80%   { transform: scaleX(0.9); }
+  100%  { transform: scaleX(0.9); }
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;

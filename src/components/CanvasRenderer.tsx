@@ -260,9 +260,14 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const generatorChanged = prevGeneratorIdRef.current !== selectedGeneratorId;
     prevGeneratorIdRef.current = selectedGeneratorId;
 
-    // Render synchronously when generator changes to guarantee no blank canvas
+    // Defer render when generator changes so the UI stays responsive
+    // (old art remains visible until new render completes)
     if (generatorChanged) {
-      doStaticRender();
+      setIsRendering(true);
+      animationRef.current = requestAnimationFrame(() => {
+        doStaticRender();
+        setIsRendering(false);
+      });
       return;
     }
 
@@ -602,15 +607,17 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         style={{ aspectRatio: `${canvasSettings.width} / ${canvasSettings.height}` }}
       />
 
-      {/* Render progress bar */}
+      {/* Render progress bar — only visible after 1s delay (compositor-driven) */}
       {isRendering && (
         <div
-          className="absolute bottom-0 left-0 rounded-b-lg pointer-events-none z-20"
+          className="absolute bottom-0 left-0 w-full rounded-b-lg pointer-events-none z-20"
           style={{
-            height: '30px',
-            background: 'rgba(57, 255, 20, 0.95)',
-            boxShadow: '0 0 18px rgba(57, 255, 20, 1), 0 0 40px rgba(57, 255, 20, 0.7)',
-            animation: 'render-progress 700ms ease-out forwards',
+            height: '6px',
+            background: '#39ff14',
+            boxShadow: '0 0 12px #39ff14, 0 0 30px rgba(57, 255, 20, 0.6)',
+            transformOrigin: 'left',
+            willChange: 'transform, opacity',
+            animation: 'render-progress-slow 6s linear 1s both',
           }}
         />
       )}
