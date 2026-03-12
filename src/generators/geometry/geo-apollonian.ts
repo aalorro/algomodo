@@ -37,7 +37,7 @@ function descartesK(k1: number, k2: number, k3: number): [number, number] {
 }
 
 /** Complex Descartes theorem for circle centers */
-function descartesC(k1: number, k2: number, k3: number, k4: number, c1: C, c2: C, c3: C, c4: C): [C, C] {
+function descartesC(k1: number, k2: number, k3: number, k4: number, c1: C, c2: C, c3: C, _c4?: C): [C, C] {
   // c4 = (k1*c1 + k2*c2 + k3*c3 ± 2√(k1k2c1c2 + k2k3c2c3 + k1k3c1c3)) / k4
   const s1 = cmul(cscale(c1, k1), cscale(c2, k2));
   const s2 = cmul(cscale(c2, k2), cscale(c3, k3));
