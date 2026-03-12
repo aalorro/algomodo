@@ -1,21 +1,6 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SimplexNoise } from '../../core/rng';
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function paletteSample(t: number, colors: [number, number, number][]): [number, number, number] {
-  const s = Math.max(0, Math.min(1, t)) * (colors.length - 1);
-  const i0 = Math.floor(s), i1 = Math.min(colors.length - 1, i0 + 1), f = s - i0;
-  return [
-    (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
-    (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0,
-    (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
-  ];
-}
-
 const parameterSchema: ParameterSchema = {
   scale: {
     name: 'Scale', type: 'number', min: 0.5, max: 8, step: 0.5, default: 2.0,
@@ -84,14 +69,11 @@ export const noiseDomainWarp: Generator = {
     const noiseBase = new SimplexNoise(seed);
     const noiseWarp = new SimplexNoise(seed + 7919);
     const w = ctx.canvas.width, h = ctx.canvas.height;
-    const colors       = palette.colors.map(hexToRgb);
     const scale        = params.scale        ?? 2.0;
     const octaves      = Math.max(1, Math.min(8, (params.octaves ?? 5) | 0));
     const warpStrength = params.warpStrength  ?? 1.5;
     const warpOctaves  = Math.max(1, Math.min(6, (params.warpOctaves ?? 3) | 0));
     const iters        = parseInt(params.iterations ?? '1', 10) || 1;
-    const readoutStyle = params.readoutStyle ?? 'smooth';
-    const colorMode    = params.colorMode    ?? 'palette';
     const bandCount    = Math.max(2, (params.bandCount ?? 8) | 0);
     const t            = time * (params.speed ?? 0.5);
     const animMode     = params.animMode ?? 'flow';
@@ -102,16 +84,46 @@ export const noiseDomainWarp: Generator = {
     const flowX = animMode === 'flow' ? t * 0.022 : 0;
     const flowY = animMode === 'flow' ? t * 0.017 : 0;
 
+    // Hoist conditions outside loop
+    const isDrift    = animMode === 'drift';
+    const isRotate   = animMode === 'rotate';
+    const isRidged   = (params.readoutStyle ?? 'smooth') === 'ridged';
+    const isTurbulent = (params.readoutStyle ?? 'smooth') === 'turbulent';
+    const isBands    = (params.colorMode ?? 'palette') === 'bands';
+    const doIter2    = iters >= 2;
+    const doIter3    = iters >= 3;
+    const invW = 4 * scale / w;
+    const invH = 4 * scale / h;
+    const driftX = isDrift ? t * 0.04 : 0;
+    const driftY = isDrift ? t * 0.027 : 0;
+    const flowX07 = flowX * 0.7;
+    const flowY07 = flowY * 0.7;
+    const flowX05 = flowX * 0.5;
+    const flowY05 = flowY * 0.5;
+
+    // Pre-compute palette as flat arrays
+    const nColors = palette.colors.length;
+    const colR = new Uint8Array(nColors);
+    const colG = new Uint8Array(nColors);
+    const colB = new Uint8Array(nColors);
+    for (let i = 0; i < nColors; i++) {
+      const hex = palette.colors[i];
+      const n = parseInt(hex.charAt(0) === '#' ? hex.slice(1) : hex, 16) || 0;
+      colR[i] = (n >> 16) & 255;
+      colG[i] = (n >> 8) & 255;
+      colB[i] = n & 255;
+    }
+    const palMax = nColors - 1;
+
     const step = quality === 'draft' ? 2 : 1;
     const img  = ctx.createImageData(w, h);
     const d    = img.data;
 
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
-        let nx = (x / w) * 4 * scale;
-        let ny = (y / h) * 4 * scale;
-        if (animMode === 'drift') { nx += t * 0.04; ny += t * 0.027; }
-        else if (animMode === 'rotate') {
+        let nx = x * invW + driftX;
+        let ny = y * invH + driftY;
+        if (isRotate) {
           const dx = nx - nCenter, dy = ny - nCenter;
           nx = nCenter + dx * rotCos - dy * rotSin;
           ny = nCenter + dx * rotSin + dy * rotCos;
@@ -123,18 +135,16 @@ export const noiseDomainWarp: Generator = {
         let px = nx + warpStrength * wx1;
         let py = ny + warpStrength * wy1;
 
-        // Second warp pass
-        if (iters >= 2) {
-          const wx2 = noiseWarp.fbm(px + 8.3 + flowX * 0.7, py + 2.8 + flowY * 0.7, warpOctaves, 2.0, 0.5);
-          const wy2 = noiseWarp.fbm(px + 1.7 + flowX * 0.7, py + 9.2 + flowY * 0.7, warpOctaves, 2.0, 0.5);
+        if (doIter2) {
+          const wx2 = noiseWarp.fbm(px + 8.3 + flowX07, py + 2.8 + flowY07, warpOctaves, 2.0, 0.5);
+          const wy2 = noiseWarp.fbm(px + 1.7 + flowX07, py + 9.2 + flowY07, warpOctaves, 2.0, 0.5);
           px = nx + warpStrength * wx2;
           py = ny + warpStrength * wy2;
         }
 
-        // Third warp pass — extremely complex interlocked filaments
-        if (iters >= 3) {
-          const wx3 = noiseWarp.fbm(px + 3.1 + flowX * 0.5, py + 7.4 + flowY * 0.5, warpOctaves, 2.0, 0.5);
-          const wy3 = noiseWarp.fbm(px + 6.8 + flowX * 0.5, py + 4.5 + flowY * 0.5, warpOctaves, 2.0, 0.5);
+        if (doIter3) {
+          const wx3 = noiseWarp.fbm(px + 3.1 + flowX05, py + 7.4 + flowY05, warpOctaves, 2.0, 0.5);
+          const wy3 = noiseWarp.fbm(px + 6.8 + flowX05, py + 4.5 + flowY05, warpOctaves, 2.0, 0.5);
           px = nx + warpStrength * wx3;
           py = ny + warpStrength * wy3;
         }
@@ -142,22 +152,27 @@ export const noiseDomainWarp: Generator = {
         // Final readout with style
         let v: number;
         const raw = noiseBase.fbm(px, py, octaves, 2.0, 0.5);
-        if (readoutStyle === 'ridged') {
+        if (isRidged) {
           const ridge = 1 - Math.abs(raw);
           v = ridge * ridge;
-        } else if (readoutStyle === 'turbulent') {
+        } else if (isTurbulent) {
           v = Math.abs(raw);
         } else {
           v = (raw + 1) * 0.5;
         }
 
-        if (colorMode === 'bands') v = Math.floor(v * bandCount) / bandCount;
+        if (isBands) v = Math.floor(v * bandCount) / bandCount;
 
-        const [r, g, b] = paletteSample(v, colors);
+        const ci = Math.max(0, Math.min(1, v)) * palMax;
+        const c0 = ci | 0, c1 = Math.min(palMax, c0 + 1), frac = ci - c0;
+        const pr = (colR[c0] + (colR[c1] - colR[c0]) * frac) | 0;
+        const pg = (colG[c0] + (colG[c1] - colG[c0]) * frac) | 0;
+        const pb = (colB[c0] + (colB[c1] - colB[c0]) * frac) | 0;
+
         for (let sy = 0; sy < step && y + sy < h; sy++) {
           for (let sx = 0; sx < step && x + sx < w; sx++) {
             const i = ((y + sy) * w + (x + sx)) * 4;
-            d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = 255;
+            d[i] = pr; d[i+1] = pg; d[i+2] = pb; d[i+3] = 255;
           }
         }
       }
