@@ -1,21 +1,6 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SimplexNoise } from '../../core/rng';
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function paletteSample(t: number, colors: [number, number, number][]): [number, number, number] {
-  const s = Math.max(0, Math.min(1, t)) * (colors.length - 1);
-  const i0 = Math.floor(s), i1 = Math.min(colors.length - 1, i0 + 1), f = s - i0;
-  return [
-    (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
-    (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0,
-    (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
-  ];
-}
-
 const parameterSchema: ParameterSchema = {
   scale: {
     name: 'Scale', type: 'number', min: 0.5, max: 10, step: 0.5, default: 2.5,
@@ -65,7 +50,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Flow/Motion',
   },
   speed: {
-    name: 'Speed', type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
+    name: 'Speed', type: 'number', min: 0.25, max: 3.0, step: 0.05, default: 0.5,
     group: 'Flow/Motion',
   },
 };
@@ -89,7 +74,6 @@ export const noiseTurbulence: Generator = {
     const noise      = new SimplexNoise(seed);
     const warpNoise  = new SimplexNoise(seed + 53);
     const w = ctx.canvas.width, h = ctx.canvas.height;
-    const colors     = palette.colors.map(hexToRgb);
     const scale      = params.scale      ?? 2.5;
     const octaves    = Math.max(1, Math.min(10, (params.octaves ?? 6) | 0));
     const lacunarity = params.lacunarity ?? 2.0;
@@ -108,23 +92,60 @@ export const noiseTurbulence: Generator = {
     // Normalisation constant: peak |noise2D| ≈ 0.65 for gradient noise
     const NOISE_PEAK = 0.65;
 
-    const step = quality === 'draft' ? 2 : 1;
+    // Hoist conditions outside loop
+    const isDrift  = animMode === 'drift';
+    const isRotate = animMode === 'rotate';
+    const isChurn  = animMode === 'churn';
+    const isBands  = colorMode === 'bands';
+    const isHeat   = colorMode === 'heat';
+    const doWarp   = warpAmount > 0;
+    const doPower  = power !== 1;
+    const doErosion = erosion > 0;
+    const erosionInv = 1 - erosion;
+    const invW = 4 * scale / w;
+    const invH = 4 * scale / h;
+    const driftX = isDrift ? t * 0.04 : 0;
+    const driftY = isDrift ? t * 0.027 : 0;
+
+    // Pre-compute per-octave churn offsets
+    const churnXs = new Float64Array(octaves);
+    const churnYs = new Float64Array(octaves);
+    if (isChurn) {
+      for (let oct = 0; oct < octaves; oct++) {
+        churnXs[oct] = t * 0.012 * (oct + 1);
+        churnYs[oct] = t * 0.009 * (oct + 1);
+      }
+    }
+
+    // Pre-compute palette as flat arrays
+    const nColors = palette.colors.length;
+    const colR = new Uint8Array(nColors);
+    const colG = new Uint8Array(nColors);
+    const colB = new Uint8Array(nColors);
+    for (let i = 0; i < nColors; i++) {
+      const hex = palette.colors[i];
+      const n = parseInt(hex.charAt(0) === '#' ? hex.slice(1) : hex, 16) || 0;
+      colR[i] = (n >> 16) & 255;
+      colG[i] = (n >> 8) & 255;
+      colB[i] = n & 255;
+    }
+    const palMax = nColors - 1;
+
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(w, h) / 1080));
     const img  = ctx.createImageData(w, h);
     const d    = img.data;
 
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
-        let nx = (x / w) * 4 * scale;
-        let ny = (y / h) * 4 * scale;
-        if (animMode === 'drift') { nx += t * 0.04; ny += t * 0.027; }
-        else if (animMode === 'rotate') {
+        let nx = x * invW + driftX;
+        let ny = y * invH + driftY;
+        if (isRotate) {
           const dx = nx - nCenter, dy = ny - nCenter;
           nx = nCenter + dx * rotCos - dy * rotSin;
           ny = nCenter + dx * rotSin + dy * rotCos;
         }
 
-        // Domain warping
-        if (warpAmount > 0) {
+        if (doWarp) {
           const wx = warpNoise.fbm(nx, ny, 3, 2.0, 0.5);
           const wy = warpNoise.fbm(nx + 5.2, ny + 1.3, 3, 2.0, 0.5);
           nx += warpAmount * wx;
@@ -134,12 +155,9 @@ export const noiseTurbulence: Generator = {
         // Turbulence: sum of |noise| with per-octave churn drift and erosion weighting
         let value = 0, amp = 1, freq = 1, maxVal = 0, weight = 1;
         for (let oct = 0; oct < octaves; oct++) {
-          const cx = animMode === 'churn' ? t * 0.012 * (oct + 1) : 0;
-          const cy = animMode === 'churn' ? t * 0.009 * (oct + 1) : 0;
-          let s = Math.abs(noise.noise2D(nx * freq + cx, ny * freq + cy));
-          // Erosion: weight by previous octave signal so creases erode into valleys
-          if (erosion > 0) {
-            s *= (1 - erosion) + erosion * weight;
+          let s = Math.abs(noise.noise2D(nx * freq + churnXs[oct], ny * freq + churnYs[oct]));
+          if (doErosion) {
+            s *= erosionInv + erosion * weight;
             weight = Math.min(1, s * 2);
           }
           value  += amp * s;
@@ -149,27 +167,30 @@ export const noiseTurbulence: Generator = {
         }
 
         let v = Math.min(1, (value / maxVal) / NOISE_PEAK);
-        if (power !== 1) v = Math.pow(Math.max(0, v), power);
+        if (doPower) v = Math.pow(Math.max(0, v), power);
 
-        if (colorMode === 'bands') {
+        if (isBands) {
           v = Math.floor(v * bandCount) / bandCount;
         }
 
-        let r: number, g: number, b: number;
-        if (colorMode === 'heat') {
-          // Black → deep red → orange → yellow → white
-          if (v < 0.25)      { const f = v / 0.25;             r = (f * 180) | 0;       g = 0;                   b = 0; }
-          else if (v < 0.5)  { const f = (v - 0.25) / 0.25;   r = (180 + f * 75) | 0;  g = (f * 80) | 0;        b = 0; }
-          else if (v < 0.75) { const f = (v - 0.5)  / 0.25;   r = 255;                  g = (80 + f * 175) | 0;  b = 0; }
-          else               { const f = (v - 0.75) / 0.25;   r = 255;                  g = 255;                 b = (f * 255) | 0; }
+        let pr: number, pg: number, pb: number;
+        if (isHeat) {
+          if (v < 0.25)      { const f = v / 0.25;             pr = (f * 180) | 0;       pg = 0;                   pb = 0; }
+          else if (v < 0.5)  { const f = (v - 0.25) / 0.25;   pr = (180 + f * 75) | 0;  pg = (f * 80) | 0;        pb = 0; }
+          else if (v < 0.75) { const f = (v - 0.5)  / 0.25;   pr = 255;                  pg = (80 + f * 175) | 0;  pb = 0; }
+          else               { const f = (v - 0.75) / 0.25;   pr = 255;                  pg = 255;                 pb = (f * 255) | 0; }
         } else {
-          [r, g, b] = paletteSample(v, colors);
+          const ci = Math.max(0, Math.min(1, v)) * palMax;
+          const c0 = ci | 0, c1 = Math.min(palMax, c0 + 1), frac = ci - c0;
+          pr = (colR[c0] + (colR[c1] - colR[c0]) * frac) | 0;
+          pg = (colG[c0] + (colG[c1] - colG[c0]) * frac) | 0;
+          pb = (colB[c0] + (colB[c1] - colB[c0]) * frac) | 0;
         }
 
         for (let sy = 0; sy < step && y + sy < h; sy++) {
           for (let sx = 0; sx < step && x + sx < w; sx++) {
             const i = ((y + sy) * w + (x + sx)) * 4;
-            d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = 255;
+            d[i] = pr; d[i+1] = pg; d[i+2] = pb; d[i+3] = 255;
           }
         }
       }

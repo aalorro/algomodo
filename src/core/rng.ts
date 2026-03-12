@@ -89,60 +89,69 @@ export class SeededRNG {
   }
 }
 
-// Simplex noise implementation (2D and 3D)
+// Optimised 2D gradient noise with inlined helpers and typed permutation table
 export class SimplexNoise {
-  private permutation: number[];
-  private p: number[];
+  private readonly p: Int32Array;
 
   constructor(seed: number) {
     const rng = new SeededRNG(seed);
-    
-    this.permutation = Array(256)
-      .fill(0)
-      .map((_, i) => i)
-      .sort(() => rng.random() - 0.5);
-    
-    this.p = [...this.permutation, ...this.permutation];
-  }
 
-  private fade(t: number): number {
-    return t * t * t * (t * (t * 6 - 15) + 10);
-  }
-
-  private lerp(t: number, a: number, b: number): number {
-    return a + t * (b - a);
-  }
-
-  private grad(hash: number, x: number, y: number): number {
-    const h = hash & 15;
-    const u = h < 8 ? x : y;
-    const v = h < 8 ? y : x;
-    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    // Build permutation (same sort-based shuffle to preserve seed-to-output determinism)
+    const perm = Array(256).fill(0).map((_, i) => i).sort(() => rng.random() - 0.5);
+    const p = new Int32Array(512);
+    for (let i = 0; i < 256; i++) { p[i] = perm[i]; p[i + 256] = perm[i]; }
+    this.p = p;
   }
 
   noise2D(x: number, y: number): number {
-    const xi = Math.floor(x) & 255;
-    const yi = Math.floor(y) & 255;
-    
-    const xf = x - Math.floor(x);
-    const yf = y - Math.floor(y);
-    
-    const u = this.fade(xf);
-    const v = this.fade(yf);
-    
-    const aa = this.p[this.p[xi] + yi];
-    const ab = this.p[this.p[xi] + yi + 1];
-    const ba = this.p[this.p[xi + 1] + yi];
-    const bb = this.p[this.p[xi + 1] + yi + 1];
-    
-    const g00 = this.grad(aa, xf, yf);
-    const g10 = this.grad(ba, xf - 1, yf);
-    const g01 = this.grad(ab, xf, yf - 1);
-    const g11 = this.grad(bb, xf - 1, yf - 1);
-    
-    const nx0 = this.lerp(u, g00, g10);
-    const nx1 = this.lerp(u, g01, g11);
-    return this.lerp(v, nx0, nx1);
+    const p = this.p;
+
+    const floorX = Math.floor(x);
+    const floorY = Math.floor(y);
+    const xi = floorX & 255;
+    const yi = floorY & 255;
+
+    const xf = x - floorX;
+    const yf = y - floorY;
+
+    // Inline fade (quintic smoothstep)
+    const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10);
+    const v = yf * yf * yf * (yf * (yf * 6 - 15) + 10);
+
+    const aa = p[p[xi] + yi];
+    const ab = p[p[xi] + yi + 1];
+    const ba = p[p[xi + 1] + yi];
+    const bb = p[p[xi + 1] + yi + 1];
+
+    // Inline grad for all 4 corners
+    let h: number, gu: number, gv: number;
+
+    h = aa & 15;
+    gu = h < 8 ? xf : yf;
+    gv = h < 8 ? yf : xf;
+    const g00 = ((h & 1) === 0 ? gu : -gu) + ((h & 2) === 0 ? gv : -gv);
+
+    const xf1 = xf - 1;
+    h = ba & 15;
+    gu = h < 8 ? xf1 : yf;
+    gv = h < 8 ? yf : xf1;
+    const g10 = ((h & 1) === 0 ? gu : -gu) + ((h & 2) === 0 ? gv : -gv);
+
+    const yf1 = yf - 1;
+    h = ab & 15;
+    gu = h < 8 ? xf : yf1;
+    gv = h < 8 ? yf1 : xf;
+    const g01 = ((h & 1) === 0 ? gu : -gu) + ((h & 2) === 0 ? gv : -gv);
+
+    h = bb & 15;
+    gu = h < 8 ? xf1 : yf1;
+    gv = h < 8 ? yf1 : xf1;
+    const g11 = ((h & 1) === 0 ? gu : -gu) + ((h & 2) === 0 ? gv : -gv);
+
+    // Inline lerp (bilinear interpolation)
+    const nx0 = g00 + u * (g10 - g00);
+    const nx1 = g01 + u * (g11 - g01);
+    return nx0 + v * (nx1 - nx0);
   }
 
   // Fractional Brownian Motion
@@ -150,11 +159,12 @@ export class SimplexNoise {
     let value = 0;
     let amplitude = 1;
     let frequency = 1;
-    let maxValue = 0;
+
+    // Precompute normalisation: geometric series (1 - g^n) / (1 - g)
+    const maxValue = gain === 1 ? octaves : (1 - Math.pow(gain, octaves)) / (1 - gain);
 
     for (let i = 0; i < octaves; i++) {
       value += amplitude * this.noise2D(x * frequency, y * frequency);
-      maxValue += amplitude;
       amplitude *= gain;
       frequency *= lacunarity;
     }

@@ -1,21 +1,6 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SimplexNoise } from '../../core/rng';
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function paletteSample(t: number, colors: [number, number, number][]): [number, number, number] {
-  const s = Math.max(0, Math.min(1, t)) * (colors.length - 1);
-  const i0 = Math.floor(s), i1 = Math.min(colors.length - 1, i0 + 1), f = s - i0;
-  return [
-    (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
-    (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0,
-    (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
-  ];
-}
-
 const parameterSchema: ParameterSchema = {
   scale: {
     name: 'Scale', type: 'number', min: 0.5, max: 12, step: 0.5, default: 3,
@@ -53,7 +38,7 @@ const parameterSchema: ParameterSchema = {
     group: 'Flow/Motion',
   },
   speed: {
-    name: 'Speed', type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
+    name: 'Speed', type: 'number', min: 0.25, max: 3.0, step: 0.05, default: 0.5,
     group: 'Flow/Motion',
   },
 };
@@ -73,12 +58,9 @@ export const noisePerlin: Generator = {
     const noise   = new SimplexNoise(seed);
     const warpNoise = new SimplexNoise(seed + 77);
     const w = ctx.canvas.width, h = ctx.canvas.height;
-    const colors  = palette.colors.map(hexToRgb);
     const scale   = params.scale   ?? 3;
     const octaves = Math.max(1, Math.min(6, (params.octaves ?? 1) | 0));
-    const style      = params.style      ?? 'smooth';
     const warpAmount = params.warpAmount  ?? 0;
-    const colorMode  = params.colorMode ?? 'palette';
     const bandCount  = Math.max(2, (params.bandCount ?? 6) | 0);
     const t          = time * (params.speed ?? 0.5);
     const animMode   = params.animMode ?? 'drift';
@@ -86,25 +68,48 @@ export const noisePerlin: Generator = {
     const angle      = animMode === 'rotate' ? t * 0.08 : 0;
     const cos        = Math.cos(angle), sin = Math.sin(angle);
 
-    const step = quality === 'draft' ? 2 : 1;
+    // Hoist conditions outside loop
+    const isDrift     = animMode === 'drift';
+    const isRotate    = animMode === 'rotate';
+    const isRidged    = (params.style ?? 'smooth') === 'ridged';
+    const isTurbulent = (params.style ?? 'smooth') === 'turbulent';
+    const isBands     = (params.colorMode ?? 'palette') === 'bands';
+    const doWarp      = warpAmount > 0;
+    const invW = 4 * scale / w;
+    const invH = 4 * scale / h;
+    const driftX = isDrift ? t * 0.04 : 0;
+    const driftY = isDrift ? t * 0.027 : 0;
+
+    // Pre-compute palette as flat arrays
+    const nColors = palette.colors.length;
+    const colR = new Uint8Array(nColors);
+    const colG = new Uint8Array(nColors);
+    const colB = new Uint8Array(nColors);
+    for (let i = 0; i < nColors; i++) {
+      const hex = palette.colors[i];
+      const n = parseInt(hex.charAt(0) === '#' ? hex.slice(1) : hex, 16) || 0;
+      colR[i] = (n >> 16) & 255;
+      colG[i] = (n >> 8) & 255;
+      colB[i] = n & 255;
+    }
+    const palMax = nColors - 1;
+
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(w, h) / 1080));
     const img = ctx.createImageData(w, h);
     const d   = img.data;
 
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
-        let nx = (x / w) * 4 * scale;
-        let ny = (y / h) * 4 * scale;
+        let nx = x * invW + driftX;
+        let ny = y * invH + driftY;
 
-        if (animMode === 'drift') {
-          nx += t * 0.04; ny += t * 0.027;
-        } else if (animMode === 'rotate') {
+        if (isRotate) {
           const dx = nx - nCenter, dy = ny - nCenter;
           nx = nCenter + dx * cos - dy * sin;
           ny = nCenter + dx * sin + dy * cos;
         }
 
-        // Domain warping
-        if (warpAmount > 0) {
+        if (doWarp) {
           const wx = warpNoise.fbm(nx, ny, 3, 2.0, 0.5);
           const wy = warpNoise.fbm(nx + 5.2, ny + 1.3, 3, 2.0, 0.5);
           nx += warpAmount * wx;
@@ -116,22 +121,27 @@ export const noisePerlin: Generator = {
           : noise.fbm(nx, ny, octaves, 2.0, 0.5);
 
         let v: number;
-        if (style === 'ridged') {
+        if (isRidged) {
           const ridge = 1 - Math.abs(raw);
           v = ridge * ridge;
-        } else if (style === 'turbulent') {
+        } else if (isTurbulent) {
           v = Math.abs(raw);
         } else {
           v = (raw + 1) * 0.5;
         }
 
-        if (colorMode === 'bands') v = Math.floor(v * bandCount) / bandCount;
+        if (isBands) v = Math.floor(v * bandCount) / bandCount;
 
-        const [r, g, b] = paletteSample(v, colors);
+        const ci = Math.max(0, Math.min(1, v)) * palMax;
+        const c0 = ci | 0, c1 = Math.min(palMax, c0 + 1), frac = ci - c0;
+        const pr = (colR[c0] + (colR[c1] - colR[c0]) * frac) | 0;
+        const pg = (colG[c0] + (colG[c1] - colG[c0]) * frac) | 0;
+        const pb = (colB[c0] + (colB[c1] - colB[c0]) * frac) | 0;
+
         for (let sy = 0; sy < step && y + sy < h; sy++) {
           for (let sx = 0; sx < step && x + sx < w; sx++) {
             const i = ((y + sy) * w + (x + sx)) * 4;
-            d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = 255;
+            d[i] = pr; d[i+1] = pg; d[i+2] = pb; d[i+3] = 255;
           }
         }
       }

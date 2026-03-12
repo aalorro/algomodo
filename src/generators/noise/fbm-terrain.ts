@@ -74,9 +74,9 @@ const parameterSchema: ParameterSchema = {
   speed: {
     name: 'Speed',
     type: 'number',
-    min: 0.1,
+    min: 0.25,
     max: 3.0,
-    step: 0.1,
+    step: 0.05,
     default: 0.5,
     help: 'Animation speed multiplier',
     group: 'Flow/Motion',
@@ -256,94 +256,132 @@ export const fbmTerrain: Generator = {
     const terraceLevels = params.terraceLevels ?? 8;
     const warpStrength  = params.warpStrength  ?? 0.5;
     const warpScale     = params.warpScale     ?? 2;
+    const pScale   = params.scale ?? 2;
+    const pOctaves = params.octaves ?? 4;
+    const pLac     = params.lacunarity ?? 2.0;
+    const pGain    = params.gain ?? 0.5;
+    const contrast = params.contrast ?? 1;
+    const invContrast = 1 / contrast;
+    const doWarp   = warpStrength > 0;
+    const isRidged    = style === 'ridged';
+    const isTerraced  = style === 'terraced';
+    const colorMode = params.colorMode ?? 'height';
+    const isGradient = colorMode === 'gradient';
     const t = time * speed;
 
     // Precompute rotation for 'rotate' mode
-    const rotAngle = animMode === 'rotate' ? t * 0.1 : 0;
+    const isDrift  = animMode === 'drift';
+    const isRotate = animMode === 'rotate';
+    const rotAngle = isRotate ? t * 0.1 : 0;
     const rotCos = Math.cos(rotAngle);
     const rotSin = Math.sin(rotAngle);
-    const nCenter = 2 * params.scale;
+    const nCenter = 2 * pScale;
 
-    // Scale multiplier for 'pulse' mode — oscillates ±20 %
+    // Scale multiplier for 'pulse' mode
     const pulseMul = animMode === 'pulse' ? 1 + 0.2 * Math.sin(t * 0.4) : 1;
+    const scaleX = 4 * pScale * pulseMul / width;
+    const scaleY = 4 * pScale * pulseMul / height;
+    const driftX = isDrift ? t * 0.04 : 0;
+    const driftY = isDrift ? t * 0.027 : 0;
 
-    const colorMode = params.colorMode ?? 'height';
+    // Pre-compute palette as flat RGB
+    const nColors = palette.colors.length;
+    const colR = new Uint8Array(nColors);
+    const colG = new Uint8Array(nColors);
+    const colB = new Uint8Array(nColors);
+    for (let i = 0; i < nColors; i++) {
+      const hex = palette.colors[i];
+      const n = parseInt(hex.charAt(0) === '#' ? hex.slice(1) : hex, 16) || 0;
+      colR[i] = (n >> 16) & 255;
+      colG[i] = (n >> 8) & 255;
+      colB[i] = n & 255;
+    }
+    const palMax = nColors - 1;
 
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(width, height) / 1080));
     const imageData = ctx.createImageData(width, height);
     const data = imageData.data;
 
-    // Helper to compute noise value at a given pixel coordinate
-    const sampleNoise = (px: number, py: number): number => {
-      let nx = (px / width) * 4 * params.scale * pulseMul;
-      let ny = (py / height) * 4 * params.scale * pulseMul;
+    // Inline noise sampling for a pixel
+    const sampleValue = (px: number, py: number): number => {
+      let nx = px * scaleX + driftX;
+      let ny = py * scaleY + driftY;
 
-      if (animMode === 'drift') {
-        nx += t * 0.04;
-        ny += t * 0.027;
-      } else if (animMode === 'rotate') {
+      if (isRotate) {
         const dx = nx - nCenter, dy = ny - nCenter;
         nx = nCenter + dx * rotCos - dy * rotSin;
         ny = nCenter + dx * rotSin + dy * rotCos;
       }
 
-      if (warpStrength > 0) {
-        const wx = warpNoise.fbm(nx * warpScale, ny * warpScale, 3, 2.0, 0.5);
-        const wy = warpNoise.fbm(nx * warpScale + 5.2, ny * warpScale + 1.3, 3, 2.0, 0.5);
-        nx += warpStrength * wx;
-        ny += warpStrength * wy;
+      if (doWarp) {
+        const wnx = nx * warpScale, wny = ny * warpScale;
+        nx += warpStrength * warpNoise.fbm(wnx, wny, 3, 2.0, 0.5);
+        ny += warpStrength * warpNoise.fbm(wnx + 5.2, wny + 1.3, 3, 2.0, 0.5);
       }
 
-      let value = noise.fbm(nx, ny, params.octaves, params.lacunarity, params.gain);
+      let value = noise.fbm(nx, ny, pOctaves, pLac, pGain);
 
-      if (style === 'ridged') {
+      if (isRidged) {
         const ridge = 1 - Math.abs(value);
         value = ridge * ridge;
-      } else if (style === 'terraced') {
+      } else if (isTerraced) {
         value = (value + 1) * 0.5;
         value = Math.floor(value * terraceLevels) / terraceLevels;
       } else {
         value = (value + 1) * 0.5;
       }
 
-      return Math.pow(Math.max(0, Math.min(1, value)), 1 / params.contrast);
+      value = Math.max(0, Math.min(1, value));
+      if (contrast !== 1) value = Math.pow(value, invContrast);
+      return value;
     };
 
-    // First pass: compute height values
-    const values = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        values[y * width + x] = sampleNoise(x, y);
+    if (isGradient) {
+      // Two-pass only for gradient mode
+      const values = new Float32Array(width * height);
+      for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+          const val = sampleValue(x, y);
+          for (let dy = 0; dy < step && y + dy < height; dy++)
+            for (let dx = 0; dx < step && x + dx < width; dx++)
+              values[(y + dy) * width + (x + dx)] = val;
+        }
       }
-    }
-
-    // Second pass: color based on colorMode
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let v: number;
-        if (colorMode === 'gradient') {
-          // Color by gradient magnitude (steepness)
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
           const vC = values[y * width + x];
           const vR = x < width - 1 ? values[y * width + x + 1] : vC;
           const vD = y < height - 1 ? values[(y + 1) * width + x] : vC;
-          const dx = vR - vC;
-          const dy = vD - vC;
-          v = Math.min(1, Math.sqrt(dx * dx + dy * dy) * 20);
-        } else {
-          v = values[y * width + x];
+          const gx = vR - vC, gy = vD - vC;
+          const v = Math.min(1, Math.sqrt(gx * gx + gy * gy) * 20);
+
+          const ci = v * palMax;
+          const c0 = ci | 0, c1 = Math.min(palMax, c0 + 1), f = ci - c0;
+          const idx = (y * width + x) * 4;
+          data[idx]     = (colR[c0] + (colR[c1] - colR[c0]) * f) | 0;
+          data[idx + 1] = (colG[c0] + (colG[c1] - colG[c0]) * f) | 0;
+          data[idx + 2] = (colB[c0] + (colB[c1] - colB[c0]) * f) | 0;
+          data[idx + 3] = 255;
         }
+      }
+    } else {
+      // Single pass for height mode
+      for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+          const v = sampleValue(x, y);
+          const ci = v * palMax;
+          const c0 = ci | 0, c1 = Math.min(palMax, c0 + 1), f = ci - c0;
+          const pr = (colR[c0] + (colR[c1] - colR[c0]) * f) | 0;
+          const pg = (colG[c0] + (colG[c1] - colG[c0]) * f) | 0;
+          const pb = (colB[c0] + (colB[c1] - colB[c0]) * f) | 0;
 
-        const colorIdx = Math.floor(v * (palette.colors.length - 1));
-        const nextColorIdx = Math.min(colorIdx + 1, palette.colors.length - 1);
-        const colorT = v * (palette.colors.length - 1) - colorIdx;
-
-        const color1 = hexToColor(palette.colors[colorIdx]);
-        const color2 = hexToColor(palette.colors[nextColorIdx]);
-
-        const idx = (y * width + x) * 4;
-        data[idx] = Math.round(color1[0] * (1 - colorT) + color2[0] * colorT);
-        data[idx + 1] = Math.round(color1[1] * (1 - colorT) + color2[1] * colorT);
-        data[idx + 2] = Math.round(color1[2] * (1 - colorT) + color2[2] * colorT);
-        data[idx + 3] = 255;
+          for (let dy = 0; dy < step && y + dy < height; dy++) {
+            for (let dx = 0; dx < step && x + dx < width; dx++) {
+              const idx = ((y + dy) * width + (x + dx)) * 4;
+              data[idx] = pr; data[idx + 1] = pg; data[idx + 2] = pb; data[idx + 3] = 255;
+            }
+          }
+        }
       }
     }
 
@@ -354,14 +392,3 @@ export const fbmTerrain: Generator = {
     return params.octaves * 100;
   },
 };
-
-function hexToColor(hex: string | undefined): [number, number, number] {
-  if (!hex || typeof hex !== 'string') {
-    return [128, 128, 128]; // default gray
-  }
-  const cleanHex = hex.startsWith('#') ? hex : '#' + hex;
-  const r = parseInt(cleanHex.slice(1, 3), 16) || 128;
-  const g = parseInt(cleanHex.slice(3, 5), 16) || 128;
-  const b = parseInt(cleanHex.slice(5, 7), 16) || 128;
-  return [r, g, b];
-}

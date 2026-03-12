@@ -1,11 +1,6 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SimplexNoise } from '../../core/rng';
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
 const parameterSchema: ParameterSchema = {
   scale: {
     name: 'Scale',
@@ -68,7 +63,7 @@ const parameterSchema: ParameterSchema = {
   },
   speed: {
     name: 'Speed',
-    type: 'number', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
+    type: 'number', min: 0.25, max: 3.0, step: 0.05, default: 0.5,
     help: 'Animation speed multiplier',
     group: 'Flow/Motion',
   },
@@ -87,81 +82,102 @@ export const domainWarpMarble: Generator = {
   supportsAnimation: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
-    const noise  = new SimplexNoise(seed);
-    const noise2 = new SimplexNoise(seed + 1337);
+    const sn1  = new SimplexNoise(seed);
+    const sn2 = new SimplexNoise(seed + 1337);
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const { scale, warpScale, bands, octaves, gain, doubleWarp, turbulence } = params;
+    const scale = params.scale ?? 2.5;
+    const warpScale = params.warpScale ?? 2.0;
+    const bands = params.bands ?? 6;
+    const octaves = params.octaves ?? 5;
+    const gain = params.gain ?? 0.5;
+    const doDouble = !!params.doubleWarp;
+    const doTurb = !!params.turbulence;
     const veinSharpness = params.veinSharpness ?? 1.0;
+    const bandPI = Math.PI * bands;
 
     const animMode    = params.animMode    ?? 'flow';
     const speed       = params.speed       ?? 0.5;
     const t           = time * speed;
+    const isFlow      = animMode === 'flow';
 
-    // 'pulse': warp strength oscillates ±40 % around the user value
-    const warpStrength = params.warpStrength *
+    const warpStrength = (params.warpStrength ?? 1.2) *
       (animMode === 'pulse' ? 1 + 0.4 * Math.sin(t * 0.45) : 1);
 
-    // 'drift': uniform base-coordinate offset (translates the whole texture)
     const driftX = animMode === 'drift' ? t * 0.02  : 0;
     const driftY = animMode === 'drift' ? t * 0.013 : 0;
 
-    const step = quality === 'draft' ? 2 : 1;
+    // Hoist flow offsets outside loop
+    const f1x = isFlow ? t * 0.015 : 0;
+    const f1y = isFlow ? t * 0.011 : 0;
+    const f2x = isFlow ? t * 0.019 : 0;
+    const f2y = isFlow ? t * 0.013 : 0;
+    const f3x = isFlow ? t * 0.008 : 0;
+    const f3y = isFlow ? t * 0.012 : 0;
+
+    // Pre-compute palette as flat arrays
+    const nColors = palette.colors.length;
+    const colR = new Uint8Array(nColors);
+    const colG = new Uint8Array(nColors);
+    const colB = new Uint8Array(nColors);
+    for (let i = 0; i < nColors; i++) {
+      const hex = palette.colors[i];
+      const n = parseInt(hex.charAt(0) === '#' ? hex.slice(1) : hex, 16) || 0;
+      colR[i] = (n >> 16) & 255;
+      colG[i] = (n >> 8) & 255;
+      colB[i] = n & 255;
+    }
+    const palMax = nColors - 1;
+
+    // Hoist noise helper outside loop
+    const noiseFn1 = (a: number, b: number) => {
+      const raw = sn1.fbm(a, b, octaves, 2.0, gain);
+      return doTurb ? Math.abs(raw) : raw;
+    };
+    const noiseFn2 = (a: number, b: number) => {
+      const raw = sn2.fbm(a, b, octaves, 2.0, gain);
+      return doTurb ? Math.abs(raw) : raw;
+    };
+
+    const invW = scale / w;
+    const invH = scale / h;
+
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(w, h) / 1080));
     const imageData = ctx.createImageData(w, h);
     const data = imageData.data;
 
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
-        const nx = (x / w) * scale + driftX;
-        const ny = (y / h) * scale + driftY;
-
-        // 'flow': each warp pass gets an independent slow time drift so the
-        // veins morph continuously without simply translating.
-        const f1x = animMode === 'flow' ? t * 0.015 : 0;
-        const f1y = animMode === 'flow' ? t * 0.011 : 0;
-        const f2x = animMode === 'flow' ? t * 0.019 : 0;
-        const f2y = animMode === 'flow' ? t * 0.013 : 0;
-
-        // Noise helper — turbulence uses abs() for chaotic patterns
-        const noiseFn = (sn: SimplexNoise, a: number, b: number) => {
-          const raw = sn.fbm(a, b, octaves, 2.0, gain);
-          return turbulence ? Math.abs(raw) : raw;
-        };
+        const nx = x * invW + driftX;
+        const ny = y * invH + driftY;
 
         // First warp pass
-        const wx1 = noiseFn(noise, nx       + f1x, ny       + f1y);
-        const wy1 = noiseFn(noise, nx + 5.2 + f2x, ny + 1.3 - f2y);
+        const wx1 = noiseFn1(nx + f1x, ny + f1y);
+        const wy1 = noiseFn1(nx + 5.2 + f2x, ny + 1.3 - f2y);
 
         let finalX = nx + warpStrength * wx1;
         let finalY = ny + warpStrength * wy1;
 
         // Optional second warp pass
-        if (doubleWarp) {
-          const f3x = animMode === 'flow' ? t * 0.008 : 0;
-          const f3y = animMode === 'flow' ? t * 0.012 : 0;
-          const wx2 = noiseFn(noise2, nx + warpScale * wx1 + 1.7 - f3x, ny + warpScale * wy1 + 9.2 + f3y);
-          const wy2 = noiseFn(noise2, nx + warpScale * wx1 + 8.3 + f3y, ny + warpScale * wy1 + 2.8 - f3x);
+        if (doDouble) {
+          const wx2 = noiseFn2(nx + warpScale * wx1 + 1.7 - f3x, ny + warpScale * wy1 + 9.2 + f3y);
+          const wy2 = noiseFn2(nx + warpScale * wx1 + 8.3 + f3y, ny + warpScale * wy1 + 2.8 - f3x);
           finalX = nx + warpStrength * wx2;
           finalY = ny + warpStrength * wy2;
         }
 
-        const n = noiseFn(noise, finalX, finalY);
+        const n = noiseFn1(finalX, finalY);
 
         // Marble sine bands with sharpness control
-        let bandT = Math.sin(n * Math.PI * bands) * 0.5 + 0.5;
-        bandT = Math.pow(bandT, veinSharpness);
+        let bandT = Math.sin(n * bandPI) * 0.5 + 0.5;
+        if (veinSharpness !== 1.0) bandT = Math.pow(bandT, veinSharpness);
 
-        // Palette interpolation
-        const ci = bandT * (palette.colors.length - 1);
-        const c0 = Math.floor(ci);
-        const c1 = Math.min(c0 + 1, palette.colors.length - 1);
-        const frac = ci - c0;
-        const [r0, g0, b0] = hexToRgb(palette.colors[c0]);
-        const [r1, g1, b1] = hexToRgb(palette.colors[c1]);
-
-        const pr = (r0 + (r1 - r0) * frac) | 0;
-        const pg = (g0 + (g1 - g0) * frac) | 0;
-        const pb = (b0 + (b1 - b0) * frac) | 0;
+        // Inline palette interpolation
+        const ci = bandT * palMax;
+        const c0 = ci | 0, c1 = Math.min(palMax, c0 + 1), frac = ci - c0;
+        const pr = (colR[c0] + (colR[c1] - colR[c0]) * frac) | 0;
+        const pg = (colG[c0] + (colG[c1] - colG[c0]) * frac) | 0;
+        const pb = (colB[c0] + (colB[c1] - colB[c0]) * frac) | 0;
 
         for (let dy = 0; dy < step && y + dy < h; dy++) {
           for (let dx = 0; dx < step && x + dx < w; dx++) {

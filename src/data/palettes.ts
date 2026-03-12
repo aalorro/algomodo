@@ -1,5 +1,9 @@
 import type { Palette } from '../types';
 
+function randomHex(): string {
+  return '#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase();
+}
+
 export const CURATED_PALETTES: Palette[] = [
   {
     name: 'Vibrant',
@@ -48,5 +52,17 @@ export const CURATED_PALETTES: Palette[] = [
   {
     name: 'Contrast',
     colors: ['#000000', '#FFFFFF', '#FF0000', '#FFFF00', '#0000FF'],
+  },
+  {
+    name: 'Nature',
+    colors: ['#264653', '#2A9D8F', '#E9C46A', '#F4A261', '#E76F51'],
+  },
+  {
+    name: 'Earth',
+    colors: ['#3D2B1F', '#6B4226', '#A67B5B', '#C4A882', '#E8D5B7'],
+  },
+  {
+    name: 'Random',
+    colors: [randomHex(), randomHex(), randomHex(), randomHex(), randomHex()],
   },
 ];

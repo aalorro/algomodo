@@ -28,6 +28,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const mouseRef = useRef({ x: 0.5, y: 0.5, inside: false });
   const ripplesRef = useRef<Ripple[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const timeBaseRef = useRef(0);       // RAF timestamp offset for smooth resume
+  const animTimeRef = useRef(0);       // current animation time in seconds
   const [isSaving, setIsSaving] = useState(false);
 
   const {
@@ -38,8 +40,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     palette,
     quality,
     isAnimating,
+    pausedTime,
     animationFps,
     setAnimating,
+    setPausedTime,
     randomizeParams,
     selectGenerator,
     postFX,
@@ -60,8 +64,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     palette: s.palette,
     quality: s.quality,
     isAnimating: s.isAnimating,
+    pausedTime: s.pausedTime,
     animationFps: s.animationFps,
     setAnimating: s.setAnimating,
+    setPausedTime: s.setPausedTime,
     randomizeParams: s.randomizeParams,
     selectGenerator: s.selectGenerator,
     postFX: s.postFX,
@@ -202,7 +208,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   }, [canvasSettings]);
 
   // ── Static render — shared logic ────────────────────────────────────────────
-  const doStaticRender = () => {
+  const doStaticRender = (renderTime?: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -219,8 +225,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     if (loadedImage) finalParams._sourceImage = loadedImage;
     finalParams._renderKey = renderKey;
 
+    // Use paused time if provided, otherwise 0 for static renders
+    const time = renderTime ?? pausedTime ?? 0;
+
     try {
-      generator.renderCanvas2D!(ctx, finalParams, seed, palette, quality, 0);
+      generator.renderCanvas2D!(ctx, finalParams, seed, palette, quality, time);
 
       // Apply PostFX
       const hasPostFX =
@@ -272,7 +281,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       setIsRendering(false);
     };
-  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating, renderKey]);
+  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating, pausedTime, renderKey]);
 
   // ── Animation loop effect — long-lived, reads from refs ─────────────────────
   useEffect(() => {
@@ -285,8 +294,19 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
     lastFrameTimeRef.current = 0;
     fpsRef.current = { frames: 0, lastTime: 0, fps: 0, lastRenderedFps: -1 };
+    // Reset time base so first frame calculates it with resume offset
+    timeBaseRef.current = 0;
+
+    const resumeFrom = useStore.getState().pausedTime ?? 0;
 
     const animate = (timestamp: number) => {
+      // On first frame, set the time base so animation continues from paused time
+      if (timeBaseRef.current === 0) {
+        timeBaseRef.current = timestamp / 1000 - resumeFrom;
+      }
+      const animTime = timestamp / 1000 - timeBaseRef.current;
+      animTimeRef.current = animTime;
+
       const rd = renderDataRef.current;
       const fpsInterval = 1000 / rd.animationFps;
       const elapsed = timestamp - lastFrameTimeRef.current;
@@ -299,7 +319,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           const finalParams: Record<string, any> = { ...generator.defaultParams, ...rd.params };
           if (rd.loadedImage) finalParams._sourceImage = rd.loadedImage;
           finalParams._renderKey = rd.renderKey;
-          generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, timestamp / 1000);
+          generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, animTime);
         }
 
         if (rd.showFPS) {
@@ -456,14 +476,15 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
 
     if (!isAnimating) {
-      // Static: render at 1080x1080 on offscreen canvas, save PNG
+      // Static or paused: render at 1080x1080 on offscreen canvas, save PNG
+      const exportTime = pausedTime ?? 0;
       const offscreen = document.createElement('canvas');
       offscreen.width = exportSize;
       offscreen.height = exportSize;
       const offCtx = offscreen.getContext('2d');
       if (!offCtx) return;
       if (generator.renderCanvas2D) {
-        generator.renderCanvas2D(offCtx, finalParams, seed, palette, quality, 0);
+        generator.renderCanvas2D(offCtx, finalParams, seed, palette, quality, exportTime);
       }
       // Apply PostFX
       const hasPostFX =
@@ -615,11 +636,29 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             ↩ UNDO
           </button>
           <button
-            onClick={() => setAnimating(!isAnimating)}
+            onClick={() => {
+              if (isAnimating) {
+                // Playing → Pause: capture current time and stop
+                setPausedTime(animTimeRef.current);
+                setAnimating(false);
+              } else {
+                // Stopped or Paused → Play/Resume
+                setAnimating(true);
+              }
+            }}
             className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
           >
-            {isAnimating ? '⏸ ANIMATE' : '▶ ANIMATE'}
+            {isAnimating ? '⏸ PAUSE' : pausedTime !== null ? '▶ RESUME' : '▶ ANIMATE'}
           </button>
+          {pausedTime !== null && !isAnimating && (
+            <button
+              onClick={() => { setPausedTime(null); timeBaseRef.current = 0; }}
+              className="px-3 py-2 bg-gray-500/60 hover:bg-gray-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+              title="Stop and reset to static"
+            >
+              STOP
+            </button>
+          )}
           <button
             onClick={() => selectedGeneratorId && randomizeParams(getGenerator(selectedGeneratorId)?.parameterSchema || {})}
             className="px-4 py-2 bg-blue-500/60 hover:bg-blue-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
