@@ -306,13 +306,13 @@ const parameterSchema: ParameterSchema = {
   },
   paramDrift: {
     name: 'Param Drift',
-    type: 'number', min: 0, max: 0.5, step: 0.05, default: 0.0,
+    type: 'number', min: 0, max: 0.5, step: 0.05, default: 0.15,
     help: 'Slowly oscillates the reaction parameter during animation — set above 0 to see the pattern continuously morph between morphologies. 0 = static equilibrium.',
     group: 'Flow/Motion',
   },
   warmupSteps: {
     name: 'Warm-up Steps',
-    type: 'number', min: 50, max: 2000, step: 50, default: 500,
+    type: 'number', min: 50, max: 2000, step: 50, default: 800,
     help: 'Steps before the static render — Schnakenberg: 400–800; Gray-Scott needs 800–2000 for developed patterns',
     group: 'Composition',
   },
