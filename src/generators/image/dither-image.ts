@@ -206,13 +206,13 @@ export const ditherImage: Generator = {
 
           if (algorithm === 'bayer-2') {
             const mat = [0, 0.5, 0.75, 0.25];
-            threshold = mat[(y % 2) * 2 + (x % 2)] * s;
+            threshold = mat[((y + tOff) % 2) * 2 + ((x + tOff) % 2)] * s;
           } else if (algorithm === 'bayer-4') {
-            const idx4 = (y % 4) * 4 + (x % 4);
+            const idx4 = ((y + tOff) % 4) * 4 + ((x + tOff) % 4);
             const bayer4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => v / 16);
             threshold = bayer4[idx4] * s;
           } else if (algorithm === 'ordered-dot') {
-            const cx = x % 4 - 1.5, cy = y % 4 - 1.5;
+            const cx = (x + tOff) % 4 - 1.5, cy = (y + tOff) % 4 - 1.5;
             const dist = Math.sqrt(cx * cx + cy * cy) / 2.12;
             threshold = dist * s;
           } else {

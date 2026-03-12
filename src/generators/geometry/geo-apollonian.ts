@@ -1,9 +1,18 @@
-// @ts-nocheck
 import type { Generator, ParameterSchema } from '../../types';
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function paletteSample(t: number, colors: [number, number, number][]): [number, number, number] {
+  const s = Math.max(0, Math.min(1, t)) * (colors.length - 1);
+  const i0 = Math.floor(s), i1 = Math.min(colors.length - 1, i0 + 1), f = s - i0;
+  return [
+    (colors[i0][0] + (colors[i1][0] - colors[i0][0]) * f) | 0,
+    (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0,
+    (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
+  ];
 }
 
 /** Complex number helpers */

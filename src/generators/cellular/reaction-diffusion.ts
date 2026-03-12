@@ -357,7 +357,7 @@ export const reactionDiffusion: Generator = {
       const N     = gridSize * gridSize;
       const nextU = new Float32Array(N);
       const nextV = new Float32Array(N);
-      const iters = Math.min(600, Math.max(1, (params.iterations as number) | 0));
+      const iters = Math.max(1, Math.min(3000, (params.iterations as number) | 0));
       for (let i = 0; i < iters; i++) {
         stepRD(U, V, nextU, nextV, fField, kField, gridSize, Du, Dv);
       }

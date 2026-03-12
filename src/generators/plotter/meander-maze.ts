@@ -259,9 +259,9 @@ export const meanderMaze: Generator = {
     wallStyle: 'straight', showSolution: false, fillCells: false,
     lineWidth: 1.25, colorMode: 'palette-distance', background: 'cream',
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: false,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
-  renderCanvas2D(ctx, params, seed, palette) {
+  renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
     ctx.fillStyle = BG[params.background] ?? BG.cream;
     ctx.fillRect(0, 0, w, h);
@@ -360,17 +360,51 @@ export const meanderMaze: Generator = {
 
     const style = params.style || 'maze';
 
+    // Animation: progressive reveal — cycle every 8 seconds then hold
+    const cycleDuration = 8;
+    const reveal = time > 0 ? Math.min(1, (time % (cycleDuration * 1.25)) / cycleDuration) : 1;
+
     if (style === 'maze') {
       const { wallH, wallV } = generateMaze(cols, rows, rng, algorithm);
       const dist = bfs(cols, rows, wallH, wallV);
       const maxBFS = Math.max(1, ...Array.from(dist));
 
-      // Fill cells with color heatmap
+      // Collect all walls with their BFS distance for progressive reveal
+      type WallEntry = { x1: number; y1: number; x2: number; y2: number; col: number; row: number; d: number };
+      const walls: WallEntry[] = [];
+      for (let row = 0; row < rows - 1; row++) {
+        for (let col = 0; col < cols; col++) {
+          if (wallH[row][col]) {
+            const d = dist[row * cols + col];
+            walls.push({
+              x1: mx + col * cw, y1: my + (row + 1) * ch,
+              x2: mx + (col + 1) * cw, y2: my + (row + 1) * ch,
+              col, row, d: d >= 0 ? d : 0,
+            });
+          }
+        }
+      }
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols - 1; col++) {
+          if (wallV[row][col]) {
+            const d = dist[row * cols + col];
+            walls.push({
+              x1: mx + (col + 1) * cw, y1: my + row * ch,
+              x2: mx + (col + 1) * cw, y2: my + (row + 1) * ch,
+              col, row, d: d >= 0 ? d : 0,
+            });
+          }
+        }
+      }
+      const wallsToDraw = Math.ceil(walls.length * reveal);
+
+      // Fill cells with color heatmap (only revealed cells)
       if (fillCells) {
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const d = dist[r * cols + c];
             if (d < 0) continue;
+            if (d / maxBFS > reveal) continue;
             const t = d / maxBFS;
             const [cr, cg, cb] = interpColor(t);
             ctx.fillStyle = `rgba(${cr},${cg},${cb},${isDark ? 0.25 : 0.18})`;
@@ -383,36 +417,14 @@ export const meanderMaze: Generator = {
       ctx.strokeStyle = getColor(0, 0, 0);
       ctx.strokeRect(mx, my, availW, availH);
 
-      // Horizontal walls
-      for (let row = 0; row < rows - 1; row++) {
-        for (let col = 0; col < cols; col++) {
-          if (wallH[row][col]) {
-            const d = dist[row * cols + col];
-            drawWall(
-              mx + col * cw, my + (row + 1) * ch,
-              mx + (col + 1) * cw, my + (row + 1) * ch,
-              col, row, d >= 0 ? d : 0,
-            );
-          }
-        }
+      // Draw walls progressively
+      for (let i = 0; i < wallsToDraw; i++) {
+        const wl = walls[i];
+        drawWall(wl.x1, wl.y1, wl.x2, wl.y2, wl.col, wl.row, wl.d);
       }
 
-      // Vertical walls
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols - 1; col++) {
-          if (wallV[row][col]) {
-            const d = dist[row * cols + col];
-            drawWall(
-              mx + (col + 1) * cw, my + row * ch,
-              mx + (col + 1) * cw, my + (row + 1) * ch,
-              col, row, d >= 0 ? d : 0,
-            );
-          }
-        }
-      }
-
-      // Solution path overlay
-      if (showSolution) {
+      // Solution path overlay (only when fully revealed)
+      if (showSolution && reveal >= 1) {
         const target = (rows - 1) * cols + (cols - 1);
         if (dist[target] >= 0) {
           const path = solvePath(cols, rows, wallH, wallV, dist, target);
@@ -433,7 +445,27 @@ export const meanderMaze: Generator = {
         }
       }
     } else {
-      // Meander: boustrophedon serpentine path
+      // Meander: boustrophedon serpentine path through a maze grid
+      const { wallH, wallV } = generateMaze(cols, rows, rng, algorithm);
+      const dist = bfs(cols, rows, wallH, wallV);
+      const maxBFS = Math.max(1, ...Array.from(dist));
+
+      // Fill cells with color heatmap (only revealed cells)
+      if (fillCells) {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const d = dist[r * cols + c];
+            if (d < 0) continue;
+            if (d / maxBFS > reveal) continue;
+            const t = d / maxBFS;
+            const [cr, cg, cb] = interpColor(t);
+            ctx.fillStyle = `rgba(${cr},${cg},${cb},${isDark ? 0.25 : 0.18})`;
+            ctx.fillRect(mx + c * cw, my + r * ch, cw, ch);
+          }
+        }
+      }
+
+      // Build the boustrophedon serpentine path
       type Pt = [number, number, number, number];
       const path: Pt[] = [];
       for (let row = 0; row < rows; row++) {
@@ -451,15 +483,71 @@ export const meanderMaze: Generator = {
           path.push([x, my + (row + 1.5) * ch, col, row + 1]);
         }
       }
-      for (let i = 1; i < path.length; i++) {
+
+      // Draw meander path progressively using drawWall (respects wallStyle)
+      const segsToDraw = Math.ceil((path.length - 1) * reveal);
+      for (let i = 1; i <= segsToDraw; i++) {
         const [x1, y1, c1, r1] = path[i - 1];
         const [x2, y2] = path[i];
-        const dist = r1 * cols + c1;
-        ctx.strokeStyle = getColor(c1, r1, dist);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
+        const d = dist[r1 * cols + c1];
+        drawWall(x1, y1, x2, y2, c1, r1, d >= 0 ? d : 0);
+      }
+
+      // Draw maze walls on top of the meander path (uses wallStyle)
+      ctx.globalAlpha = isDark ? 0.3 : 0.2;
+      for (let row = 0; row < rows - 1; row++) {
+        for (let col = 0; col < cols; col++) {
+          if (wallH[row][col]) {
+            // Only draw wall if the meander has reached this row
+            if ((row + 1) / rows > reveal) continue;
+            const d = dist[row * cols + col];
+            drawWall(
+              mx + col * cw, my + (row + 1) * ch,
+              mx + (col + 1) * cw, my + (row + 1) * ch,
+              col, row, d >= 0 ? d : 0,
+            );
+          }
+        }
+      }
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols - 1; col++) {
+          if (wallV[row][col]) {
+            if ((row + 1) / rows > reveal) continue;
+            const d = dist[row * cols + col];
+            drawWall(
+              mx + (col + 1) * cw, my + row * ch,
+              mx + (col + 1) * cw, my + (row + 1) * ch,
+              col, row, d >= 0 ? d : 0,
+            );
+          }
+        }
+      }
+      ctx.globalAlpha = 1.0;
+
+      // Outer border
+      ctx.strokeStyle = getColor(0, 0, 0);
+      ctx.strokeRect(mx, my, availW, availH);
+
+      // Solution path overlay (only when fully revealed)
+      if (showSolution && reveal >= 1) {
+        const target = (rows - 1) * cols + (cols - 1);
+        if (dist[target] >= 0) {
+          const solPath = solvePath(cols, rows, wallH, wallV, dist, target);
+          ctx.lineWidth = (params.lineWidth ?? 1.25) * 2.5;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = isDark
+            ? 'rgba(255, 100, 100, 0.7)'
+            : 'rgba(220, 40, 40, 0.55)';
+          ctx.beginPath();
+          for (let i = 0; i < solPath.length; i++) {
+            const px = mx + (solPath[i] % cols + 0.5) * cw;
+            const py = my + (((solPath[i] / cols) | 0) + 0.5) * ch;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          ctx.lineWidth = params.lineWidth ?? 1.25;
+        }
       }
     }
   },

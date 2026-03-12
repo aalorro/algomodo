@@ -267,51 +267,74 @@ export const fbmTerrain: Generator = {
     // Scale multiplier for 'pulse' mode — oscillates ±20 %
     const pulseMul = animMode === 'pulse' ? 1 + 0.2 * Math.sin(t * 0.4) : 1;
 
+    const colorMode = params.colorMode ?? 'height';
+
     const imageData = ctx.createImageData(width, height);
     const data = imageData.data;
 
+    // Helper to compute noise value at a given pixel coordinate
+    const sampleNoise = (px: number, py: number): number => {
+      let nx = (px / width) * 4 * params.scale * pulseMul;
+      let ny = (py / height) * 4 * params.scale * pulseMul;
+
+      if (animMode === 'drift') {
+        nx += t * 0.04;
+        ny += t * 0.027;
+      } else if (animMode === 'rotate') {
+        const dx = nx - nCenter, dy = ny - nCenter;
+        nx = nCenter + dx * rotCos - dy * rotSin;
+        ny = nCenter + dx * rotSin + dy * rotCos;
+      }
+
+      if (warpStrength > 0) {
+        const wx = warpNoise.fbm(nx * warpScale, ny * warpScale, 3, 2.0, 0.5);
+        const wy = warpNoise.fbm(nx * warpScale + 5.2, ny * warpScale + 1.3, 3, 2.0, 0.5);
+        nx += warpStrength * wx;
+        ny += warpStrength * wy;
+      }
+
+      let value = noise.fbm(nx, ny, params.octaves, params.lacunarity, params.gain);
+
+      if (style === 'ridged') {
+        const ridge = 1 - Math.abs(value);
+        value = ridge * ridge;
+      } else if (style === 'terraced') {
+        value = (value + 1) * 0.5;
+        value = Math.floor(value * terraceLevels) / terraceLevels;
+      } else {
+        value = (value + 1) * 0.5;
+      }
+
+      return Math.pow(Math.max(0, Math.min(1, value)), 1 / params.contrast);
+    };
+
+    // First pass: compute height values
+    const values = new Float32Array(width * height);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        let nx = (x / width) * 4 * params.scale * pulseMul;
-        let ny = (y / height) * 4 * params.scale * pulseMul;
+        values[y * width + x] = sampleNoise(x, y);
+      }
+    }
 
-        if (animMode === 'drift') {
-          nx += t * 0.04;
-          ny += t * 0.027;
-        } else if (animMode === 'rotate') {
-          const dx = nx - nCenter, dy = ny - nCenter;
-          nx = nCenter + dx * rotCos - dy * rotSin;
-          ny = nCenter + dx * rotSin + dy * rotCos;
-        }
-
-        // Domain warping — displace coordinates using a second noise field
-        if (warpStrength > 0) {
-          const wx = warpNoise.fbm(nx * warpScale, ny * warpScale, 3, 2.0, 0.5);
-          const wy = warpNoise.fbm(nx * warpScale + 5.2, ny * warpScale + 1.3, 3, 2.0, 0.5);
-          nx += warpStrength * wx;
-          ny += warpStrength * wy;
-        }
-
-        let value = noise.fbm(nx, ny, params.octaves, params.lacunarity, params.gain);
-
-        // Apply style transform
-        if (style === 'ridged') {
-          // Sharp ridges: invert absolute value, square for sharper peaks
-          const ridge = 1 - Math.abs(value);
-          value = ridge * ridge;
-        } else if (style === 'terraced') {
-          // Quantize to discrete terrace levels
-          value = (value + 1) * 0.5; // normalize to 0-1
-          value = Math.floor(value * terraceLevels) / terraceLevels;
+    // Second pass: color based on colorMode
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let v: number;
+        if (colorMode === 'gradient') {
+          // Color by gradient magnitude (steepness)
+          const vC = values[y * width + x];
+          const vR = x < width - 1 ? values[y * width + x + 1] : vC;
+          const vD = y < height - 1 ? values[(y + 1) * width + x] : vC;
+          const dx = vR - vC;
+          const dy = vD - vC;
+          v = Math.min(1, Math.sqrt(dx * dx + dy * dy) * 20);
         } else {
-          value = (value + 1) * 0.5; // normalize to 0-1
+          v = values[y * width + x];
         }
 
-        value = Math.pow(Math.max(0, Math.min(1, value)), 1 / params.contrast);
-
-        const colorIdx = Math.floor(value * (palette.colors.length - 1));
+        const colorIdx = Math.floor(v * (palette.colors.length - 1));
         const nextColorIdx = Math.min(colorIdx + 1, palette.colors.length - 1);
-        const colorT = value * (palette.colors.length - 1) - colorIdx;
+        const colorT = v * (palette.colors.length - 1) - colorIdx;
 
         const color1 = hexToColor(palette.colors[colorIdx]);
         const color2 = hexToColor(palette.colors[nextColorIdx]);
