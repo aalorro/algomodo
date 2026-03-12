@@ -108,7 +108,7 @@ export const noiseFbm: Generator = {
     }
     const palMax = nColors - 1;
 
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(w, h) / 1080));
     const img  = ctx.createImageData(w, h);
     const d    = img.data;
 

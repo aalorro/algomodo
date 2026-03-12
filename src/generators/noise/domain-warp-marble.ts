@@ -142,7 +142,7 @@ export const domainWarpMarble: Generator = {
     const invW = scale / w;
     const invH = scale / h;
 
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(w, h) / 1080));
     const imageData = ctx.createImageData(w, h);
     const data = imageData.data;
 

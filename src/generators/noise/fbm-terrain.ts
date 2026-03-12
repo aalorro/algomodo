@@ -298,7 +298,7 @@ export const fbmTerrain: Generator = {
     }
     const palMax = nColors - 1;
 
-    const step = quality === 'draft' ? 2 : 1;
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : Math.max(1, Math.round(Math.max(width, height) / 1080));
     const imageData = ctx.createImageData(width, height);
     const data = imageData.data;
 
