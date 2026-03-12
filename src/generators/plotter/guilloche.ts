@@ -75,8 +75,8 @@ const parameterSchema: ParameterSchema = {
   },
   spinSpeed: {
     name: 'Spin Speed',
-    type: 'number', min: 0, max: 1.0, step: 0.05, default: 0.12,
-    help: 'Rotation speed (rad/s). Even/odd rings spin in opposite directions.',
+    type: 'number', min: 0, max: 3.0, step: 0.05, default: 0.5,
+    help: 'Rotation speed (rad/s). Each ring spins at a different rate with alternating direction.',
     group: 'Flow/Motion',
   },
 };
@@ -92,7 +92,7 @@ export const guilloche: Generator = {
   defaultParams: {
     ringCount: 5, petals: 7, curveType: 'hypotrochoid', linesPerRing: 1,
     eccentricity: 0.65, ringSpread: 0.09, waveModulation: 0,
-    lineWidth: 0.75, colorMode: 'palette-rings', background: 'cream', spinSpeed: 0.12,
+    lineWidth: 0.75, colorMode: 'palette-rings', background: 'cream', spinSpeed: 0.5,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
 
@@ -123,12 +123,25 @@ export const guilloche: Generator = {
     const STEPS = 1800;
 
     for (let ri = 0; ri < ringCount; ri++) {
-      const ecc = eccBase * (0.78 + ri * 0.06 + rng.random() * 0.08);
-      const ringRadius = halfSize * (0.3 + ri * spread);
+      const eccStatic = eccBase * (0.78 + ri * 0.06 + rng.random() * 0.08);
+      const ringRadiusBase = halfSize * (0.3 + ri * spread);
 
-      // Alternating rotation direction per ring
+      // Alternating rotation direction; each ring spins at a different rate
       const direction = ri % 2 === 0 ? 1 : -1;
-      const phase = time * spinSpeed * direction;
+      const ringSpeedMult = 1 + ri * 0.18;
+      const phase = time * spinSpeed * direction * ringSpeedMult;
+
+      // Breathing: radius oscillates per ring at offset frequencies
+      const breathe = spinSpeed > 0
+        ? 1 + 0.04 * Math.sin(time * (0.5 + ri * 0.12) * Math.PI * 2)
+        : 1;
+      const ringRadius = ringRadiusBase * breathe;
+
+      // Eccentricity oscillation: petals gently grow/shrink over time
+      const eccOsc = spinSpeed > 0
+        ? 0.06 * Math.sin(time * 0.4 * Math.PI * 2 + ri * 0.8)
+        : 0;
+      const ecc = Math.max(0.1, Math.min(0.98, eccStatic + eccOsc));
 
       for (let li = 0; li < linesPerRing; li++) {
         // Phase offset per sub-line — creates weave
