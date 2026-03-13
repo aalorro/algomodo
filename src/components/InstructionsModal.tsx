@@ -28,7 +28,7 @@ export const InstructionsModal: React.FC = () => {
               Algomodo is an algorithmic art generator that runs entirely in your browser. Nothing is uploaded &mdash; all processing happens locally on your device.
             </p>
             <p>
-              Choose a <strong>family</strong> from the left panel, then pick a <strong>style</strong> to generate art. There are <strong>93 generators</strong> across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, and Graphs.
+              Choose a <strong>family</strong> from the left panel, then pick a <strong>style</strong> to generate art. There are <strong>111 generators</strong> across 11 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs, and Procedural.
             </p>
           </div>
 
@@ -123,6 +123,22 @@ export const InstructionsModal: React.FC = () => {
             <p>
               The Text family creates typographic art from characters and words. Each generator has an optional <strong>custom text</strong> field &mdash; type your own characters, words, or sentences. Leave it empty to use the default random content. In the Poem Layout generator, separate lines with the <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">|</code> character.
             </p>
+          </div>
+
+          {/* Procedural & Audio */}
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Procedural Generators &amp; Audio</h3>
+            <p className="mb-2">
+              The <strong>Procedural</strong> family contains 6 audio-reactive generators: Feedback Systems, Procedural VFX, Field + Particle Motion, Instanced Geometry, Audio-Reactive, and SDF Raymarch.
+            </p>
+            <p className="mb-2">
+              To use audio reactivity, upload an audio file (MP3, WAV, OGG) via the <strong>Audio Source</strong> section in the right panel, or drag an audio file onto the canvas. When animation is playing, the audio plays in sync and the generators react to bass, mid, and high frequency energy in real time.
+            </p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Use the <strong>Audio Reactivity</strong> slider (in Flow/Motion) to control how strongly the generator responds to the audio (0 = off, 2 = double sensitivity).</li>
+              <li>The seek slider below the audio filename lets you scrub to any point in the track.</li>
+              <li>Audio always starts from the beginning when you press Animate.</li>
+            </ul>
           </div>
 
           {/* Animation */}

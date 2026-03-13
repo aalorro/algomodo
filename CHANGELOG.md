@@ -5,6 +5,33 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-03-12
+
+### Added
+
+**New Procedural family (6 generators):**
+
+- **Feedback Systems** — iterative zoom, rotate, and color-shift feedback loops creating fractal-like recursive patterns
+- **Procedural VFX** — TouchDesigner-style texture operations: FBM noise → displacement warp → quantize → Sobel edge detect → palette color ramp
+- **Field + Particle Motion** — vector field visualization with particles tracing flow lines through curl noise, attractors, vortices, or dipole fields
+- **Instanced Geometry** — many copies of a base shape arranged in grids, spirals, or radial patterns with wave-propagation animation
+- **Audio-Reactive Control Systems** — simulated audio spectrum visualization with bars, radial, rings, and waveform styles; uses real audio when uploaded
+- **SDF / Raymarch Looks** — 2D signed-distance-field rendering with smooth boolean operations, glow halos, and distance-band contours
+
+**Audio upload and reactivity:**
+
+- **Audio file upload** — upload MP3/WAV/OGG files via sidebar or drag-drop onto canvas
+- **Real-time audio reactivity** — all 6 procedural generators respond to audio frequency data (bass, mid, high energy bands)
+- **Audio seek slider** — scrub through the audio track with a progress bar and elapsed/total time display
+- **Audio Reactivity parameter** — per-generator sensitivity slider (0 = none, 2 = double) on the 5 non-audio-reactive procedural generators
+
+### Improved
+
+- **Procedural generator performance** — optimized all 6 generators: Uint32Array pixel writes, struct-of-arrays layouts, batched canvas draw calls, precomputed polygon vertices, OffscreenCanvas buffers, eliminated per-pixel tuple allocations
+- **Guilloché animation** — increased default spin speed, added differential per-ring speeds, breathing effect, and eccentricity oscillation
+
+---
+
 ## [1.6.2] - 2026-03-09
 
 ### Added

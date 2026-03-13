@@ -20,6 +20,33 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.7.0 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.7.0] - 2026-03-12
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Procedural family</strong> — 6 generators: Feedback Systems, Procedural VFX, Field + Particle Motion, Instanced Geometry, Audio-Reactive, SDF Raymarch</li>
+                  <li><strong>Audio upload &amp; reactivity</strong> — upload audio files, all procedural generators react to real-time frequency data (bass, mid, high energy bands)</li>
+                  <li><strong>Audio seek slider</strong> — scrub through audio with progress bar and elapsed/total time display</li>
+                  <li><strong>Audio Reactivity parameter</strong> — per-generator sensitivity slider (0–2) on procedural generators</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Improved</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Procedural generator performance</strong> — Uint32Array pixel writes, struct-of-arrays, batched draw calls, OffscreenCanvas buffers</li>
+                  <li><strong>Guilloch&eacute; animation</strong> — faster default spin, differential ring speeds, breathing &amp; eccentricity oscillation</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.6.2 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
