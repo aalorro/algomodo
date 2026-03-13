@@ -11,7 +11,7 @@ export const LeftSidebar: React.FC = React.memo(() => {
     setOpenModal: s.setOpenModal,
     theme: s.theme,
   })));
-  const [expandedFamily, setExpandedFamily] = useState<string | null>(selectedFamilyId);
+  const [expandedFamily, setExpandedFamily] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
