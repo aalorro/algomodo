@@ -107,7 +107,7 @@ import { constrained } from './graphs/constrained';
 import { anisotropic } from './graphs/anisotropic';
 import { eulerTrails } from './graphs/euler-trails';
 import { feedbackSystems } from './procedural/feedback-systems';
-import { proceduralVfx } from './procedural/procedural-vfx';
+import { warp } from './procedural/warp';
 import { fieldParticle } from './procedural/field-particle';
 import { instancedGeometry } from './procedural/instanced-geometry';
 import { audioReactive } from './procedural/audio-reactive';
@@ -222,7 +222,7 @@ export function initializeGenerators() {
   registerGenerator(anisotropic);
   registerGenerator(eulerTrails);
   registerGenerator(feedbackSystems);
-  registerGenerator(proceduralVfx);
+  registerGenerator(warp);
   registerGenerator(fieldParticle);
   registerGenerator(instancedGeometry);
   registerGenerator(audioReactive);
@@ -252,6 +252,6 @@ export {
   tessellations, lowPoly, ecosystems, steinerNetworks,
   kNearestNeighbor, gabrielGraph, planarGraph,
   geodesic, constrained, anisotropic, eulerTrails,
-  feedbackSystems, proceduralVfx, fieldParticle,
+  feedbackSystems, warp, fieldParticle,
   instancedGeometry, audioReactive, sdfRaymarch,
 };

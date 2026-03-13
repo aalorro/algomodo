@@ -53,10 +53,10 @@ const parameterSchema: ParameterSchema = {
   },
 };
 
-export const proceduralVfx: Generator = {
-  id: 'procedural-vfx',
+export const warp: Generator = {
+  id: 'warp',
   family: 'procedural',
-  styleName: 'Procedural VFX',
+  styleName: 'Warp',
   definition: 'Coordinate-warp visual effects — spiral, tunnel, ripple, and kaleidoscope modes with chromatic aberration and multi-layer domain warping',
   algorithmNotes:
     'Converts pixel coordinates to polar space and applies mode-specific warps: spiral arms twist angle by radius, ripple pulses concentric rings outward, tunnel maps depth via inverse radius for infinite zoom, kaleidoscope mirrors angular segments. Multiple domain-warp layers displace coordinates through value noise for organic flow. Chromatic aberration offsets RGB channel lookups using already-computed noise values. All warps react to audio bass and mid energy.',

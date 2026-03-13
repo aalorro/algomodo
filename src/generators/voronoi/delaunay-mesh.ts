@@ -1,11 +1,7 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 import { clearCanvas } from '../../renderers/canvas2d/utils';
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
+import { hexToRgb } from './voronoi-utils';
 
 function lerpColor(
   a: [number, number, number], b: [number, number, number], t: number
@@ -139,7 +135,7 @@ export const delaunayMesh: Generator = {
   family: 'voronoi',
   styleName: 'Delaunay Triangulation',
   definition: 'Computes the Delaunay triangulation of seed points and fills each triangle with a palette color',
-  algorithmNotes: 'Uses the Bowyer–Watson incremental insertion algorithm. Each triangle is filled based on its centroid position, area, or palette index. Sites use jittered-grid placement for full-canvas coverage; topology is recomputed each frame during animation.',
+  algorithmNotes: 'Bowyer–Watson incremental insertion. Triangle fills batched by color to reduce canvas state changes. Shared hexToRgb from voronoi-utils. Topology recomputed each animation frame.',
   parameterSchema,
   defaultParams: {
     pointCount: 80, colorMode: 'by-position', showEdges: true,
@@ -166,6 +162,10 @@ export const delaunayMesh: Generator = {
 
     // Seeded jitter RNG (separate so animation doesn't change colors)
     const jitterRng = new SeededRNG(seed + 1);
+
+    // Pre-compute per-triangle color, then batch fills by color string
+    const triColors: string[] = [];
+    const triPaths: { ax: number; ay: number; bx: number; by: number; cx: number; cy: number }[] = [];
 
     for (let ti = 0; ti < tris.length; ti++) {
       const [ai, bi, ci] = tris[ti];
@@ -202,22 +202,38 @@ export const delaunayMesh: Generator = {
         Math.max(0, Math.min(255, base[2] * (1 + j))) | 0,
       ];
 
-      ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+      triColors.push(`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
+      triPaths.push({ ax, ay, bx, by, cx, cy });
+    }
+
+    // Batch fills by color — reduces fillStyle changes
+    const colorGroups = new Map<string, number[]>();
+    for (let i = 0; i < triColors.length; i++) {
+      const c = triColors[i];
+      let arr = colorGroups.get(c);
+      if (!arr) { arr = []; colorGroups.set(c, arr); }
+      arr.push(i);
+    }
+
+    for (const [color, indices] of colorGroups) {
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy);
-      ctx.closePath(); ctx.fill();
+      for (const i of indices) {
+        const { ax, ay, bx, by, cx, cy } = triPaths[i];
+        ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.closePath();
+      }
+      ctx.fill();
     }
 
     if (params.showEdges) {
       ctx.lineWidth = params.edgeWidth ?? 1;
       ctx.globalAlpha = params.edgeOpacity ?? 0.5;
       ctx.strokeStyle = '#000';
-      for (const [ai, bi, ci] of tris) {
-        const [ax, ay] = pts[ai], [bx, by] = pts[bi], [cx, cy] = pts[ci];
-        ctx.beginPath();
-        ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy);
-        ctx.closePath(); ctx.stroke();
+      ctx.beginPath();
+      for (const { ax, ay, bx, by, cx, cy } of triPaths) {
+        ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy); ctx.closePath();
       }
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
   },

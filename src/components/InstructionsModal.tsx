@@ -129,7 +129,7 @@ export const InstructionsModal: React.FC = () => {
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Procedural Generators &amp; Audio</h3>
             <p className="mb-2">
-              The <strong>Procedural</strong> family contains 6 audio-reactive generators: Feedback Systems, Procedural VFX, Field + Particle Motion, Instanced Geometry, Audio-Reactive, and SDF Raymarch.
+              The <strong>Procedural</strong> family contains 6 audio-reactive generators: Feedback Systems, Warp, Field + Particle Motion, Instanced Geometry, Audio-Reactive, and SDF Raymarch.
             </p>
             <p className="mb-2">
               To use audio reactivity, upload an audio file (MP3, WAV, OGG) via the <strong>Audio Source</strong> section in the right panel, or drag an audio file onto the canvas. When animation is playing, the audio plays in sync and the generators react to bass, mid, and high frequency energy in real time.

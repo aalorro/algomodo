@@ -1,39 +1,10 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 import { clearCanvas } from '../../renderers/canvas2d/utils';
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function getDist(metric: string, ax: number, ay: number, bx: number, by: number): number {
-  const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
-  if (metric === 'Manhattan') return dx + dy;
-  if (metric === 'Chebyshev') return Math.max(dx, dy);
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function jitteredGrid(count: number, w: number, h: number, rng: SeededRNG): [number, number][] {
-  const cols = Math.ceil(Math.sqrt(count * (w / h)));
-  const rows = Math.ceil(count / cols);
-  const cw = w / cols, ch = h / rows;
-  const pts: [number, number][] = [];
-  for (let r = 0; r < rows && pts.length < count; r++) {
-    for (let c = 0; c < cols && pts.length < count; c++) {
-      pts.push([(c + 0.2 + rng.random() * 0.6) * cw, (r + 0.2 + rng.random() * 0.6) * ch]);
-    }
-  }
-  while (pts.length < count) pts.push([rng.random() * w, rng.random() * h]);
-  return pts;
-}
-
-function animateSites(base: [number, number][], amp: number, speed: number, time: number): [number, number][] {
-  return base.map(([bx, by], i) => {
-    const ph = i * 2.39996;
-    return [bx + Math.cos(time * speed + ph) * amp, by + Math.sin(time * speed * 1.3 + ph * 1.7) * amp];
-  });
-}
+import {
+  hexToRgb, metricFromName, jitteredGridFlat, animateSitesFlat,
+  buildSiteGrid, findNearest,
+} from './voronoi-utils';
 
 const parameterSchema: ParameterSchema = {
   shardCount: {
@@ -98,7 +69,7 @@ export const fractured: Generator = {
   family: 'voronoi',
   styleName: 'Fractured',
   definition: 'Two-scale Voronoi fracture pattern simulating shattered glass or stone, with per-shard directional shading',
-  algorithmNotes: 'Primary Voronoi cells define large shards separated by thick cracks. A denser secondary diagram overlays fine fracture lines within each shard. Each shard receives a seeded random tilt direction that creates a brightness gradient, giving the impression of independently angled 3D facets.',
+  algorithmNotes: 'Dual spatial-grid acceleration: primary shards and secondary fractures each get their own grid for O(~20) lookups instead of O(n). Flat Float64Array sites, squared-distance inner loop for Euclidean. Per-shard seeded tilt creates directional brightness gradient.',
   parameterSchema,
   defaultParams: {
     shardCount: 25, fractureCount: 60, crackWidth: 1.5, fractureWidth: 0.8,
@@ -114,23 +85,27 @@ export const fractured: Generator = {
     const rng = new SeededRNG(seed);
     const shardCount = Math.max(5, params.shardCount | 0);
     const fractureCount = Math.max(10, params.fractureCount | 0);
-    const metric = params.distanceMetric || 'Euclidean';
+    const metric = metricFromName(params.distanceMetric || 'Euclidean');
     const crackW = params.crackWidth ?? 1.5;
     const fracW = params.fractureWidth ?? 0.8;
     const shadeStr = params.shadeStrength ?? 0.5;
 
-    const baseShards = jitteredGrid(shardCount, w, h, rng);
-    const baseFractures = jitteredGrid(fractureCount, w, h, rng);
+    const baseShards = jitteredGridFlat(shardCount, w, h, rng);
+    const baseFractures = jitteredGridFlat(fractureCount, w, h, rng);
 
     // Per-shard random tilt direction (fixed by seed)
-    const tiltAngle: number[] = Array.from({ length: shardCount }, () => rng.random() * Math.PI * 2);
+    const tiltAngle = new Float64Array(shardCount);
+    for (let i = 0; i < shardCount; i++) tiltAngle[i] = rng.random() * Math.PI * 2;
 
     const avgCellSize = Math.sqrt((w * h) / shardCount);
     const amp = (params.animAmp ?? 0.15) * avgCellSize;
     const speed = params.animSpeed ?? 0.3;
-    const shards = time > 0 && amp > 0 ? animateSites(baseShards, amp, speed, time) : baseShards;
-    // Fractures move at half amplitude for a parallax-like effect
-    const fractures = time > 0 && amp > 0 ? animateSites(baseFractures, amp * 0.5, speed, time) : baseFractures;
+    const shards = time > 0 && amp > 0 ? animateSitesFlat(baseShards, shardCount, amp, speed, time) : baseShards;
+    const fractures = time > 0 && amp > 0 ? animateSitesFlat(baseFractures, fractureCount, amp * 0.5, speed, time) : baseFractures;
+
+    // Build TWO spatial grids — one per site set
+    const shardGrid = buildSiteGrid(shards, shardCount, w, h);
+    const fractureGrid = buildSiteGrid(fractures, fractureCount, w, h);
 
     const colors = palette.colors.map(hexToRgb);
     const step = quality === 'draft' ? 3 : quality === 'balanced' ? 2 : 1;
@@ -139,24 +114,14 @@ export const fractured: Generator = {
 
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
-        // Primary Voronoi (shards)
-        let d1p = Infinity, d2p = Infinity, nearestP = 0;
-        for (let i = 0; i < shardCount; i++) {
-          const d = getDist(metric, x, y, shards[i][0], shards[i][1]);
-          if (d < d1p) { d2p = d1p; d1p = d; nearestP = i; }
-          else if (d < d2p) { d2p = d; }
-        }
+        // Primary Voronoi (shards) — grid-accelerated
+        const sp = findNearest(x, y, shards, shardGrid, metric);
 
-        // Secondary Voronoi (fractures)
-        let d1s = Infinity, d2s = Infinity;
-        for (let i = 0; i < fractureCount; i++) {
-          const d = getDist(metric, x, y, fractures[i][0], fractures[i][1]);
-          if (d < d1s) { d2s = d1s; d1s = d; }
-          else if (d < d2s) { d2s = d; }
-        }
+        // Secondary Voronoi (fractures) — grid-accelerated
+        const sf = findNearest(x, y, fractures, fractureGrid, metric);
 
-        const isPrimary = crackW > 0 && (d2p - d1p) < crackW;
-        const isFracture = !isPrimary && fracW > 0 && (d2s - d1s) < fracW;
+        const isPrimary = crackW > 0 && (sp.d2 - sp.d1) < crackW;
+        const isFracture = !isPrimary && fracW > 0 && (sf.d2 - sf.d1) < fracW;
 
         let r: number, g: number, b: number;
 
@@ -165,13 +130,14 @@ export const fractured: Generator = {
         } else if (isFracture) {
           r = g = b = 18;
         } else {
-          // Base cell color
+          const nearestP = sp.nearest;
           let base: [number, number, number];
           if (params.colorMode === 'monochrome') {
             const v = 60 + (nearestP % 12) * 15;
             base = [Math.min(255, v), Math.min(255, v), Math.min(255, v)];
           } else if (params.colorMode === 'palette-gradient') {
-            const t = (shards[nearestP][0] / w + shards[nearestP][1] / h) / 2;
+            const si2 = nearestP * 2;
+            const t = (shards[si2] / w + shards[si2 + 1] / h) / 2;
             const ci = t * (colors.length - 1);
             const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
             const f = ci - i0;
@@ -184,10 +150,10 @@ export const fractured: Generator = {
             base = colors[nearestP % colors.length];
           }
 
-          // Directional shading — linear gradient within each shard to suggest tilt
           if (shadeStr > 0) {
             const ta = tiltAngle[nearestP];
-            const dx = x - shards[nearestP][0], dy = y - shards[nearestP][1];
+            const si2 = nearestP * 2;
+            const dx = x - shards[si2], dy = y - shards[si2 + 1];
             const dot = (Math.cos(ta) * dx + Math.sin(ta) * dy) / (avgCellSize * 0.65);
             const sc = Math.max(0.25, Math.min(1.75, 1 + dot * shadeStr * 0.55));
             base = [

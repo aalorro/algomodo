@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **New Procedural family (6 generators):**
 
 - **Feedback Systems** — iterative zoom, rotate, and color-shift feedback loops creating fractal-like recursive patterns
-- **Procedural VFX** — TouchDesigner-style texture operations: FBM noise → displacement warp → quantize → Sobel edge detect → palette color ramp
+- **Warp** — coordinate-warp visual effects: spiral, tunnel, ripple, and kaleidoscope modes with chromatic aberration and multi-layer domain warping
 - **Field + Particle Motion** — vector field visualization with particles tracing flow lines through curl noise, attractors, vortices, or dipole fields
 - **Instanced Geometry** — many copies of a base shape arranged in grids, spirals, or radial patterns with wave-propagation animation
 - **Audio-Reactive Control Systems** — simulated audio spectrum visualization with bars, radial, rings, and waveform styles; uses real audio when uploaded

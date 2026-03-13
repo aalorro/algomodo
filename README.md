@@ -198,7 +198,7 @@ Audio-reactive procedural generators with real-time animation and optional audio
 | Name | Key Feature |
 |---|---|
 | **Feedback Systems** | Iterative zoom, rotate, and color-shift feedback loops creating fractal-like recursive patterns from seed shapes (circles, lines, grid, spiral) |
-| **Procedural VFX** | TouchDesigner-style texture ops: FBM noise → displacement warp → quantize → Sobel edge detect → palette color ramp with configurable operation chain |
+| **Warp** | Coordinate-warp visual effects: spiral, tunnel, ripple, and kaleidoscope modes with chromatic aberration and multi-layer domain warping |
 | **Field + Particle Motion** | Vector field visualization: particles trace flow lines through curl noise, point attractors, tangential vortices, or two-pole dipole fields |
 | **Instanced Geometry** | Many copies of a parametric shape (triangle, hexagon, circle, square, star) in grid, radial, golden-angle spiral, or scatter arrangements with wave animation |
 | **Audio-Reactive** | Simulated audio spectrum visualization (bars, radial spokes, concentric rings, waveform); uses real uploaded audio when available |
