@@ -62,7 +62,7 @@ export const edgeGlow: Generator = {
   styleName: 'Edge + Glow',
   definition: 'Neon edge detection on noise fields — glowing contour lines, gradient edges, ridges, and circuit-board step patterns against dark backgrounds',
   algorithmNotes:
-    'Evaluates multi-octave value noise (FBM) per pixel and detects edges via four methods: contour mode finds iso-lines at regular noise intervals using fractional banding; gradient mode computes edge strength from finite-difference gradient magnitude; ridge mode uses the Laplacian (second derivative) to highlight curvature peaks; circuit mode quantizes noise into discrete steps and detects boundaries between them. Edge strength is converted to glow brightness via a power curve and exponential falloff. Color is mapped from the palette ramp indexed by noise value, then multiplied by brightness. Audio bass modulates glow intensity, high modulates edge sharpness.',
+    'Evaluates multi-octave value noise (FBM) per pixel and detects edges via four methods: contour mode finds iso-lines at regular noise intervals using fractional banding; gradient mode computes edge strength from single-octave finite differences (FBM only for center value); ridge mode uses single-octave Laplacian for curvature peaks; circuit mode detects quantized step boundaries with single-octave neighbors. Edge strength is converted to glow brightness via a precomputed 256-entry power LUT, eliminating per-pixel Math.pow. Color is mapped from the palette ramp indexed by noise value, then multiplied by brightness. Audio bass modulates glow intensity, high modulates edge sharpness.',
   parameterSchema,
   defaultParams: {
     edgeMode: 'contour', noiseScale: 3.0, edgeWidth: 1.5, glowRadius: 0.5,
@@ -127,16 +127,30 @@ export const edgeGlow: Generator = {
       return p + sy * (q - p);
     };
 
-    // FBM — returns approx [-1, 1]
-    const fbm = (x: number, y: number, oct: number): number => {
-      let val = 0, amp = 1, freq = 1, total = 0;
-      for (let o = 0; o < oct; o++) {
-        val += vN(x * freq, y * freq) * amp;
-        total += amp;
-        freq *= 2;
-        amp *= 0.5;
+    // Quality-capped octaves
+    const maxOct = Math.min(nOct, quality === 'draft' ? 1 : quality === 'ultra' ? nOct : 2);
+
+    // Precompute FBM weights
+    const fbmAmp = new Float64Array(maxOct);
+    const fbmFreq = new Float64Array(maxOct);
+    let fbmTotalW = 0;
+    { let amp = 1, freq = 1;
+      for (let o = 0; o < maxOct; o++) {
+        fbmAmp[o] = amp;
+        fbmFreq[o] = freq;
+        fbmTotalW += amp;
+        freq *= 2; amp *= 0.5;
       }
-      return val / total;
+    }
+    const fbmInvTotal = 1 / fbmTotalW;
+
+    // FBM with precomputed weights — used only for center noise value
+    const fbm = (x: number, y: number): number => {
+      let val = 0;
+      for (let o = 0; o < maxOct; o++) {
+        val += vN(x * fbmFreq[o], y * fbmFreq[o]) * fbmAmp[o];
+      }
+      return val * fbmInvTotal;
     };
 
     // ── Precomputed palette ramp (256 entries) ───────────────────
@@ -160,17 +174,34 @@ export const edgeGlow: Generator = {
     // ── Precompute geometry ──────────────────────────────────────
     const halfW = w * 0.5, halfH = h * 0.5;
     const invDim = 1 / Math.min(w, h);
+    const invDim2 = invDim * 2;
 
     // Finite-difference epsilon (in noise space)
     const eps = 0.02;
+    const circuitEps = eps * 3;
 
-    // Quality-capped octaves
-    const maxOct = Math.min(nOct, quality === 'draft' ? 1 : quality === 'ultra' ? nOct : 2);
-
-    // Glow power — controls edge sharpness
+    // ── Precomputed brightness LUT — eliminates per-pixel Math.pow ──
     const glowPow = 1 / Math.max(0.1, effEdgeW);
-    // Glow falloff
-    const glowFalloff = glowR > 0.01 ? 4 / glowR : 100;
+    const hasGlowR = glowR > 0.01;
+    const glowFalloff = hasGlowR ? 4 / glowR : 100;
+    const ambientGlow = hasGlowR ? Math.exp(-glowFalloff) * effGlow * 0.1 : 0;
+
+    const brightnessLUT = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const edge = i / 255;
+      if (edge > 0.004) { // ~= 1/255
+        const sharp = Math.pow(edge, glowPow);
+        const soft = hasGlowR ? Math.exp(-((1 - edge) * glowFalloff)) * 0.3 : 0;
+        let b = (sharp + soft) * effGlow;
+        if (b > 1) b = 1;
+        brightnessLUT[i] = b;
+      } else {
+        brightnessLUT[i] = ambientGlow > 1 ? 1 : ambientGlow;
+      }
+    }
+
+    // Time offset
+    const tOff = t * 0.15;
 
     // ── Image output buffer ──────────────────────────────────────
     const imgData = ctx.createImageData(w, h);
@@ -185,68 +216,59 @@ export const edgeGlow: Generator = {
     // ── Main pixel loop ──────────────────────────────────────────
     for (let gy = 0; gy < rows; gy++) {
       const py = gy * step;
-      const v = (py - halfH) * invDim * 2;
+      const v = (py - halfH) * invDim2;
 
       for (let gx = 0; gx < cols; gx++) {
         const px = gx * step;
-        const u = (px - halfW) * invDim * 2;
+        const u = (px - halfW) * invDim2;
 
         // Noise coordinates
         const nx = u * scl;
-        const ny = v * scl + t * 0.15;
+        const ny = v * scl + tOff;
 
-        // Evaluate noise at center
-        const n = fbm(nx, ny, maxOct);
+        // Center noise — uses FBM (maxOct vN calls)
+        const n = fbm(nx, ny);
 
         // Compute edge strength by mode
+        // Gradient/ridge/circuit: use single vN for neighbors (not FBM)
+        // This saves (maxOct-1)*N vN calls per pixel
         let edge: number;
 
         if (modeId === 0) {
-          // contour — iso-line banding
+          // contour — iso-line banding (0 extra vN calls)
           const band = n * Q;
           const frac = band - Math.floor(band);
-          // Triangle wave centered on band boundaries
           edge = 1 - Math.abs(frac * 2 - 1);
-          // Sharpen
           edge = edge * edge * edge;
         } else if (modeId === 1) {
-          // gradient — edge detection via gradient magnitude
-          const gx2 = fbm(nx + eps, ny, maxOct) - fbm(nx - eps, ny, maxOct);
-          const gy2 = fbm(nx, ny + eps, maxOct) - fbm(nx, ny - eps, maxOct);
+          // gradient — single-octave finite differences (+4 vN calls)
+          const gx2 = vN(nx + eps, ny) - vN(nx - eps, ny);
+          const gy2 = vN(nx, ny + eps) - vN(nx, ny - eps);
           edge = Math.sqrt(gx2 * gx2 + gy2 * gy2) / (eps * 2);
-          // Normalize to reasonable range
-          edge = Math.min(1, edge * 1.5);
+          if (edge > 1) edge = 1; else edge *= 1.5;
+          if (edge > 1) edge = 1;
         } else if (modeId === 2) {
-          // ridge — Laplacian (second derivative)
-          const nPx = fbm(nx + eps, ny, maxOct);
-          const nMx = fbm(nx - eps, ny, maxOct);
-          const nPy = fbm(nx, ny + eps, maxOct);
-          const nMy = fbm(nx, ny - eps, maxOct);
+          // ridge — single-octave Laplacian (+4 vN calls)
+          const nPx = vN(nx + eps, ny);
+          const nMx = vN(nx - eps, ny);
+          const nPy = vN(nx, ny + eps);
+          const nMy = vN(nx, ny - eps);
           const laplacian = nPx + nMx + nPy + nMy - 4 * n;
           edge = Math.abs(laplacian) / (eps * eps) * 0.15;
-          edge = Math.min(1, edge);
+          if (edge > 1) edge = 1;
         } else {
-          // circuit — hard step boundaries
-          const nRight = fbm(nx + eps * 3, ny, maxOct);
-          const nDown = fbm(nx, ny + eps * 3, maxOct);
-          const q1 = Math.floor((n * 0.5 + 0.5) * Q);
-          const q2 = Math.floor((nRight * 0.5 + 0.5) * Q);
-          const q3 = Math.floor((nDown * 0.5 + 0.5) * Q);
+          // circuit — single-octave neighbors (+2 vN calls)
+          const nRight = vN(nx + circuitEps, ny);
+          const nDown = vN(nx, ny + circuitEps);
+          const q1 = (n * 0.5 + 0.5) * Q | 0;
+          const q2 = (nRight * 0.5 + 0.5) * Q | 0;
+          const q3 = (nDown * 0.5 + 0.5) * Q | 0;
           edge = (q1 !== q2 || q1 !== q3) ? 1 : 0;
         }
 
-        // Apply glow brightness
-        let brightness: number;
-        if (edge > 0.01) {
-          const sharp = Math.pow(edge, glowPow);
-          const soft = glowR > 0.01 ? Math.exp(-((1 - edge) * glowFalloff)) * 0.3 : 0;
-          brightness = (sharp + soft) * effGlow;
-        } else {
-          // Ambient glow from nearby edges
-          brightness = glowR > 0.01 ? Math.exp(-glowFalloff) * effGlow * 0.1 : 0;
-        }
-
-        if (brightness > 1) brightness = 1;
+        // Brightness from LUT — no per-pixel pow/exp
+        const edgeIdx = (edge * 255) | 0;
+        const brightness = brightnessLUT[edgeIdx < 256 ? edgeIdx : 255];
 
         // Color from palette indexed by noise value
         let colorVal = n * 0.5 + 0.5;
@@ -287,8 +309,7 @@ export const edgeGlow: Generator = {
   estimateCost(params) {
     const oct = params.octaves ?? 2;
     const mode = params.edgeMode || 'contour';
-    // gradient/ridge/circuit need extra noise calls per pixel
-    const modeMult = mode === 'contour' ? 1 : mode === 'gradient' ? 3 : mode === 'ridge' ? 3 : 2;
+    const modeMult = mode === 'contour' ? 1 : mode === 'gradient' ? 1.5 : mode === 'ridge' ? 1.5 : 1.3;
     return Math.round(oct * 60 * modeMult + 80);
   },
 };

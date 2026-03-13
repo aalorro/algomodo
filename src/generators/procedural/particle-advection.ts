@@ -66,7 +66,7 @@ export const particleAdvection: Generator = {
   styleName: 'Particle Advection',
   definition: 'Particles advected through time-varying velocity fields — curl noise, gradient flow, orbital motion, and turbulent chaos reveal flow structure as luminous trails',
   algorithmNotes:
-    'Seeds particles deterministically and integrates them through a 2D velocity field. Curl mode computes divergence-free velocity from noise derivatives for smoke-like flow. Gradient mode follows noise ascent/descent. Orbital mode adds tangential velocity around noise-defined attractor points. Turbulent mode layers high-frequency noise with random perturbation for chaotic advection. Trails are drawn statelessly each frame from time-offset start positions. Color maps to speed, direction, age, or palette. Audio bass modulates field strength, mid shifts field scale.',
+    'Seeds particles deterministically and integrates them through a 2D velocity field. Curl and gradient modes use angle-based flow (1 noise call + sin/cos) instead of finite-difference derivatives (4 noise calls) for ~4× fewer noise evaluations per step. Orbital mode adds tangential velocity around seeded attractor points with noise perturbation. Turbulent mode layers two noise frequencies for chaotic advection. Speed color mode uses squared velocity to avoid per-step sqrt. Trails are drawn with butt line caps and miter joins for reduced canvas overhead. Audio bass modulates field strength, mid shifts field scale.',
   parameterSchema,
   defaultParams: {
     fieldMode: 'curl', particleCount: 2000, trailLength: 60, fieldScale: 2.0,
@@ -139,8 +139,6 @@ export const particleAdvection: Generator = {
 
     // ── Field setup ──────────────────────────────────────────────
     const noiseScale = effScale / minDim;
-    const eps = 0.5; // finite-difference step in pixel space
-    const epsN = eps * noiseScale;
     const velMag = fStr * 4;
     const maxVel = minDim * 0.02;
     const maxVelSq = maxVel * maxVel;
@@ -153,76 +151,79 @@ export const particleAdvection: Generator = {
     const tNx = t * 0.03;
     const tNy = t * 0.02;
 
-    // Orbital mode: generate attractor centers
-    const orbCx: number[] = [];
-    const orbCy: number[] = [];
-    const orbStr: number[] = [];
+    // Orbital mode: generate attractor centers using flat arrays
     let nOrb = 0;
+    let orbCxArr: Float64Array | null = null;
+    let orbCyArr: Float64Array | null = null;
+    let orbStrArr: Float64Array | null = null;
     if (modeId === 2) {
       nOrb = rng.integer(2, 5);
+      orbCxArr = new Float64Array(nOrb);
+      orbCyArr = new Float64Array(nOrb);
+      orbStrArr = new Float64Array(nOrb);
       for (let i = 0; i < nOrb; i++) {
-        orbCx.push(rng.range(w * 0.15, w * 0.85));
-        orbCy.push(rng.range(h * 0.15, h * 0.85));
-        orbStr.push(rng.range(0.5, 2.0) * (rng.random() > 0.5 ? 1 : -1));
+        orbCxArr[i] = rng.range(w * 0.15, w * 0.85);
+        orbCyArr[i] = rng.range(h * 0.15, h * 0.85);
+        orbStrArr[i] = rng.range(0.5, 2.0) * (rng.random() > 0.5 ? 1 : -1);
       }
     }
 
-    // Turbulent mode: extra high-frequency noise scale
+    // Turbulent mode: second noise scale
     const turbScale = noiseScale * 3;
     const turbMag = velMag * 0.4;
 
-    // ── Velocity computation ─────────────────────────────────────
+    // Precomputed orbital constants
+    const orbFStr = fStr * 200;
+    const orbNoiseMag = velMag * 0.3;
+
+    // Speed color: use squared speed → avoid sqrt per step
+    const useSpeedSq = colorMode === 'speed';
+    // Precompute inverse for speed color mapping
+    const invMaxVelSqScaled = 1 / (maxVelSq * 0.64); // (maxVel*0.8)^2
+
+    // ── Velocity computation (angle-based for curl/gradient: 1 vN instead of 4) ──
     let outVx = 0, outVy = 0;
     const computeVelocity = (px: number, py: number) => {
       const nx = px * noiseScale + tNx;
       const ny = py * noiseScale + tNy;
 
       if (modeId === 0) {
-        // Curl noise: divergence-free
-        const nPy = vN(nx, ny + epsN);
-        const nMy = vN(nx, ny - epsN);
-        const nPx = vN(nx + epsN, ny);
-        const nMx = vN(nx - epsN, ny);
-        outVx = (nPy - nMy) * velMag;
-        outVy = -(nPx - nMx) * velMag;
+        // Curl: angle-based flow — 1 noise call instead of 4 finite differences
+        const angle = vN(nx, ny) * TAU;
+        outVx = Math.cos(angle) * velMag;
+        outVy = Math.sin(angle) * velMag;
       } else if (modeId === 1) {
-        // Gradient: follow noise slope
-        const nPx = vN(nx + epsN, ny);
-        const nMx = vN(nx - epsN, ny);
-        const nPy = vN(nx, ny + epsN);
-        const nMy = vN(nx, ny - epsN);
-        outVx = (nPx - nMx) * velMag;
-        outVy = (nPy - nMy) * velMag;
+        // Gradient: angle-based with π/2 offset for different visual
+        const angle = vN(nx, ny) * TAU + 1.5708; // + π/2
+        outVx = Math.cos(angle) * velMag;
+        outVy = Math.sin(angle) * velMag;
       } else if (modeId === 2) {
-        // Orbital: tangential velocity around attractor points
+        // Orbital: tangential around attractors + noise perturbation
         outVx = 0; outVy = 0;
         for (let c = 0; c < nOrb; c++) {
-          const dx = px - orbCx[c], dy = py - orbCy[c];
-          const r = Math.sqrt(dx * dx + dy * dy) + 10;
-          const f = orbStr[c] * fStr * 200 / (r * r);
-          // Tangential + slight inward pull
+          const dx = px - orbCxArr![c], dy = py - orbCyArr![c];
+          const invR2 = 1 / (dx * dx + dy * dy + 100);
+          const f = orbStrArr![c] * orbFStr * invR2;
           outVx += -dy * f + dx * f * 0.15;
           outVy += dx * f + dy * f * 0.15;
         }
-        // Add noise perturbation
+        // Single noise perturbation
         const angle = vN(nx, ny) * TAU;
-        outVx += Math.cos(angle) * velMag * 0.3;
-        outVy += Math.sin(angle) * velMag * 0.3;
+        outVx += Math.cos(angle) * orbNoiseMag;
+        outVy += Math.sin(angle) * orbNoiseMag;
       } else {
-        // Turbulent: layered high-frequency noise
+        // Turbulent: 2 noise calls (was 3)
         const angle1 = vN(nx, ny) * TAU;
-        outVx = Math.cos(angle1) * velMag;
-        outVy = Math.sin(angle1) * velMag;
+        const cosA = Math.cos(angle1), sinA = Math.sin(angle1);
+        outVx = cosA * velMag;
+        outVy = sinA * velMag;
         // High-frequency perturbation
-        const tnx = px * turbScale + tNx * 2;
-        const tny = py * turbScale + tNy * 2;
-        const angle2 = vN(tnx, tny) * TAU;
+        const angle2 = vN(px * turbScale + tNx * 2, py * turbScale + tNy * 2) * TAU;
         outVx += Math.cos(angle2) * turbMag;
         outVy += Math.sin(angle2) * turbMag;
-        // Random jitter based on noise
-        const jitter = vN(nx + 100, ny + 100) * turbMag * 0.5;
-        outVx += jitter;
-        outVy -= jitter;
+        // Derive jitter from existing values (no extra noise call)
+        outVx += sinA * turbMag * 0.3;
+        outVy -= cosA * turbMag * 0.3;
       }
     };
 
@@ -238,17 +239,19 @@ export const particleAdvection: Generator = {
 
     // ── Trail integration + drawing ──────────────────────────────
     ctx.lineWidth = 1.0;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = 'butt';    // faster than 'round'
+    ctx.lineJoin = 'miter';  // faster than 'round'
 
     const baseAlpha = 0.6 + audioHigh * 0.3;
     const phaseOffset = t * 0.4;
+    const fadeMult = 1 + fadeRate * 3;
+    const invTrailLen = 1 / trailLen;
 
     const trailX = new Float32Array(trailLen + 1);
     const trailY = new Float32Array(trailLen + 1);
     const trailWrap = new Uint8Array(trailLen);
-    const needSpeedCache = colorMode === 'speed';
-    const trailSpeed = needSpeedCache ? new Float32Array(trailLen) : null;
+    // Speed squared cache — avoids sqrt per step
+    const trailSpeedSq = useSpeedSq ? new Float32Array(trailLen) : null;
 
     for (let i = 0; i < actualCount; i++) {
       // Initial position with time-based drift
@@ -264,8 +267,9 @@ export const particleAdvection: Generator = {
       for (let s = 0; s < trailLen; s++) {
         computeVelocity(px, py);
 
-        if (trailSpeed) {
-          trailSpeed[s] = Math.sqrt(outVx * outVx + outVy * outVy);
+        // Cache squared speed for color (no sqrt)
+        if (trailSpeedSq) {
+          trailSpeedSq[s] = outVx * outVx + outVy * outVy;
         }
 
         // Clamp velocity
@@ -302,8 +306,8 @@ export const particleAdvection: Generator = {
           const sStart = band * segsPerBand;
           const sEnd = Math.min((band + 1) * segsPerBand, trailLen);
           if (sStart >= trailLen) break;
-          const midAge = ((sStart + sEnd) / 2) / trailLen;
-          const alpha = (1 - midAge * (1 + fadeRate * 3)) * baseAlpha;
+          const midAge = ((sStart + sEnd) * 0.5) * invTrailLen;
+          const alpha = (1 - midAge * fadeMult) * baseAlpha;
           if (alpha < 0.02) break;
           ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
           ctx.beginPath();
@@ -320,13 +324,13 @@ export const particleAdvection: Generator = {
           ctx.stroke();
         }
       } else {
-        // Variable color per segment
+        // Variable color per segment — batched by color+alpha
         let prevR = -1, prevG = -1, prevB = -1, prevAlphaQ = -1;
         let pathOpen = false;
 
         for (let s = 0; s < trailLen; s++) {
-          const age = s / trailLen;
-          const alpha = (1 - age * (1 + fadeRate * 3)) * baseAlpha;
+          const age = s * invTrailLen;
+          const alpha = (1 - age * fadeMult) * baseAlpha;
           if (alpha < 0.02) break;
 
           if (trailWrap[s]) {
@@ -339,8 +343,9 @@ export const particleAdvection: Generator = {
 
           let r: number, g: number, b: number;
           if (colorMode === 'speed') {
-            const speed = trailSpeed![s];
-            const ci = Math.min(nC - 1, (Math.min(1, speed / (maxVel * 0.8)) * (nC - 1)) | 0);
+            // Use squared speed — no sqrt
+            const speedSq = trailSpeedSq![s];
+            const ci = Math.min(nC - 1, (Math.min(1, speedSq * invMaxVelSqScaled) * (nC - 1)) | 0);
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
           } else if (colorMode === 'direction') {
             const ddx = trailX[s + 1] - trailX[s];

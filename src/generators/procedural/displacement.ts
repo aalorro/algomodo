@@ -59,7 +59,7 @@ export const displacement: Generator = {
   styleName: 'Displacement',
   definition: 'Noise-driven UV displacement mapping — pixels are offset through vector fields to create organic distortion, fracture, radial ripple, and wave effects',
   algorithmNotes:
-    'Computes a 2D displacement vector per pixel from multi-octave value noise (FBM). Flow mode applies smooth continuous displacement; fracture quantizes noise to create hard blocky edges; radial scales displacement by distance from center for ripple patterns; wave wraps noise through sinusoidal functions for banded distortion. Color is sampled from a second noise evaluation at the displaced coordinate. Chromatic aberration offsets RGB channels along the displacement gradient. Audio bass modulates displacement strength, mid modulates field scale.',
+    'Computes a 2D displacement vector per pixel from multi-octave value noise (FBM). Flow mode applies smooth continuous displacement; fracture quantizes noise to create hard blocky edges; radial scales displacement by distance from center for ripple patterns; wave wraps noise through sinusoidal functions for banded distortion. Color is derived from displacement noise values with a single extra lookup, avoiding redundant evaluations. Chromatic aberration offsets RGB channels along the displacement gradient. Distortion warp is skipped when the distortion parameter is near zero. Audio bass modulates displacement strength, mid modulates field scale.',
   parameterSchema,
   defaultParams: {
     mode: 'flow', strength: 0.15, scale: 2.0, octaves: 3,
@@ -123,18 +123,6 @@ export const displacement: Generator = {
       return p + sy * (q - p);
     };
 
-    // FBM helper — returns value in approx [-1, 1]
-    const fbm = (x: number, y: number, oct: number): number => {
-      let val = 0, amp = 1, freq = 1, total = 0;
-      for (let o = 0; o < oct; o++) {
-        val += vN(x * freq, y * freq) * amp;
-        total += amp;
-        freq *= 2;
-        amp *= 0.5;
-      }
-      return val / total;
-    };
-
     // ── Precomputed palette ramp (256 entries) ───────────────────
     const rawColors = palette.colors.map(hexToRgb);
     const nC = rawColors.length;
@@ -156,11 +144,58 @@ export const displacement: Generator = {
     // ── Precompute geometry ──────────────────────────────────────
     const halfW = w * 0.5, halfH = h * 0.5;
     const invDim = 1 / Math.min(w, h);
+    const invDim2 = invDim * 2;
     const caScale = ca * 0.5;
     const doCa = ca > 0.01;
+    const doDist = dist > 0.01;
+    const warpAmt = dist * 0.5;
 
     // Quality-capped octaves
     const maxOct = Math.min(nOct, quality === 'draft' ? 1 : quality === 'ultra' ? nOct : 2);
+
+    // Precompute FBM weights — avoid per-call division
+    const fbmAmp = new Float64Array(maxOct);
+    const fbmFreq = new Float64Array(maxOct);
+    let fbmTotal = 0;
+    { let amp = 1, freq = 1;
+      for (let o = 0; o < maxOct; o++) {
+        fbmAmp[o] = amp;
+        fbmFreq[o] = freq;
+        fbmTotal += amp;
+        freq *= 2; amp *= 0.5;
+      }
+    }
+    const fbmInvTotal = 1 / fbmTotal;
+
+    // Inline FBM with precomputed weights
+    const fbm = (x: number, y: number): number => {
+      let val = 0;
+      for (let o = 0; o < maxOct; o++) {
+        val += vN(x * fbmFreq[o], y * fbmFreq[o]) * fbmAmp[o];
+      }
+      return val * fbmInvTotal;
+    };
+
+    // Precompute per-mode constants
+    const fractQ = 4 + dist * 8;
+    const fractInvQ = 1 / fractQ;
+    const radialFreq = TAU * (2 + dist * 6);
+    const radialTimeOff = t * 3;
+    const waveFreq = 3 + dist * 10;
+    const waveT1 = t * 2;
+    const waveT2 = t * 1.5;
+
+    // Precompute color lookup scale
+    const colorScl = effScl * 2;
+
+    // Time offsets for displacement FBM
+    const tOff1x = t * 0.1;
+    const tOff1y = t * 0.07;
+    const tOff2x = t * 0.07;
+    const tOff2y = t * 0.1;
+
+    // Distortion noise scale
+    const distNScl = effScl * 2.5;
 
     // ── Image output buffer ──────────────────────────────────────
     const imgData = ctx.createImageData(w, h);
@@ -175,70 +210,68 @@ export const displacement: Generator = {
     // ── Main pixel loop ──────────────────────────────────────────
     for (let gy = 0; gy < rows; gy++) {
       const py = gy * step;
-      const v = (py - halfH) * invDim * 2;
+      const v = (py - halfH) * invDim2;
 
       for (let gx = 0; gx < cols; gx++) {
         const px = gx * step;
-        const u = (px - halfW) * invDim * 2;
+        const u = (px - halfW) * invDim2;
 
         // Coordinates in noise space
         const nx = u * effScl;
         const ny = v * effScl;
 
-        // Compute displacement vector (dx, dy)
+        // Displacement FBM — 2 * maxOct vN calls
+        const n1 = fbm(nx + tOff1x, ny + tOff1y);
+        const n2 = fbm(nx + 31.7 + tOff2x, ny + 17.3 + tOff2y);
+
+        // Compute displacement vector by mode
         let dx: number, dy: number;
 
-        // Base FBM for displacement
-        const n1 = fbm(nx + t * 0.1, ny + t * 0.07, maxOct);
-        const n2 = fbm(nx + 31.7 + t * 0.07, ny + 17.3 + t * 0.1, maxOct);
-
         if (modeId === 0) {
-          // flow — smooth continuous FBM
           dx = n1;
           dy = n2;
         } else if (modeId === 1) {
-          // fracture — quantized sharp edges
-          const Q = 4 + dist * 8;
-          dx = Math.floor(n1 * Q) / Q;
-          dy = Math.floor(n2 * Q) / Q;
+          dx = ((n1 * fractQ) | 0) * fractInvQ;
+          dy = ((n2 * fractQ) | 0) * fractInvQ;
         } else if (modeId === 2) {
-          // radial — displacement scales with distance from center
           const rad = Math.sqrt(u * u + v * v);
-          const radMod = Math.sin(rad * TAU * (2 + dist * 6) - t * 3) * rad;
+          const radMod = Math.sin(rad * radialFreq - radialTimeOff) * rad;
           dx = n1 * radMod;
           dy = n2 * radMod;
         } else {
-          // wave — sinusoidal banding
-          const freq = 3 + dist * 10;
-          dx = Math.sin(n1 * freq + t * 2) * 0.5;
-          dy = Math.cos(n2 * freq + t * 1.5) * 0.5;
+          dx = Math.sin(n1 * waveFreq + waveT1) * 0.5;
+          dy = Math.cos(n2 * waveFreq + waveT2) * 0.5;
         }
 
-        // Apply distortion (domain warp before color lookup)
-        const warpAmt = dist * 0.5;
-        const wu = u + dx * effStr + vN(nx * 2.5 + 50, ny * 2.5) * warpAmt;
-        const wv = v + dy * effStr + vN(nx * 2.5, ny * 2.5 + 50) * warpAmt;
+        // Displaced coordinate
+        let wu = u + dx * effStr;
+        let wv = v + dy * effStr;
 
-        // Color lookup at displaced coordinate
-        const cn1 = vN(wu * effScl * 2, wv * effScl * 2);
-        const cn2 = vN(wu * effScl * 4, wv * effScl * 4);
-        let valG = (cn1 + 0.5 * cn2) * 0.5 + 0.5;
+        // Optional distortion — skip entirely when dist ≈ 0
+        if (doDist) {
+          const dnx = nx * distNScl;
+          const dny = ny * distNScl;
+          wu += vN(dnx + 50, dny) * warpAmt;
+          wv += vN(dnx, dny + 50) * warpAmt;
+        }
+
+        // Color: 1 vN call at displaced coord + reuse n2 for second octave
+        // Instead of 2 separate vN calls, derive color from displaced lookup + n2
+        const cn1 = vN(wu * colorScl, wv * colorScl);
+        let valG = (cn1 + 0.5 * n2) * 0.5 + 0.5;
         if (valG < 0) valG = 0; else if (valG > 1) valG = 1;
 
         let rr: number, gg: number, bb: number;
 
         if (doCa) {
-          const shift = cn2 * caScale;
+          const shift = n2 * caScale;
           let valR = valG + shift;
           let valB = valG - shift;
           if (valR < 0) valR = 0; else if (valR > 1) valR = 1;
           if (valB < 0) valB = 0; else if (valB > 1) valB = 1;
-          const idxR = (valR * 255) | 0;
-          const idxG = (valG * 255) | 0;
-          const idxB = (valB * 255) | 0;
-          rr = rampR[idxR];
-          gg = rampG[idxG];
-          bb = rampB[idxB];
+          rr = rampR[(valR * 255) | 0];
+          gg = rampG[(valG * 255) | 0];
+          bb = rampB[(valB * 255) | 0];
         } else {
           const idx = (valG * 255) | 0;
           rr = rampR[idx];
