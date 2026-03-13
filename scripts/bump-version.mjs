@@ -189,6 +189,16 @@ update('src/components/RightSidebar.tsx', [
   [/Algomodo v\d+\.\d+\.\d+/, `Algomodo v${version}`],
 ]);
 
+// ── 10. App.tsx (footer version) ────────────────────────────────────────────
+update('src/App.tsx', [
+  [/>v\d+\.\d+\.\d+</, `>v${version}<`],
+]);
+
+// ── 11. RoadmapModal.tsx ────────────────────────────────────────────────────
+update('src/components/RoadmapModal.tsx', [
+  [/Current version: <strong>\d+\.\d+\.\d+<\/strong>/, `Current version: <strong>${version}</strong>`],
+]);
+
 // ── Print summary ───────────────────────────────────────────────────────────
 console.log(`\nVersion bump: ${oldVersion} → ${version}`);
 console.log(`Generators: ${genCount}  |  Families: ${familyCount} (${familyNames})`);
