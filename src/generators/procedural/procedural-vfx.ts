@@ -1,5 +1,5 @@
 import type { Generator, ParameterSchema } from '../../types';
-import { SimplexNoise } from '../../core/rng';
+import { SeededRNG } from '../../core/rng';
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
@@ -59,7 +59,7 @@ export const proceduralVfx: Generator = {
   styleName: 'Procedural VFX',
   definition: 'Coordinate-warp visual effects — spiral, tunnel, ripple, and kaleidoscope modes with chromatic aberration and multi-layer domain warping',
   algorithmNotes:
-    'Converts pixel coordinates to polar space and applies mode-specific warps: spiral arms twist angle by radius, ripple pulses concentric rings outward, tunnel maps depth via inverse radius for infinite zoom, kaleidoscope mirrors angular segments. Multiple domain-warp layers displace coordinates through simplex noise for organic flow. Chromatic aberration offsets RGB channel lookups in noise space for prismatic color splitting. All warps react to audio bass and mid energy.',
+    'Converts pixel coordinates to polar space and applies mode-specific warps: spiral arms twist angle by radius, ripple pulses concentric rings outward, tunnel maps depth via inverse radius for infinite zoom, kaleidoscope mirrors angular segments. Multiple domain-warp layers displace coordinates through value noise for organic flow. Chromatic aberration offsets RGB channel lookups using already-computed noise values. All warps react to audio bass and mid energy.',
   parameterSchema,
   defaultParams: {
     warpMode: 'spiral', warpStrength: 2.0, layers: 3, symmetry: 1,
@@ -69,7 +69,7 @@ export const proceduralVfx: Generator = {
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
-    const step = quality === 'draft' ? 3 : quality === 'ultra' ? 1 : 2;
+    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : 2;
 
     const mode = params.warpMode || 'spiral';
     const warpStr = params.warpStrength ?? 2.0;
@@ -85,47 +85,92 @@ export const proceduralVfx: Generator = {
 
     const t = time * spd;
 
-    const noise = new SimplexNoise(seed);
+    // ── Fast hash-based value noise ──────────────────────────────
+    // ~3× faster than SimplexNoise: no gradient conditionals,
+    // simple smoothstep interpolation of hashed values.
+    const rng = new SeededRNG(seed);
+    const PERM = new Uint8Array(512);
+    const VALS = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      PERM[i] = i;
+      VALS[i] = rng.random() * 2 - 1;
+    }
+    for (let i = 255; i > 0; i--) {
+      const j = (rng.random() * (i + 1)) | 0;
+      const tmp = PERM[i]; PERM[i] = PERM[j]; PERM[j] = tmp;
+    }
+    for (let i = 0; i < 256; i++) PERM[i + 256] = PERM[i];
 
-    // Flatten palette into typed arrays
+    // Inline value noise: input any float coords, output [-1, 1]
+    const vN = (x: number, y: number): number => {
+      // Bias to ensure positive before integer truncation
+      const xb = x + 65536, yb = y + 65536;
+      const xi = xb | 0, yi = yb | 0;
+      const fx = xb - xi, fy = yb - yi;
+      const X = xi & 255, Y = yi & 255;
+      // Smoothstep (Hermite)
+      const sx = fx * fx * (3 - 2 * fx);
+      const sy = fy * fy * (3 - 2 * fy);
+      const py0 = PERM[Y], py1 = PERM[Y + 1];
+      const a = VALS[PERM[X + py0]];
+      const b = VALS[PERM[X + 1 + py0]];
+      const c = VALS[PERM[X + py1]];
+      const d = VALS[PERM[X + 1 + py1]];
+      const p = a + sx * (b - a);
+      const q = c + sx * (d - c);
+      return p + sy * (q - p);
+    };
+
+    // ── Precomputed palette ramp (256 entries) ───────────────────
+    // Eliminates per-pixel palette interpolation: just index by value.
     const rawColors = palette.colors.map(hexToRgb);
     const nC = rawColors.length;
-    const palR = new Uint8Array(nC);
-    const palG = new Uint8Array(nC);
-    const palB = new Uint8Array(nC);
-    for (let i = 0; i < nC; i++) {
-      palR[i] = rawColors[i][0];
-      palG[i] = rawColors[i][1];
-      palB[i] = rawColors[i][2];
-    }
     const nCm1 = nC - 1;
+    const rampR = new Uint8Array(256);
+    const rampG = new Uint8Array(256);
+    const rampB = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) {
+      const tv = i / 255;
+      const ci = tv * nCm1;
+      const i0 = ci | 0;
+      const i1 = i0 < nCm1 ? i0 + 1 : nCm1;
+      const f = ci - i0;
+      rampR[i] = (rawColors[i0][0] + (rawColors[i1][0] - rawColors[i0][0]) * f) | 0;
+      rampG[i] = (rawColors[i0][1] + (rawColors[i1][1] - rawColors[i0][1]) * f) | 0;
+      rampB[i] = (rawColors[i0][2] + (rawColors[i1][2] - rawColors[i0][2]) * f) | 0;
+    }
 
-    const halfW = w * 0.5;
-    const halfH = h * 0.5;
+    // ── Precompute constants ─────────────────────────────────────
+    const halfW = w * 0.5, halfH = h * 0.5;
     const invScale = zoomVal / (Math.min(w, h) * 0.5);
     const segAngle = sym > 1 ? TAU / sym : 0;
 
-    const caOff = ca * 0.12;
+    const caScale = ca * 0.6;
     const doCa = ca > 0.01;
 
-    // Precompute layer constants
-    const layerFreq = new Float64Array(nLayers);
-    const layerAmp = new Float64Array(nLayers);
-    const layerOff = new Float64Array(nLayers);
-    for (let l = 0; l < nLayers; l++) {
+    // Mode → integer for fast dispatch (no per-pixel string comparison)
+    const modeId = mode === 'spiral' ? 0 : mode === 'ripple' ? 1 : mode === 'tunnel' ? 2 : 3;
+
+    // Mode-specific constants
+    const warpAudio = 1 + audioBass * 2;
+    const rippleFreq = 6 + audioMid * 4;
+    const cosRot = Math.cos(t * 0.2);
+    const sinRot = Math.sin(t * 0.2);
+
+    // Cap warp layers by quality to reduce noise calls
+    const maxLayers = Math.min(nLayers, quality === 'draft' ? 1 : quality === 'ultra' ? nLayers : 2);
+    const layerFreq = new Float64Array(maxLayers);
+    const layerAmp = new Float64Array(maxLayers);
+    const layerOff = new Float64Array(maxLayers);
+    const layerT = new Float64Array(maxLayers);
+    for (let l = 0; l < maxLayers; l++) {
       layerFreq[l] = 1.5 + l * 0.8;
       layerAmp[l] = 0.4 / (1 + l * 0.5);
       layerOff[l] = l * 13.7;
+      layerT[l] = t * (0.08 + l * 0.02);
     }
 
-    // Mode-specific precomputed constants
-    const warpAudio = 1 + audioBass * 2;
-    const rippleFreq = 6 + audioMid * 4;
-    const rotAngle = t * 0.2;
-    const cosRot = Math.cos(rotAngle);
-    const sinRot = Math.sin(rotAngle);
-
-    // Image output
+    // ── Image output buffer ──────────────────────────────────────
     const imgData = ctx.createImageData(w, h);
     const data = imgData.data;
     const buf32 = new Uint32Array(data.buffer);
@@ -135,86 +180,109 @@ export const proceduralVfx: Generator = {
     const cols = Math.ceil(w / step);
     const rows = Math.ceil(h / step);
 
+    // ── Main pixel loop ──────────────────────────────────────────
     for (let gy = 0; gy < rows; gy++) {
       const py = gy * step;
       const cyRaw = (py - halfH) * invScale;
+      const cyRaw2 = cyRaw * cyRaw;
 
       for (let gx = 0; gx < cols; gx++) {
         const px = gx * step;
         const cxRaw = (px - halfW) * invScale;
 
-        const rad = Math.sqrt(cxRaw * cxRaw + cyRaw * cyRaw);
-        let ang = Math.atan2(cyRaw, cxRaw);
+        const radSq = cxRaw * cxRaw + cyRaw2;
+        const rad = Math.sqrt(radSq);
 
-        // Symmetry fold
-        if (sym > 1) {
-          ang = ((ang % TAU) + TAU) % TAU;
-          const seg = (ang / segAngle) | 0;
-          ang = ang - seg * segAngle;
-          if (seg & 1) ang = segAngle - ang;
+        // Symmetry fold (only compute atan2 when needed)
+        let ang = 0;
+        if (sym > 1 || modeId === 0 || modeId === 2) {
+          ang = Math.atan2(cyRaw, cxRaw);
+          if (sym > 1) {
+            ang = ((ang % TAU) + TAU) % TAU;
+            const seg = (ang / segAngle) | 0;
+            ang = ang - seg * segAngle;
+            if (seg & 1) ang = segAngle - ang;
+          }
         }
 
         // Warp mode → (u, v)
         let u: number, v: number;
 
-        if (mode === 'spiral') {
+        if (modeId === 0) {
+          // spiral
           u = rad * 2;
           v = ang + rad * warpStr * warpAudio + t;
-        } else if (mode === 'ripple') {
+        } else if (modeId === 1) {
+          // ripple
           const disp = Math.sin(rad * rippleFreq - t * 3) * warpStr * 0.3 * warpAudio;
           const invR = rad > 0.001 ? disp / rad : 0;
-          u = cxRaw + cxRaw * invR;
-          v = cyRaw + cyRaw * invR;
-        } else if (mode === 'tunnel') {
+          if (sym > 1) {
+            const cx2 = rad * Math.cos(ang);
+            const cy2 = rad * Math.sin(ang);
+            u = cx2 + cx2 * invR;
+            v = cy2 + cy2 * invR;
+          } else {
+            u = cxRaw + cxRaw * invR;
+            v = cyRaw + cyRaw * invR;
+          }
+        } else if (modeId === 2) {
+          // tunnel
           u = ang / TAU * 3;
           v = 0.5 / (rad + 0.01) + t * 2;
         } else {
-          // kaleidoscope: rotating warp with sinusoidal displacement
-          u = cxRaw * cosRot - cyRaw * sinRot + Math.sin(rad * 3 - t) * warpStr * 0.5;
-          v = cxRaw * sinRot + cyRaw * cosRot + Math.cos(rad * 2 + t * 0.7) * warpStr * 0.5;
+          // kaleidoscope
+          let cx2 = cxRaw, cy2 = cyRaw;
+          if (sym > 1) {
+            cx2 = rad * Math.cos(ang);
+            cy2 = rad * Math.sin(ang);
+          }
+          u = cx2 * cosRot - cy2 * sinRot + Math.sin(rad * 3 - t) * warpStr * 0.5;
+          v = cx2 * sinRot + cy2 * cosRot + Math.cos(rad * 2 + t * 0.7) * warpStr * 0.5;
         }
 
-        // Domain-warp layers: displace (u,v) through noise
-        for (let l = 0; l < nLayers; l++) {
+        // Domain-warp layers (main noise cost — capped by quality)
+        for (let l = 0; l < maxLayers; l++) {
           const f = layerFreq[l];
           const am = layerAmp[l];
           const off = layerOff[l];
-          const tShift = t * (0.08 + l * 0.02);
-          const du = noise.noise2D(u * f + off, v * f + tShift) * am;
-          const dv = noise.noise2D(u * f + off + 31.7, v * f + tShift + off) * am;
+          const lt = layerT[l];
+          const du = vN(u * f + off, v * f + lt) * am;
+          const dv = vN(u * f + off + 31.7, v * f + lt + off) * am;
           u += du;
           v += dv;
         }
 
-        // Final color via noise + palette
+        // Color: fbm(2 octaves) via value noise
         const u2 = u * 2, v2 = v * 2;
+        const n1 = vN(u2, v2);
+        const n2 = vN(u2 * 2, v2 * 2);
+        // Normalize: fbm range is approx [-1.5, 1.5], map to [0, 1]
+        let valG = (n1 + 0.5 * n2) * 0.5 + 0.5;
+        if (valG < 0) valG = 0; else if (valG > 1) valG = 1;
+
         let rr: number, gg: number, bb: number;
 
         if (doCa) {
-          // Chromatic aberration: offset fbm samples per channel
-          let vR = noise.fbm(u2 + caOff, v2 + caOff * 0.5, 3, 2.0, 0.5) * 0.5 + 0.5;
-          let vG = noise.fbm(u2, v2, 3, 2.0, 0.5) * 0.5 + 0.5;
-          let vB = noise.fbm(u2 - caOff, v2 - caOff * 0.7, 3, 2.0, 0.5) * 0.5 + 0.5;
+          // Chromatic aberration using already-computed noise values.
+          // n2 (second octave) varies spatially → organic color fringing.
+          // Zero additional noise calls.
+          const shift = n2 * caScale;
+          let valR = valG + shift;
+          let valB = valG - shift;
+          if (valR < 0) valR = 0; else if (valR > 1) valR = 1;
+          if (valB < 0) valB = 0; else if (valB > 1) valB = 1;
 
-          if (vR < 0) vR = 0; else if (vR > 1) vR = 1;
-          if (vG < 0) vG = 0; else if (vG > 1) vG = 1;
-          if (vB < 0) vB = 0; else if (vB > 1) vB = 1;
-
-          const ciR = vR * nCm1, i0R = ciR | 0, i1R = i0R < nCm1 ? i0R + 1 : nCm1, fR = ciR - i0R;
-          const ciG = vG * nCm1, i0G = ciG | 0, i1G = i0G < nCm1 ? i0G + 1 : nCm1, fG = ciG - i0G;
-          const ciB = vB * nCm1, i0B = ciB | 0, i1B = i0B < nCm1 ? i0B + 1 : nCm1, fB = ciB - i0B;
-
-          rr = (palR[i0R] + (palR[i1R] - palR[i0R]) * fR) | 0;
-          gg = (palG[i0G] + (palG[i1G] - palG[i0G]) * fG) | 0;
-          bb = (palB[i0B] + (palB[i1B] - palB[i0B]) * fB) | 0;
+          const idxR = (valR * 255) | 0;
+          const idxG = (valG * 255) | 0;
+          const idxB = (valB * 255) | 0;
+          rr = rampR[idxR];
+          gg = rampG[idxG];
+          bb = rampB[idxB];
         } else {
-          let val = noise.fbm(u2, v2, 3, 2.0, 0.5) * 0.5 + 0.5;
-          if (val < 0) val = 0; else if (val > 1) val = 1;
-
-          const ci = val * nCm1, i0 = ci | 0, i1 = i0 < nCm1 ? i0 + 1 : nCm1, f = ci - i0;
-          rr = (palR[i0] + (palR[i1] - palR[i0]) * f) | 0;
-          gg = (palG[i0] + (palG[i1] - palG[i0]) * f) | 0;
-          bb = (palB[i0] + (palB[i1] - palB[i0]) * f) | 0;
+          const idx = (valG * 255) | 0;
+          rr = rampR[idx];
+          gg = rampG[idx];
+          bb = rampB[idx];
         }
 
         const pixel = isLE
@@ -247,7 +315,7 @@ export const proceduralVfx: Generator = {
 
   estimateCost(params) {
     const layers = params.layers ?? 3;
-    const ca = (params.chromaticShift ?? 0.15) > 0.01 ? 3 : 1;
-    return Math.round(layers * 80 * ca + 150);
+    const ca = (params.chromaticShift ?? 0.15) > 0.01 ? 1.1 : 1;
+    return Math.round(layers * 60 * ca + 100);
   },
 };
