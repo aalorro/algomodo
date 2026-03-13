@@ -6,41 +6,43 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+const TAU = Math.PI * 2;
+
 const parameterSchema: ParameterSchema = {
-  noiseScale: {
-    name: 'Noise Scale', type: 'number', min: 1, max: 10, step: 0.5, default: 3,
-    help: 'Spatial frequency of base noise field',
+  warpMode: {
+    name: 'Warp Mode', type: 'select',
+    options: ['spiral', 'ripple', 'tunnel', 'kaleidoscope'],
+    default: 'spiral',
+    help: 'spiral: swirling arms | ripple: pulsing rings | tunnel: infinite zoom | kaleidoscope: mirrored folds',
     group: 'Composition',
   },
-  octaves: {
-    name: 'Octaves', type: 'number', min: 1, max: 8, step: 1, default: 4,
-    help: 'FBM octave count — more = finer detail',
-    group: 'Composition',
-  },
-  displaceAmount: {
-    name: 'Displace', type: 'number', min: 0, max: 1, step: 0.05, default: 0.4,
-    help: 'Coordinate displacement warp strength',
+  warpStrength: {
+    name: 'Warp Strength', type: 'number', min: 0.1, max: 5, step: 0.1, default: 2.0,
+    help: 'Intensity of coordinate warping',
     group: 'Geometry',
   },
-  edgeIntensity: {
-    name: 'Edge Intensity', type: 'number', min: 0, max: 1, step: 0.05, default: 0.5,
-    help: 'Sobel edge detection strength',
-    group: 'Texture',
-  },
-  quantizeLevels: {
-    name: 'Quantize Levels', type: 'number', min: 2, max: 16, step: 1, default: 6,
-    help: 'Posterization step count',
-    group: 'Texture',
-  },
-  opChain: {
-    name: 'Op Chain', type: 'select',
-    options: ['noise-edge', 'noise-displace', 'noise-feedback', 'full-chain'],
-    default: 'full-chain',
-    help: 'noise-edge: noise→edge | noise-displace: noise→warp | noise-feedback: domain warp | full-chain: all ops',
+  layers: {
+    name: 'Warp Layers', type: 'number', min: 1, max: 5, step: 1, default: 3,
+    help: 'Domain-warp passes — more = richer organic flow',
     group: 'Composition',
   },
+  symmetry: {
+    name: 'Symmetry', type: 'number', min: 1, max: 12, step: 1, default: 1,
+    help: 'Kaleidoscopic mirror folds (1 = off)',
+    group: 'Geometry',
+  },
+  chromaticShift: {
+    name: 'Chromatic Shift', type: 'number', min: 0, max: 1, step: 0.05, default: 0.15,
+    help: 'RGB channel offset for prismatic color splitting',
+    group: 'Color',
+  },
+  zoom: {
+    name: 'Zoom', type: 'number', min: 0.3, max: 4, step: 0.1, default: 1.0,
+    help: 'Zoom into the warp field',
+    group: 'Geometry',
+  },
   speed: {
-    name: 'Speed', type: 'number', min: 0.1, max: 2, step: 0.05, default: 0.5,
+    name: 'Speed', type: 'number', min: 0.1, max: 3, step: 0.05, default: 0.7,
     help: 'Animation drift speed',
     group: 'Flow/Motion',
   },
@@ -55,155 +57,169 @@ export const proceduralVfx: Generator = {
   id: 'procedural-vfx',
   family: 'procedural',
   styleName: 'Procedural VFX',
-  definition: 'TouchDesigner-style texture operations: noise → displacement → quantize → edge detect → palette color ramp',
+  definition: 'Coordinate-warp visual effects — spiral, tunnel, ripple, and kaleidoscope modes with chromatic aberration and multi-layer domain warping',
   algorithmNotes:
-    'Generates FBM noise that drifts over time. An operations chain is applied: domain-warp displacement warps sample coordinates via a secondary noise field, quantization posterizes values, Sobel edge detection highlights contours, and palette mapping colorizes the result. Chain mode selects which stages run.',
+    'Converts pixel coordinates to polar space and applies mode-specific warps: spiral arms twist angle by radius, ripple pulses concentric rings outward, tunnel maps depth via inverse radius for infinite zoom, kaleidoscope mirrors angular segments. Multiple domain-warp layers displace coordinates through simplex noise for organic flow. Chromatic aberration offsets RGB channel lookups in noise space for prismatic color splitting. All warps react to audio bass and mid energy.',
   parameterSchema,
   defaultParams: {
-    noiseScale: 3, octaves: 4, displaceAmount: 0.4, edgeIntensity: 0.5,
-    quantizeLevels: 6, opChain: 'full-chain', speed: 0.5, reactivity: 1.0,
+    warpMode: 'spiral', warpStrength: 2.0, layers: 3, symmetry: 1,
+    chromaticShift: 0.15, zoom: 1.0, speed: 0.7, reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
-    const step = quality === 'draft' ? 4 : quality === 'ultra' ? 1 : 2;
+    const step = quality === 'draft' ? 3 : quality === 'ultra' ? 1 : 2;
 
-    const noiseScale = params.noiseScale ?? 3;
-    const octaves = Math.max(1, params.octaves ?? 4) | 0;
+    const mode = params.warpMode || 'spiral';
+    const warpStr = params.warpStrength ?? 2.0;
+    const nLayers = Math.max(1, params.layers ?? 3) | 0;
+    const sym = Math.max(1, params.symmetry ?? 1) | 0;
+    const ca = params.chromaticShift ?? 0.15;
+    const zoomVal = params.zoom ?? 1.0;
+    const spd = params.speed ?? 0.7;
     const rx = params.reactivity ?? 1.0;
-    const audioBass = (params._audioBass ?? 0) * rx;
-    const audioHigh = (params._audioHigh ?? 0) * rx;
 
-    const displaceAmt = (params.displaceAmount ?? 0.4) + audioBass * 0.5;
-    const edgeInt = (params.edgeIntensity ?? 0.5) + audioHigh * 0.4;
-    const qLevels = Math.max(2, params.quantizeLevels ?? 6) | 0;
-    const opChain = params.opChain || 'full-chain';
-    const spd = params.speed ?? 0.5;
+    const audioBass = (params._audioBass ?? 0) * rx;
+    const audioMid = (params._audioMid ?? 0) * rx;
+
     const t = time * spd;
 
-    const doDisplace = opChain === 'noise-displace' || opChain === 'full-chain';
-    const doEdge = opChain === 'noise-edge' || opChain === 'full-chain';
-    const doFeedback = opChain === 'noise-feedback' || opChain === 'full-chain';
-
     const noise = new SimplexNoise(seed);
-    const noise2 = doDisplace ? new SimplexNoise(seed + 77) : null;
 
-    // Flatten palette to typed array for fast lookup
+    // Flatten palette into typed arrays
     const rawColors = palette.colors.map(hexToRgb);
     const nC = rawColors.length;
-    const colorR = new Uint8Array(nC);
-    const colorG = new Uint8Array(nC);
-    const colorB = new Uint8Array(nC);
+    const palR = new Uint8Array(nC);
+    const palG = new Uint8Array(nC);
+    const palB = new Uint8Array(nC);
     for (let i = 0; i < nC; i++) {
-      colorR[i] = rawColors[i][0]; colorG[i] = rawColors[i][1]; colorB[i] = rawColors[i][2];
+      palR[i] = rawColors[i][0];
+      palG[i] = rawColors[i][1];
+      palB[i] = rawColors[i][2];
+    }
+    const nCm1 = nC - 1;
+
+    const halfW = w * 0.5;
+    const halfH = h * 0.5;
+    const invScale = zoomVal / (Math.min(w, h) * 0.5);
+    const segAngle = sym > 1 ? TAU / sym : 0;
+
+    const caOff = ca * 0.12;
+    const doCa = ca > 0.01;
+
+    // Precompute layer constants
+    const layerFreq = new Float64Array(nLayers);
+    const layerAmp = new Float64Array(nLayers);
+    const layerOff = new Float64Array(nLayers);
+    for (let l = 0; l < nLayers; l++) {
+      layerFreq[l] = 1.5 + l * 0.8;
+      layerAmp[l] = 0.4 / (1 + l * 0.5);
+      layerOff[l] = l * 13.7;
     }
 
-    const invW = noiseScale / w;
-    const invH = noiseScale / h;
-    const driftX = t * 0.04;
-    const driftY = t * 0.027;
-    const displaceAmt2 = displaceAmt * 2;
-    const invQLevels = 1 / qLevels;
+    // Mode-specific precomputed constants
+    const warpAudio = 1 + audioBass * 2;
+    const rippleFreq = 6 + audioMid * 4;
+    const rotAngle = t * 0.2;
+    const cosRot = Math.cos(rotAngle);
+    const sinRot = Math.sin(rotAngle);
 
-    const cols = Math.ceil(w / step);
-    const rows = Math.ceil(h / step);
-    const valBuf = new Float32Array(cols * rows);
-
-    // Compute value buffer
-    for (let gy = 0; gy < rows; gy++) {
-      const py = gy * step;
-      const rowOff = gy * cols;
-      for (let gx = 0; gx < cols; gx++) {
-        const px = gx * step;
-        let nx = px * invW + driftX;
-        let ny = py * invH + driftY;
-
-        if (doDisplace) {
-          const nx07 = nx * 0.7;
-          const ny07 = ny * 0.7;
-          nx += noise2!.noise2D(nx07 + t * 0.02, ny07) * displaceAmt2;
-          ny += noise2!.noise2D(nx07 + 31.7, ny07 + t * 0.015) * displaceAmt2;
-        }
-
-        if (doFeedback) {
-          nx += noise.noise2D(nx + 5.2, ny + 1.3) * 0.8;
-          ny += noise.noise2D(nx + 9.1, ny + 4.7) * 0.8;
-        }
-
-        let v = octaves === 1
-          ? noise.noise2D(nx, ny)
-          : noise.fbm(nx, ny, octaves, 2.0, 0.5);
-
-        v = v * 0.5 + 0.5;
-        v = (v * qLevels | 0) * invQLevels;
-
-        valBuf[rowOff + gx] = v;
-      }
-    }
-
-    // Edge detection (Sobel) — skip if not needed
-    let edgeBuf: Float32Array | null = null;
-    if (doEdge && edgeInt > 0) {
-      edgeBuf = new Float32Array(cols * rows);
-      for (let gy = 1; gy < rows - 1; gy++) {
-        const rowPrev = (gy - 1) * cols;
-        const rowCurr = gy * cols;
-        const rowNext = (gy + 1) * cols;
-        for (let gx = 1; gx < cols - 1; gx++) {
-          const tl = valBuf[rowPrev + gx - 1];
-          const tc = valBuf[rowPrev + gx];
-          const tr = valBuf[rowPrev + gx + 1];
-          const ml = valBuf[rowCurr + gx - 1];
-          const mr = valBuf[rowCurr + gx + 1];
-          const bl = valBuf[rowNext + gx - 1];
-          const bc = valBuf[rowNext + gx];
-          const br = valBuf[rowNext + gx + 1];
-
-          const gxVal = -tl - 2 * ml - bl + tr + 2 * mr + br;
-          const gyVal = -tl - 2 * tc - tr + bl + 2 * bc + br;
-          edgeBuf[rowCurr + gx] = Math.sqrt(gxVal * gxVal + gyVal * gyVal);
-        }
-      }
-    }
-
-    // Render to image data using Uint32Array for fast writes
+    // Image output
     const imgData = ctx.createImageData(w, h);
     const data = imgData.data;
     const buf32 = new Uint32Array(data.buffer);
     data[0] = 1; data[1] = 2; data[2] = 3; data[3] = 4;
     const isLE = buf32[0] === 0x04030201;
 
-    const hasEdge = edgeBuf !== null && edgeInt > 0;
-    const edgeIntInv = 1 - edgeInt;
-    const nCm1 = nC - 1;
+    const cols = Math.ceil(w / step);
+    const rows = Math.ceil(h / step);
 
     for (let gy = 0; gy < rows; gy++) {
       const py = gy * step;
-      const rowOff = gy * cols;
+      const cyRaw = (py - halfH) * invScale;
+
       for (let gx = 0; gx < cols; gx++) {
         const px = gx * step;
-        let v = valBuf[rowOff + gx];
+        const cxRaw = (px - halfW) * invScale;
 
-        if (hasEdge) {
-          const edge = edgeBuf![rowOff + gx] * 3;
-          v = v * edgeIntInv + (edge < 1 ? edge : 1) * edgeInt;
+        const rad = Math.sqrt(cxRaw * cxRaw + cyRaw * cyRaw);
+        let ang = Math.atan2(cyRaw, cxRaw);
+
+        // Symmetry fold
+        if (sym > 1) {
+          ang = ((ang % TAU) + TAU) % TAU;
+          const seg = (ang / segAngle) | 0;
+          ang = ang - seg * segAngle;
+          if (seg & 1) ang = segAngle - ang;
         }
 
-        if (v < 0) v = 0; else if (v > 1) v = 1;
+        // Warp mode → (u, v)
+        let u: number, v: number;
 
-        // Map to palette with interpolation
-        const ci = v * nCm1;
-        const i0 = ci | 0;
-        const i1 = i0 < nCm1 ? i0 + 1 : nCm1;
-        const f = ci - i0;
-        const r = (colorR[i0] + (colorR[i1] - colorR[i0]) * f) | 0;
-        const g = (colorG[i0] + (colorG[i1] - colorG[i0]) * f) | 0;
-        const b = (colorB[i0] + (colorB[i1] - colorB[i0]) * f) | 0;
+        if (mode === 'spiral') {
+          u = rad * 2;
+          v = ang + rad * warpStr * warpAudio + t;
+        } else if (mode === 'ripple') {
+          const disp = Math.sin(rad * rippleFreq - t * 3) * warpStr * 0.3 * warpAudio;
+          const invR = rad > 0.001 ? disp / rad : 0;
+          u = cxRaw + cxRaw * invR;
+          v = cyRaw + cyRaw * invR;
+        } else if (mode === 'tunnel') {
+          u = ang / TAU * 3;
+          v = 0.5 / (rad + 0.01) + t * 2;
+        } else {
+          // kaleidoscope: rotating warp with sinusoidal displacement
+          u = cxRaw * cosRot - cyRaw * sinRot + Math.sin(rad * 3 - t) * warpStr * 0.5;
+          v = cxRaw * sinRot + cyRaw * cosRot + Math.cos(rad * 2 + t * 0.7) * warpStr * 0.5;
+        }
+
+        // Domain-warp layers: displace (u,v) through noise
+        for (let l = 0; l < nLayers; l++) {
+          const f = layerFreq[l];
+          const am = layerAmp[l];
+          const off = layerOff[l];
+          const tShift = t * (0.08 + l * 0.02);
+          const du = noise.noise2D(u * f + off, v * f + tShift) * am;
+          const dv = noise.noise2D(u * f + off + 31.7, v * f + tShift + off) * am;
+          u += du;
+          v += dv;
+        }
+
+        // Final color via noise + palette
+        const u2 = u * 2, v2 = v * 2;
+        let rr: number, gg: number, bb: number;
+
+        if (doCa) {
+          // Chromatic aberration: offset fbm samples per channel
+          let vR = noise.fbm(u2 + caOff, v2 + caOff * 0.5, 3, 2.0, 0.5) * 0.5 + 0.5;
+          let vG = noise.fbm(u2, v2, 3, 2.0, 0.5) * 0.5 + 0.5;
+          let vB = noise.fbm(u2 - caOff, v2 - caOff * 0.7, 3, 2.0, 0.5) * 0.5 + 0.5;
+
+          if (vR < 0) vR = 0; else if (vR > 1) vR = 1;
+          if (vG < 0) vG = 0; else if (vG > 1) vG = 1;
+          if (vB < 0) vB = 0; else if (vB > 1) vB = 1;
+
+          const ciR = vR * nCm1, i0R = ciR | 0, i1R = i0R < nCm1 ? i0R + 1 : nCm1, fR = ciR - i0R;
+          const ciG = vG * nCm1, i0G = ciG | 0, i1G = i0G < nCm1 ? i0G + 1 : nCm1, fG = ciG - i0G;
+          const ciB = vB * nCm1, i0B = ciB | 0, i1B = i0B < nCm1 ? i0B + 1 : nCm1, fB = ciB - i0B;
+
+          rr = (palR[i0R] + (palR[i1R] - palR[i0R]) * fR) | 0;
+          gg = (palG[i0G] + (palG[i1G] - palG[i0G]) * fG) | 0;
+          bb = (palB[i0B] + (palB[i1B] - palB[i0B]) * fB) | 0;
+        } else {
+          let val = noise.fbm(u2, v2, 3, 2.0, 0.5) * 0.5 + 0.5;
+          if (val < 0) val = 0; else if (val > 1) val = 1;
+
+          const ci = val * nCm1, i0 = ci | 0, i1 = i0 < nCm1 ? i0 + 1 : nCm1, f = ci - i0;
+          rr = (palR[i0] + (palR[i1] - palR[i0]) * f) | 0;
+          gg = (palG[i0] + (palG[i1] - palG[i0]) * f) | 0;
+          bb = (palB[i0] + (palB[i1] - palB[i0]) * f) | 0;
+        }
 
         const pixel = isLE
-          ? (0xFF000000 | (b << 16) | (g << 8) | r)
-          : ((r << 24) | (g << 16) | (b << 8) | 0xFF);
+          ? (0xFF000000 | (bb << 16) | (gg << 8) | rr)
+          : ((rr << 24) | (gg << 16) | (bb << 8) | 0xFF);
 
         // Fill step×step block
         if (step === 1) {
@@ -220,6 +236,7 @@ export const proceduralVfx: Generator = {
         }
       }
     }
+
     ctx.putImageData(imgData, 0, 0);
   },
 
@@ -229,6 +246,8 @@ export const proceduralVfx: Generator = {
   },
 
   estimateCost(params) {
-    return Math.round((params.octaves ?? 4) * 120 + ((params.edgeIntensity ?? 0.5) > 0 ? 200 : 0));
+    const layers = params.layers ?? 3;
+    const ca = (params.chromaticShift ?? 0.15) > 0.01 ? 3 : 1;
+    return Math.round(layers * 80 * ca + 150);
   },
 };
