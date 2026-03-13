@@ -76,7 +76,7 @@ export const useStore = create<AppState>()(
       animationFps: 24,
       recordingDuration: 5,
       boomerangGif: false,
-      endlessGif: false,
+      endlessGif: true,
       renderKey: 0,
       openModal: null as 'about' | 'privacy' | 'changelog' | 'donation' | 'instructions' | 'roadmap' | 'use-cases' | null,
 
