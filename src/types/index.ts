@@ -169,8 +169,14 @@ export interface AppState {
   // Audio source (not persisted)
   audioFile: File | null;
   audioFileName: string | null;
+  audioProgress: number;    // 0-1 normalized playback position
+  audioDuration: number;    // seconds
+  audioSeekTo: number | null; // set by UI, consumed by renderer
   setAudioFile: (file: File | null) => void;
   setAudioFileName: (name: string | null) => void;
+  setAudioProgress: (p: number) => void;
+  setAudioDuration: (d: number) => void;
+  setAudioSeekTo: (t: number | null) => void;
 
   // Presets
   presets: Preset[];

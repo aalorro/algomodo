@@ -52,6 +52,9 @@ export const useStore = create<AppState>()(
       // Audio source (not persisted)
       audioFile: null as File | null,
       audioFileName: null as string | null,
+      audioProgress: 0,
+      audioDuration: 0,
+      audioSeekTo: null as number | null,
 
       // History (not persisted)
       historyPast: [] as HistorySnapshot[],
@@ -211,6 +214,9 @@ export const useStore = create<AppState>()(
 
       setAudioFile: (file) => set({ audioFile: file }),
       setAudioFileName: (name) => set({ audioFileName: name }),
+      setAudioProgress: (p) => set({ audioProgress: p }),
+      setAudioDuration: (d) => set({ audioDuration: d }),
+      setAudioSeekTo: (t) => set({ audioSeekTo: t }),
 
       savePreset: (name: string) => {
         const s = get();

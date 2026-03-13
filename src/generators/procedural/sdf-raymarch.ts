@@ -6,43 +6,6 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// SDF primitives
-function sdCircle(px: number, py: number, cx: number, cy: number, r: number): number {
-  return Math.sqrt((px - cx) ** 2 + (py - cy) ** 2) - r;
-}
-
-function sdBox(px: number, py: number, cx: number, cy: number, hw: number, hh: number): number {
-  const dx = Math.abs(px - cx) - hw;
-  const dy = Math.abs(py - cy) - hh;
-  return Math.sqrt(Math.max(dx, 0) ** 2 + Math.max(dy, 0) ** 2) + Math.min(Math.max(dx, dy), 0);
-}
-
-function sdRoundBox(px: number, py: number, cx: number, cy: number, hw: number, hh: number, r: number): number {
-  return sdBox(px, py, cx, cy, hw - r, hh - r) - r;
-}
-
-// Boolean ops
-function opSmoothUnion(d1: number, d2: number, k: number): number {
-  if (k < 0.001) return Math.min(d1, d2);
-  const h = Math.max(0, Math.min(1, 0.5 + 0.5 * (d2 - d1) / k));
-  return d1 * h + d2 * (1 - h) - k * h * (1 - h);
-}
-
-function opSmoothSubtract(d1: number, d2: number, k: number): number {
-  if (k < 0.001) return Math.max(d1, -d2);
-  const h = Math.max(0, Math.min(1, 0.5 - 0.5 * (d1 + d2) / k));
-  return d1 * (1 - h) + (-d2) * h + k * h * (1 - h);
-}
-
-interface Primitive {
-  type: 'circle' | 'box' | 'roundbox';
-  cx: number; cy: number;
-  r: number; hw: number; hh: number; rr: number;
-  orbitR: number; orbitSpeed: number; orbitPhase: number;
-  colorIdx: number;
-  op: 'union' | 'subtract';
-}
-
 const parameterSchema: ParameterSchema = {
   sceneType: {
     name: 'Scene', type: 'select',
@@ -81,6 +44,11 @@ const parameterSchema: ParameterSchema = {
     help: 'Global animation speed',
     group: 'Flow/Motion',
   },
+  reactivity: {
+    name: 'Audio Reactivity', type: 'number', min: 0, max: 2, step: 0.1, default: 1.0,
+    help: 'Sensitivity to audio input (0 = none)',
+    group: 'Flow/Motion',
+  },
 };
 
 export const sdfRaymarch: Generator = {
@@ -93,7 +61,7 @@ export const sdfRaymarch: Generator = {
   parameterSchema,
   defaultParams: {
     sceneType: 'spheres', complexity: 4, glowIntensity: 0.5, bandWidth: 0.3,
-    smoothBlend: 0.3, rotationSpeed: 0.5, speed: 0.5,
+    smoothBlend: 0.3, rotationSpeed: 0.5, speed: 0.5, reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
@@ -105,133 +73,169 @@ export const sdfRaymarch: Generator = {
 
     const sceneType = params.sceneType || 'spheres';
     const complexity = Math.max(1, params.complexity ?? 4) | 0;
-    // Audio reactivity
-    const audioBass = params._audioBass ?? 0;
-    const audioMid = params._audioMid ?? 0;
+    const rx = params.reactivity ?? 1.0;
+    const audioBass = (params._audioBass ?? 0) * rx;
+    const audioMid = (params._audioMid ?? 0) * rx;
 
     const glowIntensity = (params.glowIntensity ?? 0.5) + audioBass * 0.5;
     const bandWidth = params.bandWidth ?? 0.3;
     const smoothK = (params.smoothBlend ?? 0.3) * minDim * 0.15;
+    const useSmooth = smoothK >= 0.001;
     const rotSpeed = (params.rotationSpeed ?? 0.5) * (1 + audioMid * 1.5);
     const spd = params.speed ?? 0.5;
     const t = time * spd;
 
-    // Parse palette
     const colors = palette.colors.map(hexToRgb);
     const nC = colors.length;
 
-    // Generate primitives
-    const prims: Primitive[] = [];
+    // Generate primitives — use flat arrays (SoA) for cache-friendly per-pixel access
+    const addPrimDepth0 = sceneType === 'fractal' ? 2 : 1;
+    const maxPrims = complexity * addPrimDepth0 + (sceneType === 'fractal' ? Math.min(3, complexity) : 0);
+    const primType = new Uint8Array(maxPrims);    // 0=circle, 1=roundbox
+    const primCx = new Float64Array(maxPrims);
+    const primCy = new Float64Array(maxPrims);
+    const primR = new Float64Array(maxPrims);
+    const primHW = new Float64Array(maxPrims);
+    const primHH = new Float64Array(maxPrims);
+    const primRR = new Float64Array(maxPrims);
+    const primOrbitR = new Float64Array(maxPrims);
+    const primOrbitSpd = new Float64Array(maxPrims);
+    const primOrbitPhase = new Float64Array(maxPrims);
+    const primColorIdx = new Uint8Array(maxPrims);
+    const primOp = new Uint8Array(maxPrims); // 0=union, 1=subtract
+
+    let primCount = 0;
     const addPrim = (depth: number) => {
       const count = depth === 0 ? complexity : Math.min(3, complexity);
       const sizeScale = depth === 0 ? 1 : 0.4;
       for (let i = 0; i < count; i++) {
         const isCircle = sceneType === 'spheres' || (sceneType === 'blend' && rng.random() > 0.5);
         const isBox = sceneType === 'boxes' || (sceneType === 'blend' && !isCircle && sceneType !== 'spheres');
-        const cx = rng.range(0.2, 0.8) * w;
-        const cy = rng.range(0.2, 0.8) * h;
-        const r = rng.range(0.06, 0.18) * minDim * sizeScale;
+        const idx = primCount++;
+        primType[idx] = isCircle ? 0 : ((isBox || sceneType === 'boxes') ? 1 : 0);
+        primCx[idx] = rng.range(0.2, 0.8) * w;
+        primCy[idx] = rng.range(0.2, 0.8) * h;
+        primR[idx] = rng.range(0.06, 0.18) * minDim * sizeScale;
         const hw = rng.range(0.05, 0.16) * minDim * sizeScale;
         const hh = rng.range(0.05, 0.16) * minDim * sizeScale;
         const rr = rng.range(0.01, 0.04) * minDim * sizeScale;
-        prims.push({
-          type: isCircle ? 'circle' : (isBox || sceneType === 'boxes') ? 'roundbox' : 'circle',
-          cx, cy, r, hw, hh, rr,
-          orbitR: rng.range(0.02, 0.1) * minDim * sizeScale,
-          orbitSpeed: rng.range(0.5, 2.0) * (rng.random() > 0.5 ? 1 : -1),
-          orbitPhase: rng.randomAngle(),
-          colorIdx: rng.integer(0, nC - 1),
-          op: i === 0 || rng.random() > 0.3 ? 'union' : 'subtract',
-        });
+        primHW[idx] = hw - rr;
+        primHH[idx] = hh - rr;
+        primRR[idx] = rr;
+        primOrbitR[idx] = rng.range(0.02, 0.1) * minDim * sizeScale;
+        primOrbitSpd[idx] = rng.range(0.5, 2.0) * (rng.random() > 0.5 ? 1 : -1);
+        primOrbitPhase[idx] = rng.randomAngle();
+        primColorIdx[idx] = rng.integer(0, nC - 1);
+        primOp[idx] = (i === 0 || rng.random() > 0.3) ? 0 : 1;
       }
     };
     addPrim(0);
     if (sceneType === 'fractal') addPrim(1);
 
-    // Animated positions
-    const animCx: number[] = [];
-    const animCy: number[] = [];
-    for (let i = 0; i < prims.length; i++) {
-      const p = prims[i];
-      const a = t * rotSpeed * p.orbitSpeed + p.orbitPhase;
-      animCx[i] = p.cx + Math.cos(a) * p.orbitR;
-      animCy[i] = p.cy + Math.sin(a) * p.orbitR;
+    // Precompute animated positions
+    const animCx = new Float64Array(primCount);
+    const animCy = new Float64Array(primCount);
+    for (let i = 0; i < primCount; i++) {
+      const a = t * rotSpeed * primOrbitSpd[i] + primOrbitPhase[i];
+      animCx[i] = primCx[i] + Math.cos(a) * primOrbitR[i];
+      animCy[i] = primCy[i] + Math.sin(a) * primOrbitR[i];
     }
 
-    // Evaluate scene SDF at a point
-    const evalSDF = (px: number, py: number): [number, number] => {
-      let d = Infinity;
-      let closest = 0;
-      for (let i = 0; i < prims.length; i++) {
-        const p = prims[i];
-        let di: number;
-        if (p.type === 'circle') {
-          di = sdCircle(px, py, animCx[i], animCy[i], p.r);
-        } else {
-          di = sdRoundBox(px, py, animCx[i], animCy[i], p.hw, p.hh, p.rr);
-        }
-        if (i === 0) {
-          d = di;
-          closest = 0;
-        } else if (p.op === 'subtract') {
-          const prev = d;
-          d = opSmoothSubtract(d, di, smoothK);
-          if (d !== prev) closest = i;
-        } else {
-          if (di < d) closest = i;
-          d = opSmoothUnion(d, di, smoothK);
-        }
-      }
-      return [d, closest];
-    };
+    // Precompute shading constants
+    const shadeDiv = 1 / (minDim * 0.05);
+    const glowDiv = -1 / (minDim * 0.06);
+    const bandScale = bandWidth > 0.01 ? Math.PI / (bandWidth * minDim * 0.05) : 0;
+    const hasGlow = glowIntensity > 0;
+    const hasBand = bandScale > 0;
 
-    // Render pixel by pixel
+    // Render with Uint32Array for fast 4-byte writes
     const imgData = ctx.createImageData(w, h);
     const data = imgData.data;
-    const bandScale = bandWidth > 0.01 ? Math.PI / (bandWidth * minDim * 0.05) : 0;
+    const buf32 = new Uint32Array(data.buffer);
+    // Detect endianness
+    data[0] = 1; data[1] = 2; data[2] = 3; data[3] = 4;
+    const isLE = buf32[0] === 0x04030201;
 
     for (let py = 0; py < h; py += step) {
       for (let px = 0; px < w; px += step) {
-        const [d, closest] = evalSDF(px, py);
-        let r: number, g: number, b: number;
+        // Inline evalSDF — no tuple allocation
+        let d = Infinity;
+        let closest = 0;
+        for (let i = 0; i < primCount; i++) {
+          let di: number;
+          if (primType[i] === 0) {
+            // sdCircle inlined
+            const dx = px - animCx[i];
+            const dy = py - animCy[i];
+            di = Math.sqrt(dx * dx + dy * dy) - primR[i];
+          } else {
+            // sdRoundBox inlined (sdBox with pre-subtracted rr)
+            const dx = Math.abs(px - animCx[i]) - primHW[i];
+            const dy = Math.abs(py - animCy[i]) - primHH[i];
+            const dx0 = dx > 0 ? dx : 0;
+            const dy0 = dy > 0 ? dy : 0;
+            di = Math.sqrt(dx0 * dx0 + dy0 * dy0) + (dx > dy ? (dy > 0 ? 0 : dy) : (dx > 0 ? 0 : dx)) - primRR[i];
+          }
+          if (i === 0) {
+            d = di;
+          } else if (primOp[i] === 1) {
+            // smooth subtract
+            if (useSmooth) {
+              const h = Math.max(0, Math.min(1, 0.5 - 0.5 * (d + di) / smoothK));
+              const nd = d * (1 - h) + (-di) * h + smoothK * h * (1 - h);
+              if (nd !== d) closest = i;
+              d = nd;
+            } else {
+              const nd = d > -di ? d : -di;
+              if (nd !== d) closest = i;
+              d = nd;
+            }
+          } else {
+            if (di < d) closest = i;
+            if (useSmooth) {
+              const h = Math.max(0, Math.min(1, 0.5 + 0.5 * (di - d) / smoothK));
+              d = d * h + di * (1 - h) - smoothK * h * (1 - h);
+            } else {
+              if (di < d) d = di;
+            }
+          }
+        }
 
+        let r: number, g: number, b: number;
         if (d < 0) {
-          // Interior — palette color of nearest primitive
-          const c = colors[prims[closest as number].colorIdx];
-          // Slight shading by depth
-          const shade = 0.7 + 0.3 * Math.min(1, -d / (minDim * 0.05));
+          const c = colors[primColorIdx[closest]];
+          const shade = 0.7 + 0.3 * Math.min(1, -d * shadeDiv);
           r = c[0] * shade;
           g = c[1] * shade;
           b = c[2] * shade;
         } else {
-          // Exterior
-          const glow = glowIntensity > 0
-            ? Math.exp(-d / (minDim * 0.06)) * glowIntensity
-            : 0;
-          const band = bandScale > 0
-            ? (Math.sin(d * bandScale) * 0.5 + 0.5) * 0.35
-            : 0;
+          const glow = hasGlow ? Math.exp(d * glowDiv) * glowIntensity : 0;
+          const band = hasBand ? (Math.sin(d * bandScale) * 0.5 + 0.5) * 0.35 : 0;
           const v = glow + band;
-          // Map glow/band to palette
-          const ci = (closest as number) % nC;
-          const c = colors[ci];
+          const c = colors[primColorIdx[closest] % nC];
           r = c[0] * v;
           g = c[1] * v;
           b = c[2] * v;
         }
 
-        r = Math.max(0, Math.min(255, r)) | 0;
-        g = Math.max(0, Math.min(255, g)) | 0;
-        b = Math.max(0, Math.min(255, b)) | 0;
+        const ri = r < 0 ? 0 : r > 255 ? 255 : r | 0;
+        const gi = g < 0 ? 0 : g > 255 ? 255 : g | 0;
+        const bi = b < 0 ? 0 : b > 255 ? 255 : b | 0;
+        const pixel = isLE
+          ? (0xFF000000 | (bi << 16) | (gi << 8) | ri)
+          : ((ri << 24) | (gi << 16) | (bi << 8) | 0xFF);
 
         // Fill step×step block
-        for (let dy = 0; dy < step && py + dy < h; dy++) {
-          for (let dx = 0; dx < step && px + dx < w; dx++) {
-            const idx = ((py + dy) * w + (px + dx)) * 4;
-            data[idx] = r;
-            data[idx + 1] = g;
-            data[idx + 2] = b;
-            data[idx + 3] = 255;
+        if (step === 1) {
+          buf32[py * w + px] = pixel;
+        } else {
+          const maxDy = Math.min(step, h - py);
+          const maxDx = Math.min(step, w - px);
+          for (let dy = 0; dy < maxDy; dy++) {
+            const rowBase = (py + dy) * w + px;
+            for (let dx = 0; dx < maxDx; dx++) {
+              buf32[rowBase + dx] = pixel;
+            }
           }
         }
       }

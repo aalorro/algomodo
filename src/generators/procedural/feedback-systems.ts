@@ -36,10 +36,26 @@ const parameterSchema: ParameterSchema = {
     help: 'Opacity of each feedback composite layer',
     group: 'Color',
   },
+  reactivity: {
+    name: 'Audio Reactivity', type: 'number', min: 0, max: 2, step: 0.1, default: 1.0,
+    help: 'Sensitivity to audio input (0 = none)',
+    group: 'Flow/Motion',
+  },
 };
 
+function createBuffer(w: number, h: number): [HTMLCanvasElement | OffscreenCanvas, CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D] {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const c = new OffscreenCanvas(w, h);
+    return [c, c.getContext('2d')!];
+  }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return [c, c.getContext('2d')!];
+}
+
 function drawSeedPattern(
-  ctx: CanvasRenderingContext2D, shape: string, w: number, h: number,
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  shape: string, w: number, h: number,
   rng: SeededRNG, colors: string[],
 ) {
   const cx = w / 2, cy = h / 2;
@@ -87,7 +103,6 @@ function drawSeedPattern(
       }
     }
   } else {
-    // spiral
     ctx.lineCap = 'round';
     const turns = rng.range(3, 8);
     const maxR = minDim * 0.4;
@@ -120,13 +135,13 @@ export const feedbackSystems: Generator = {
   parameterSchema,
   defaultParams: {
     iterations: 12, zoomFactor: 0.97, rotationRate: 0.5,
-    seedShape: 'circles', colorDrift: 0.3, blendOpacity: 0.75,
+    seedShape: 'circles', colorDrift: 0.3, blendOpacity: 0.75, reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
-    const cx = w / 2, cy = h / 2;
+    const midX = w / 2, midY = h / 2;
     const rng = new SeededRNG(seed);
 
     const iterations = Math.max(1, params.iterations ?? 12) | 0;
@@ -136,19 +151,16 @@ export const feedbackSystems: Generator = {
     const colorDrift = params.colorDrift ?? 0.3;
     const blendOpacity = params.blendOpacity ?? 0.75;
 
-    // Audio reactivity
-    const audioBass = params._audioBass ?? 0;
-    const audioMid = params._audioMid ?? 0;
+    const rxMul = params.reactivity ?? 1.0;
+    const audioBass = (params._audioBass ?? 0) * rxMul;
+    const audioMid = (params._audioMid ?? 0) * rxMul;
     zoom *= (1 + audioBass * 0.15);
 
-    // Create offscreen buffers
-    const bufA = document.createElement('canvas');
-    bufA.width = w; bufA.height = h;
-    const ctxA = bufA.getContext('2d')!;
+    const doColorDrift = colorDrift > 0;
 
-    const bufB = document.createElement('canvas');
-    bufB.width = w; bufB.height = h;
-    const ctxB = bufB.getContext('2d')!;
+    // Use OffscreenCanvas when available (avoids DOM overhead)
+    const [bufA, ctxA] = createBuffer(w, h);
+    const [bufB, ctxB] = createBuffer(w, h);
 
     // Draw seed pattern on buffer A
     ctxA.fillStyle = '#000';
@@ -159,22 +171,24 @@ export const feedbackSystems: Generator = {
     ctx.fillStyle = '#050505';
     ctx.fillRect(0, 0, w, h);
 
-    // Feedback iterations
-    for (let i = 0; i < iterations; i++) {
-      const angle = rotRate * (time + i * 0.12) + audioMid * 0.4;
+    // Precompute per-iteration angles
+    const audioMidRotation = audioMid * 0.4;
 
-      // Transform A → B: clear B, then draw A with transform
+    for (let i = 0; i < iterations; i++) {
+      const angle = rotRate * (time + i * 0.12) + audioMidRotation;
+
+      // Transform A → B using setTransform (avoids save/translate/rotate/scale/translate/restore overhead)
       ctxB.clearRect(0, 0, w, h);
-      ctxB.save();
-      ctxB.translate(cx, cy);
-      ctxB.rotate(angle);
-      ctxB.scale(zoom, zoom);
-      ctxB.translate(-cx, -cy);
+      const cosA = Math.cos(angle) * zoom;
+      const sinA = Math.sin(angle) * zoom;
+      // Transform that rotates+scales around center:
+      // translate(midX, midY) * rotate(angle) * scale(zoom) * translate(-midX, -midY)
+      ctxB.setTransform(cosA, sinA, -sinA, cosA, midX - cosA * midX + sinA * midY, midY - sinA * midX - cosA * midY);
       ctxB.drawImage(bufA, 0, 0);
-      ctxB.restore();
+      ctxB.setTransform(1, 0, 0, 1, 0, 0);
 
       // Apply color drift via hue rotation filter
-      if (colorDrift > 0) {
+      if (doColorDrift) {
         ctxB.save();
         ctxB.globalCompositeOperation = 'source-atop';
         ctxB.filter = `hue-rotate(${i * colorDrift * 30}deg)`;
@@ -183,14 +197,14 @@ export const feedbackSystems: Generator = {
         ctxB.filter = 'none';
       }
 
-      // Composite B onto main canvas with lighter blend
+      // Composite B onto main canvas
       ctx.save();
       ctx.globalAlpha = blendOpacity;
       ctx.globalCompositeOperation = 'lighter';
       ctx.drawImage(bufB, 0, 0);
       ctx.restore();
 
-      // Copy B → A for next iteration
+      // Swap: copy B → A
       ctxA.clearRect(0, 0, w, h);
       ctxA.drawImage(bufB, 0, 0);
     }

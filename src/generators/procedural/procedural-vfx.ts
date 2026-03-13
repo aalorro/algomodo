@@ -44,6 +44,11 @@ const parameterSchema: ParameterSchema = {
     help: 'Animation drift speed',
     group: 'Flow/Motion',
   },
+  reactivity: {
+    name: 'Audio Reactivity', type: 'number', min: 0, max: 2, step: 0.1, default: 1.0,
+    help: 'Sensitivity to audio input (0 = none)',
+    group: 'Flow/Motion',
+  },
 };
 
 export const proceduralVfx: Generator = {
@@ -56,7 +61,7 @@ export const proceduralVfx: Generator = {
   parameterSchema,
   defaultParams: {
     noiseScale: 3, octaves: 4, displaceAmount: 0.4, edgeIntensity: 0.5,
-    quantizeLevels: 6, opChain: 'full-chain', speed: 0.5,
+    quantizeLevels: 6, opChain: 'full-chain', speed: 0.5, reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
@@ -66,9 +71,9 @@ export const proceduralVfx: Generator = {
 
     const noiseScale = params.noiseScale ?? 3;
     const octaves = Math.max(1, params.octaves ?? 4) | 0;
-    // Audio reactivity
-    const audioBass = params._audioBass ?? 0;
-    const audioHigh = params._audioHigh ?? 0;
+    const rx = params.reactivity ?? 1.0;
+    const audioBass = (params._audioBass ?? 0) * rx;
+    const audioHigh = (params._audioHigh ?? 0) * rx;
 
     const displaceAmt = (params.displaceAmount ?? 0.4) + audioBass * 0.5;
     const edgeInt = (params.edgeIntensity ?? 0.5) + audioHigh * 0.4;
@@ -82,118 +87,135 @@ export const proceduralVfx: Generator = {
     const doFeedback = opChain === 'noise-feedback' || opChain === 'full-chain';
 
     const noise = new SimplexNoise(seed);
-    const noise2 = new SimplexNoise(seed + 77);
+    const noise2 = doDisplace ? new SimplexNoise(seed + 77) : null;
 
-    // Parse palette
-    const colors = palette.colors.map(hexToRgb);
-    const nC = colors.length;
+    // Flatten palette to typed array for fast lookup
+    const rawColors = palette.colors.map(hexToRgb);
+    const nC = rawColors.length;
+    const colorR = new Uint8Array(nC);
+    const colorG = new Uint8Array(nC);
+    const colorB = new Uint8Array(nC);
+    for (let i = 0; i < nC; i++) {
+      colorR[i] = rawColors[i][0]; colorG[i] = rawColors[i][1]; colorB[i] = rawColors[i][2];
+    }
 
     const invW = noiseScale / w;
     const invH = noiseScale / h;
     const driftX = t * 0.04;
     const driftY = t * 0.027;
+    const displaceAmt2 = displaceAmt * 2;
+    const invQLevels = 1 / qLevels;
 
-    // Compute value buffer (needed for edge detection)
     const cols = Math.ceil(w / step);
     const rows = Math.ceil(h / step);
     const valBuf = new Float32Array(cols * rows);
 
+    // Compute value buffer
     for (let gy = 0; gy < rows; gy++) {
       const py = gy * step;
+      const rowOff = gy * cols;
       for (let gx = 0; gx < cols; gx++) {
         const px = gx * step;
         let nx = px * invW + driftX;
         let ny = py * invH + driftY;
 
-        // Displacement warp
         if (doDisplace) {
-          const dx = noise2.noise2D(nx * 0.7 + t * 0.02, ny * 0.7) * displaceAmt * 2;
-          const dy = noise2.noise2D(nx * 0.7 + 31.7, ny * 0.7 + t * 0.015) * displaceAmt * 2;
-          nx += dx;
-          ny += dy;
+          const nx07 = nx * 0.7;
+          const ny07 = ny * 0.7;
+          nx += noise2!.noise2D(nx07 + t * 0.02, ny07) * displaceAmt2;
+          ny += noise2!.noise2D(nx07 + 31.7, ny07 + t * 0.015) * displaceAmt2;
         }
 
-        // Domain warp feedback
         if (doFeedback) {
-          const wx = noise.noise2D(nx + 5.2, ny + 1.3) * 0.8;
-          const wy = noise.noise2D(nx + 9.1, ny + 4.7) * 0.8;
-          nx += wx;
-          ny += wy;
+          nx += noise.noise2D(nx + 5.2, ny + 1.3) * 0.8;
+          ny += noise.noise2D(nx + 9.1, ny + 4.7) * 0.8;
         }
 
-        // Base FBM
         let v = octaves === 1
           ? noise.noise2D(nx, ny)
           : noise.fbm(nx, ny, octaves, 2.0, 0.5);
 
-        // Normalize to 0-1
         v = v * 0.5 + 0.5;
+        v = (v * qLevels | 0) * invQLevels;
 
-        // Quantize
-        v = Math.floor(v * qLevels) / qLevels;
-
-        valBuf[gy * cols + gx] = v;
+        valBuf[rowOff + gx] = v;
       }
     }
 
-    // Edge detection (Sobel) if needed
+    // Edge detection (Sobel) — skip if not needed
     let edgeBuf: Float32Array | null = null;
     if (doEdge && edgeInt > 0) {
       edgeBuf = new Float32Array(cols * rows);
       for (let gy = 1; gy < rows - 1; gy++) {
+        const rowPrev = (gy - 1) * cols;
+        const rowCurr = gy * cols;
+        const rowNext = (gy + 1) * cols;
         for (let gx = 1; gx < cols - 1; gx++) {
-          const tl = valBuf[(gy - 1) * cols + (gx - 1)];
-          const tc = valBuf[(gy - 1) * cols + gx];
-          const tr = valBuf[(gy - 1) * cols + (gx + 1)];
-          const ml = valBuf[gy * cols + (gx - 1)];
-          const mr = valBuf[gy * cols + (gx + 1)];
-          const bl = valBuf[(gy + 1) * cols + (gx - 1)];
-          const bc = valBuf[(gy + 1) * cols + gx];
-          const br = valBuf[(gy + 1) * cols + (gx + 1)];
+          const tl = valBuf[rowPrev + gx - 1];
+          const tc = valBuf[rowPrev + gx];
+          const tr = valBuf[rowPrev + gx + 1];
+          const ml = valBuf[rowCurr + gx - 1];
+          const mr = valBuf[rowCurr + gx + 1];
+          const bl = valBuf[rowNext + gx - 1];
+          const bc = valBuf[rowNext + gx];
+          const br = valBuf[rowNext + gx + 1];
 
           const gxVal = -tl - 2 * ml - bl + tr + 2 * mr + br;
           const gyVal = -tl - 2 * tc - tr + bl + 2 * bc + br;
-          edgeBuf[gy * cols + gx] = Math.sqrt(gxVal * gxVal + gyVal * gyVal);
+          edgeBuf[rowCurr + gx] = Math.sqrt(gxVal * gxVal + gyVal * gyVal);
         }
       }
     }
 
-    // Render to image data
+    // Render to image data using Uint32Array for fast writes
     const imgData = ctx.createImageData(w, h);
     const data = imgData.data;
+    const buf32 = new Uint32Array(data.buffer);
+    data[0] = 1; data[1] = 2; data[2] = 3; data[3] = 4;
+    const isLE = buf32[0] === 0x04030201;
+
+    const hasEdge = edgeBuf !== null && edgeInt > 0;
+    const edgeIntInv = 1 - edgeInt;
+    const nCm1 = nC - 1;
 
     for (let gy = 0; gy < rows; gy++) {
       const py = gy * step;
+      const rowOff = gy * cols;
       for (let gx = 0; gx < cols; gx++) {
         const px = gx * step;
-        let v = valBuf[gy * cols + gx];
+        let v = valBuf[rowOff + gx];
 
-        // Mix with edge
-        if (edgeBuf && edgeInt > 0) {
-          const edge = Math.min(1, edgeBuf[gy * cols + gx] * 3);
-          v = v * (1 - edgeInt) + edge * edgeInt;
+        if (hasEdge) {
+          const edge = edgeBuf![rowOff + gx] * 3;
+          v = v * edgeIntInv + (edge < 1 ? edge : 1) * edgeInt;
         }
 
-        v = Math.max(0, Math.min(1, v));
+        if (v < 0) v = 0; else if (v > 1) v = 1;
 
-        // Map to palette
-        const ci = v * (nC - 1);
-        const i0 = Math.floor(ci);
-        const i1 = Math.min(nC - 1, i0 + 1);
+        // Map to palette with interpolation
+        const ci = v * nCm1;
+        const i0 = ci | 0;
+        const i1 = i0 < nCm1 ? i0 + 1 : nCm1;
         const f = ci - i0;
-        const c0 = colors[i0], c1 = colors[i1];
-        const r = (c0[0] + (c1[0] - c0[0]) * f) | 0;
-        const g = (c0[1] + (c1[1] - c0[1]) * f) | 0;
-        const b = (c0[2] + (c1[2] - c0[2]) * f) | 0;
+        const r = (colorR[i0] + (colorR[i1] - colorR[i0]) * f) | 0;
+        const g = (colorG[i0] + (colorG[i1] - colorG[i0]) * f) | 0;
+        const b = (colorB[i0] + (colorB[i1] - colorB[i0]) * f) | 0;
+
+        const pixel = isLE
+          ? (0xFF000000 | (b << 16) | (g << 8) | r)
+          : ((r << 24) | (g << 16) | (b << 8) | 0xFF);
 
         // Fill step×step block
-        for (let dy = 0; dy < step && py + dy < h; dy++) {
-          for (let dx = 0; dx < step && px + dx < w; dx++) {
-            const idx = ((py + dy) * w + (px + dx)) * 4;
-            data[idx] = r;
-            data[idx + 1] = g;
-            data[idx + 2] = b;
-            data[idx + 3] = 255;
+        if (step === 1) {
+          buf32[py * w + px] = pixel;
+        } else {
+          const maxDy = Math.min(step, h - py);
+          const maxDx = Math.min(step, w - px);
+          for (let dy = 0; dy < maxDy; dy++) {
+            const rowBase = (py + dy) * w + px;
+            for (let dx = 0; dx < maxDx; dx++) {
+              buf32[rowBase + dx] = pixel;
+            }
           }
         }
       }

@@ -1,11 +1,6 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG, SimplexNoise } from '../../core/rng';
 
-function hexToRgba(hex: string, a: number): string {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
-
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -53,6 +48,11 @@ const parameterSchema: ParameterSchema = {
     help: 'Animation speed',
     group: 'Flow/Motion',
   },
+  reactivity: {
+    name: 'Audio Reactivity', type: 'number', min: 0, max: 2, step: 0.1, default: 1.0,
+    help: 'Sensitivity to audio input (0 = none)',
+    group: 'Flow/Motion',
+  },
 };
 
 interface VortexCenter {
@@ -69,7 +69,7 @@ export const fieldParticle: Generator = {
   parameterSchema,
   defaultParams: {
     particleCount: 1500, fieldType: 'curl', trailLength: 80, fieldStrength: 1.0,
-    lineWidth: 1.0, colorMode: 'velocity', speed: 1.0,
+    lineWidth: 1.0, colorMode: 'velocity', speed: 1.0, reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
@@ -88,8 +88,9 @@ export const fieldParticle: Generator = {
     const spd = params.speed ?? 1.0;
 
     // Audio reactivity
-    const audioBass = params._audioBass ?? 0;
-    const audioHigh = params._audioHigh ?? 0;
+    const rx = params.reactivity ?? 1.0;
+    const audioBass = (params._audioBass ?? 0) * rx;
+    const audioHigh = (params._audioHigh ?? 0) * rx;
     const fStr = baseFStr * (1 + audioBass * 2.5);
     const t = time * spd;
 
@@ -104,74 +105,71 @@ export const fieldParticle: Generator = {
     ctx.fillRect(0, 0, w, h);
 
     // Field-specific setup
-    const EPS = 0.5;
     const noiseScale = 3.0 / minDim;
+    const epsNS = 0.5 * noiseScale;
 
-    // Vortex / attractor / dipole centers
-    const centers: VortexCenter[] = [];
+    // Vortex / attractor / dipole centers — use flat arrays for speed
+    const centersX: number[] = [];
+    const centersY: number[] = [];
+    const centersStr: number[] = [];
+    let nCenters = 0;
     if (fieldType === 'vortex' || fieldType === 'attractor' || fieldType === 'dipole') {
-      const nCenters = fieldType === 'dipole' ? 2 : rng.integer(2, 4);
+      nCenters = fieldType === 'dipole' ? 2 : rng.integer(2, 4);
       for (let i = 0; i < nCenters; i++) {
-        centers.push({
-          x: rng.range(w * 0.2, w * 0.8),
-          y: rng.range(h * 0.2, h * 0.8),
-          strength: rng.range(0.5, 2.0) * (fieldType === 'dipole' ? (i === 0 ? 1 : -1) : 1),
-        });
+        centersX.push(rng.range(w * 0.2, w * 0.8));
+        centersY.push(rng.range(h * 0.2, h * 0.8));
+        centersStr.push(rng.range(0.5, 2.0) * (fieldType === 'dipole' ? (i === 0 ? 1 : -1) : 1));
       }
     }
 
-    // Vector field evaluation
-    const getVelocity = (px: number, py: number): [number, number] => {
+    // Precompute field constants
+    const curlFStr2 = fStr * 2;
+    const attractFStr = fStr * 50000;
+    const vortexFStr = fStr * 200;
+    const dipoleFStr = fStr * 30000;
+
+    // Inline velocity — avoids tuple allocation and function call overhead
+    let outVx = 0, outVy = 0;
+    const computeVelocity = (px: number, py: number) => {
       if (fieldType === 'curl') {
-        // Numerical curl of noise
         const nx = px * noiseScale;
         const ny = py * noiseScale;
-        const n0 = noise.noise2D(nx, ny + EPS * noiseScale);
-        const n1 = noise.noise2D(nx, ny - EPS * noiseScale);
-        const n2 = noise.noise2D(nx + EPS * noiseScale, ny);
-        const n3 = noise.noise2D(nx - EPS * noiseScale, ny);
-        const vx = (n0 - n1) * fStr * 2;
-        const vy = -(n2 - n3) * fStr * 2;
-        return [vx, vy];
+        outVx = (noise.noise2D(nx, ny + epsNS) - noise.noise2D(nx, ny - epsNS)) * curlFStr2;
+        outVy = -(noise.noise2D(nx + epsNS, ny) - noise.noise2D(nx - epsNS, ny)) * curlFStr2;
       } else if (fieldType === 'attractor') {
-        let vx = 0, vy = 0;
-        for (const c of centers) {
-          const dx = c.x - px, dy = c.y - py;
-          const r2 = dx * dx + dy * dy + 1000;
-          const f = c.strength * fStr * 50000 / r2;
-          // Swirl: rotate pull 90 degrees for tangential component
-          vx += (-dy * f * 0.7 + dx * f * 0.3);
-          vy += (dx * f * 0.7 + dy * f * 0.3);
+        outVx = 0; outVy = 0;
+        for (let c = 0; c < nCenters; c++) {
+          const dx = centersX[c] - px, dy = centersY[c] - py;
+          const f = centersStr[c] * attractFStr / (dx * dx + dy * dy + 1000);
+          outVx += -dy * f * 0.7 + dx * f * 0.3;
+          outVy += dx * f * 0.7 + dy * f * 0.3;
         }
-        return [vx, vy];
       } else if (fieldType === 'vortex') {
-        let vx = 0, vy = 0;
-        for (const c of centers) {
-          const dx = px - c.x, dy = py - c.y;
+        outVx = 0; outVy = 0;
+        for (let c = 0; c < nCenters; c++) {
+          const dx = px - centersX[c], dy = py - centersY[c];
           const r = Math.sqrt(dx * dx + dy * dy) + 10;
-          const f = c.strength * fStr * 200 / r;
-          vx += -dy * f / r;
-          vy += dx * f / r;
+          const f = centersStr[c] * vortexFStr / (r * r);
+          outVx += -dy * f;
+          outVy += dx * f;
         }
-        return [vx, vy];
       } else {
-        // dipole
-        let vx = 0, vy = 0;
-        for (const c of centers) {
-          const dx = px - c.x, dy = py - c.y;
+        outVx = 0; outVy = 0;
+        for (let c = 0; c < nCenters; c++) {
+          const dx = px - centersX[c], dy = py - centersY[c];
           const r2 = dx * dx + dy * dy + 500;
-          const f = c.strength * fStr * 30000 / (r2);
-          vx += dx * f / Math.sqrt(r2);
-          vy += dy * f / Math.sqrt(r2);
+          const invR = 1 / Math.sqrt(r2);
+          const f = centersStr[c] * dipoleFStr * invR * invR;
+          outVx += dx * f * invR;
+          outVy += dy * f * invR;
         }
-        return [vx, vy];
       }
     };
 
-    // Seed particles
-    const startX: number[] = [];
-    const startY: number[] = [];
-    const pColorIdx: number[] = [];
+    // Seed particles into typed arrays
+    const startX = new Float32Array(actualCount);
+    const startY = new Float32Array(actualCount);
+    const pColorIdx = new Uint8Array(actualCount);
     for (let i = 0; i < actualCount; i++) {
       startX[i] = rng.range(0, w);
       startY[i] = rng.range(0, h);
@@ -183,57 +181,104 @@ export const fieldParticle: Generator = {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const dt = 0.5;
-
-    // Time-based phase offset for animation
     const phaseOffset = t * 0.5;
+    const baseAlpha = 0.7 + audioHigh * 0.3;
+
+    // Flat trail buffer — avoids thousands of small array allocations
+    const trailX = new Float32Array(trailLen + 1);
+    const trailY = new Float32Array(trailLen + 1);
+
+    // Pre-build alpha breakpoint: find max segment index where alpha >= 0.02
+    const maxVisibleSeg = Math.min(trailLen, Math.ceil(baseAlpha / 0.02 * trailLen)) | 0;
+
+    // For palette/age modes, batch segments into polylines per alpha band
+    const isFixedColor = colorMode === 'palette' || colorMode === 'age';
 
     for (let i = 0; i < actualCount; i++) {
-      // Offset starting position by time-driven noise for animation
       let px = startX[i] + noise.noise2D(startX[i] * 0.001 + phaseOffset, startY[i] * 0.001) * minDim * 0.1;
       let py = startY[i] + noise.noise2D(startX[i] * 0.001, startY[i] * 0.001 + phaseOffset) * minDim * 0.1;
 
+      trailX[0] = px;
+      trailY[0] = py;
+
       // Integrate trail
-      const trail: [number, number][] = [[px, py]];
       for (let s = 0; s < trailLen; s++) {
-        const [vx, vy] = getVelocity(px, py);
-        px += vx * dt;
-        py += vy * dt;
-        // Wrap around
+        computeVelocity(px, py);
+        px += outVx * dt;
+        py += outVy * dt;
         if (px < 0) px += w; else if (px > w) px -= w;
         if (py < 0) py += h; else if (py > h) py -= h;
-        trail.push([px, py]);
+        trailX[s + 1] = px;
+        trailY[s + 1] = py;
       }
 
-      // Draw trail segments with fading alpha
-      for (let s = 0; s < trail.length - 1; s++) {
-        const age = s / trailLen; // 0 = head, 1 = tail
-        const alpha = (1 - age) * (0.7 + audioHigh * 0.3);
-        if (alpha < 0.02) break;
-
-        let r: number, g: number, b: number;
-        if (colorMode === 'velocity') {
-          const [vx, vy] = getVelocity(trail[s][0], trail[s][1]);
-          const speed = Math.sqrt(vx * vx + vy * vy);
-          const ci = Math.min(nC - 1, Math.floor(Math.min(1, speed * 0.3) * (nC - 1)));
-          [r, g, b] = colors[ci];
-        } else if (colorMode === 'direction') {
-          const dx = trail[s + 1][0] - trail[s][0];
-          const dy = trail[s + 1][1] - trail[s][1];
-          const angle = (Math.atan2(dy, dx) + Math.PI) / TAU;
-          const ci = Math.floor(angle * (nC - 1));
-          [r, g, b] = colors[Math.max(0, Math.min(nC - 1, ci))];
-        } else if (colorMode === 'age') {
-          const ci = Math.floor(age * (nC - 1));
-          [r, g, b] = colors[ci];
-        } else {
-          [r, g, b] = colors[pColorIdx[i]];
+      // Draw trail — batch consecutive segments with same color into polylines
+      if (isFixedColor && colorMode === 'palette') {
+        // All segments same color — draw as one polyline with gradient alpha via segments
+        const [r, g, b] = colors[pColorIdx[i]];
+        // Group into alpha bands (4 bands) to reduce stroke calls
+        const bands = 4;
+        const segsPerBand = Math.ceil(maxVisibleSeg / bands);
+        for (let band = 0; band < bands; band++) {
+          const sStart = band * segsPerBand;
+          const sEnd = Math.min((band + 1) * segsPerBand, maxVisibleSeg);
+          if (sStart >= trailLen) break;
+          const midAge = ((sStart + sEnd) / 2) / trailLen;
+          const alpha = (1 - midAge) * baseAlpha;
+          if (alpha < 0.02) break;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+          ctx.beginPath();
+          ctx.moveTo(trailX[sStart], trailY[sStart]);
+          for (let s = sStart + 1; s <= sEnd && s <= trailLen; s++) {
+            ctx.lineTo(trailX[s], trailY[s]);
+          }
+          ctx.stroke();
         }
+      } else {
+        // Variable color per segment — batch consecutive same-color segments
+        let prevR = -1, prevG = -1, prevB = -1, prevAlphaQ = -1;
+        let batchStart = 0;
 
-        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
-        ctx.beginPath();
-        ctx.moveTo(trail[s][0], trail[s][1]);
-        ctx.lineTo(trail[s + 1][0], trail[s + 1][1]);
-        ctx.stroke();
+        for (let s = 0; s < maxVisibleSeg && s < trailLen; s++) {
+          const age = s / trailLen;
+          const alpha = (1 - age) * baseAlpha;
+          if (alpha < 0.02) break;
+          // Quantize alpha to reduce style changes
+          const alphaQ = (alpha * 10 + 0.5) | 0;
+
+          let r: number, g: number, b: number;
+          if (colorMode === 'velocity') {
+            computeVelocity(trailX[s], trailY[s]);
+            const speed = Math.sqrt(outVx * outVx + outVy * outVy);
+            const ci = Math.min(nC - 1, (Math.min(1, speed * 0.3) * (nC - 1)) | 0);
+            r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
+          } else if (colorMode === 'direction') {
+            const dx = trailX[s + 1] - trailX[s];
+            const dy = trailY[s + 1] - trailY[s];
+            const angle = (Math.atan2(dy, dx) + Math.PI) / TAU;
+            const ci = Math.max(0, Math.min(nC - 1, (angle * (nC - 1)) | 0));
+            r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
+          } else {
+            // age
+            const ci = (age * (nC - 1)) | 0;
+            r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
+          }
+
+          if (r !== prevR || g !== prevG || b !== prevB || alphaQ !== prevAlphaQ) {
+            // Flush previous batch
+            if (s > batchStart && prevR >= 0) {
+              ctx.stroke();
+            }
+            ctx.strokeStyle = `rgba(${r},${g},${b},${(alphaQ / 10).toFixed(1)})`;
+            ctx.beginPath();
+            ctx.moveTo(trailX[s], trailY[s]);
+            prevR = r; prevG = g; prevB = b; prevAlphaQ = alphaQ;
+            batchStart = s;
+          }
+          ctx.lineTo(trailX[s + 1], trailY[s + 1]);
+        }
+        // Flush final batch
+        if (prevR >= 0) ctx.stroke();
       }
     }
   },

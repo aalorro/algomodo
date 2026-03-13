@@ -1,13 +1,32 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 
-function hexToRgba(hex: string, a: number): string {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
-
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// Precomputed unit polygon vertices
+const POLY_CACHE: Record<string, { x: Float64Array; y: Float64Array }> = {};
+function getPolyVertices(shape: string): { x: Float64Array; y: Float64Array } {
+  if (POLY_CACHE[shape]) return POLY_CACHE[shape];
+  let n: number;
+  let offset = 0;
+  let altRadius: number | null = null;
+  if (shape === 'triangle') { n = 3; offset = -Math.PI / 2; }
+  else if (shape === 'hexagon') { n = 6; offset = 0; }
+  else if (shape === 'star') { n = 10; offset = -Math.PI / 2; altRadius = 0.45; }
+  else { n = 0; offset = 0; }
+
+  const x = new Float64Array(n);
+  const y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + offset;
+    const r = (altRadius !== null && i % 2 !== 0) ? altRadius : 1;
+    x[i] = Math.cos(a) * r;
+    y[i] = Math.sin(a) * r;
+  }
+  POLY_CACHE[shape] = { x, y };
+  return { x, y };
+}
 
 const parameterSchema: ParameterSchema = {
   shape: {
@@ -48,57 +67,12 @@ const parameterSchema: ParameterSchema = {
     default: 'filled',
     group: 'Texture',
   },
+  reactivity: {
+    name: 'Audio Reactivity', type: 'number', min: 0, max: 2, step: 0.1, default: 1.0,
+    help: 'Sensitivity to audio input (0 = none)',
+    group: 'Flow/Motion',
+  },
 };
-
-interface Instance {
-  x: number; y: number;
-  baseSize: number;
-  baseRotation: number;
-  colorIdx: number;
-  filled: boolean;
-  dist: number; // from center, for wave
-}
-
-function drawShape(
-  ctx: CanvasRenderingContext2D, shape: string,
-  x: number, y: number, size: number, rotation: number,
-) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation);
-  ctx.beginPath();
-
-  if (shape === 'circle') {
-    ctx.arc(0, 0, size, 0, TAU);
-  } else if (shape === 'square') {
-    const hs = size;
-    ctx.rect(-hs, -hs, hs * 2, hs * 2);
-  } else if (shape === 'triangle') {
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * TAU - Math.PI / 2;
-      if (i === 0) ctx.moveTo(Math.cos(a) * size, Math.sin(a) * size);
-      else ctx.lineTo(Math.cos(a) * size, Math.sin(a) * size);
-    }
-    ctx.closePath();
-  } else if (shape === 'hexagon') {
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * TAU;
-      if (i === 0) ctx.moveTo(Math.cos(a) * size, Math.sin(a) * size);
-      else ctx.lineTo(Math.cos(a) * size, Math.sin(a) * size);
-    }
-    ctx.closePath();
-  } else if (shape === 'star') {
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * TAU - Math.PI / 2;
-      const r = i % 2 === 0 ? size : size * 0.45;
-      if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-      else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-    }
-    ctx.closePath();
-  }
-
-  ctx.restore();
-}
 
 export const instancedGeometry: Generator = {
   id: 'procedural-instanced-geometry',
@@ -110,7 +84,7 @@ export const instancedGeometry: Generator = {
   parameterSchema,
   defaultParams: {
     shape: 'hexagon', count: 150, arrangement: 'grid', sizeVar: 0.3,
-    rotationVar: 0.4, waveSpeed: 1.0, fillMode: 'filled',
+    rotationVar: 0.4, waveSpeed: 1.0, fillMode: 'filled', reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
@@ -129,16 +103,33 @@ export const instancedGeometry: Generator = {
     const fillMode = params.fillMode || 'filled';
     const nC = palette.colors.length;
 
-    // Audio reactivity
-    const audioBass = params._audioBass ?? 0;
-    const audioMid = params._audioMid ?? 0;
+    const rx = params.reactivity ?? 1.0;
+    const audioBass = (params._audioBass ?? 0) * rx;
+    const audioMid = (params._audioMid ?? 0) * rx;
 
     // Background
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, w, h);
 
-    // Generate instance data
-    const instances: Instance[] = [];
+    // Pre-parse palette colors to RGB arrays
+    const palR = new Uint8Array(nC);
+    const palG = new Uint8Array(nC);
+    const palB = new Uint8Array(nC);
+    for (let i = 0; i < nC; i++) {
+      const n = parseInt(palette.colors[i].replace('#', ''), 16);
+      palR[i] = (n >> 16) & 255; palG[i] = (n >> 8) & 255; palB[i] = n & 255;
+    }
+
+    // Generate instance data into flat arrays (SoA)
+    const instX = new Float32Array(count);
+    const instY = new Float32Array(count);
+    const instSize = new Float32Array(count);
+    const instRot = new Float32Array(count);
+    const instColorIdx = new Uint8Array(count);
+    const instFilled = new Uint8Array(count);
+    const instDist = new Float32Array(count);
+    let instCount = 0;
+
     const baseSize = minDim * 0.035;
 
     if (arrangement === 'grid') {
@@ -146,39 +137,36 @@ export const instancedGeometry: Generator = {
       const rows = Math.ceil(count / cols);
       const cellW = w / (cols + 1);
       const cellH = h / (rows + 1);
-      for (let r = 0; r < rows && instances.length < count; r++) {
-        for (let c = 0; c < cols && instances.length < count; c++) {
+      for (let r = 0; r < rows && instCount < count; r++) {
+        for (let c = 0; c < cols && instCount < count; c++) {
           const x = cellW * (c + 1) + rng.range(-0.2, 0.2) * cellW;
           const y = cellH * (r + 1) + rng.range(-0.2, 0.2) * cellH;
-          const sz = baseSize * (1 + rng.range(-sizeVar, sizeVar));
-          instances.push({
-            x, y, baseSize: sz,
-            baseRotation: rng.random() * rotVar * TAU,
-            colorIdx: rng.integer(0, nC - 1),
-            filled: fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4),
-            dist: Math.sqrt((x - cx) ** 2 + (y - cy) ** 2),
-          });
+          instX[instCount] = x;
+          instY[instCount] = y;
+          instSize[instCount] = baseSize * (1 + rng.range(-sizeVar, sizeVar));
+          instRot[instCount] = rng.random() * rotVar * TAU;
+          instColorIdx[instCount] = rng.integer(0, nC - 1);
+          instFilled[instCount] = (fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4)) ? 1 : 0;
+          const dx = x - cx, dy = y - cy;
+          instDist[instCount] = Math.sqrt(dx * dx + dy * dy);
+          instCount++;
         }
       }
     } else if (arrangement === 'radial') {
       const rings = Math.max(1, Math.ceil(Math.sqrt(count / 3)));
-      let placed = 0;
-      for (let ri = 0; ri < rings && placed < count; ri++) {
+      for (let ri = 0; ri < rings && instCount < count; ri++) {
         const ringR = (ri + 1) / (rings + 1) * minDim * 0.45;
         const perRing = Math.max(3, Math.round(count / rings));
-        for (let pi = 0; pi < perRing && placed < count; pi++) {
+        for (let pi = 0; pi < perRing && instCount < count; pi++) {
           const a = (pi / perRing) * TAU + ri * 0.3;
-          const x = cx + Math.cos(a) * ringR;
-          const y = cy + Math.sin(a) * ringR;
-          const sz = baseSize * (1 + rng.range(-sizeVar, sizeVar));
-          instances.push({
-            x, y, baseSize: sz,
-            baseRotation: rng.random() * rotVar * TAU,
-            colorIdx: rng.integer(0, nC - 1),
-            filled: fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4),
-            dist: ringR,
-          });
-          placed++;
+          instX[instCount] = cx + Math.cos(a) * ringR;
+          instY[instCount] = cy + Math.sin(a) * ringR;
+          instSize[instCount] = baseSize * (1 + rng.range(-sizeVar, sizeVar));
+          instRot[instCount] = rng.random() * rotVar * TAU;
+          instColorIdx[instCount] = rng.integer(0, nC - 1);
+          instFilled[instCount] = (fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4)) ? 1 : 0;
+          instDist[instCount] = ringR;
+          instCount++;
         }
       }
     } else if (arrangement === 'spiral') {
@@ -187,60 +175,95 @@ export const instancedGeometry: Generator = {
         const t = i / count;
         const r = t * maxR;
         const a = i * GOLDEN_ANGLE;
-        const x = cx + Math.cos(a) * r;
-        const y = cy + Math.sin(a) * r;
-        const sz = baseSize * (1 + rng.range(-sizeVar, sizeVar));
-        instances.push({
-          x, y, baseSize: sz,
-          baseRotation: rng.random() * rotVar * TAU,
-          colorIdx: rng.integer(0, nC - 1),
-          filled: fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4),
-          dist: r,
-        });
+        instX[instCount] = cx + Math.cos(a) * r;
+        instY[instCount] = cy + Math.sin(a) * r;
+        instSize[instCount] = baseSize * (1 + rng.range(-sizeVar, sizeVar));
+        instRot[instCount] = rng.random() * rotVar * TAU;
+        instColorIdx[instCount] = rng.integer(0, nC - 1);
+        instFilled[instCount] = (fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4)) ? 1 : 0;
+        instDist[instCount] = r;
+        instCount++;
       }
     } else {
-      // scatter
       for (let i = 0; i < count; i++) {
         const x = rng.range(baseSize, w - baseSize);
         const y = rng.range(baseSize, h - baseSize);
-        const sz = baseSize * (1 + rng.range(-sizeVar, sizeVar));
-        instances.push({
-          x, y, baseSize: sz,
-          baseRotation: rng.random() * rotVar * TAU,
-          colorIdx: rng.integer(0, nC - 1),
-          filled: fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4),
-          dist: Math.sqrt((x - cx) ** 2 + (y - cy) ** 2),
-        });
+        instX[instCount] = x;
+        instY[instCount] = y;
+        instSize[instCount] = baseSize * (1 + rng.range(-sizeVar, sizeVar));
+        instRot[instCount] = rng.random() * rotVar * TAU;
+        instColorIdx[instCount] = rng.integer(0, nC - 1);
+        instFilled[instCount] = (fillMode === 'filled' || (fillMode === 'mixed' && rng.random() > 0.4)) ? 1 : 0;
+        const dx = x - cx, dy = y - cy;
+        instDist[instCount] = Math.sqrt(dx * dx + dy * dy);
+        instCount++;
       }
     }
 
-    // Sort by distance for back-to-front drawing (outer first = further away)
-    instances.sort((a, b) => b.dist - a.dist);
+    // Sort indices by distance (back-to-front)
+    const sortIdx = new Uint16Array(instCount);
+    for (let i = 0; i < instCount; i++) sortIdx[i] = i;
+    sortIdx.sort((a, b) => instDist[b] - instDist[a]);
+
+    // Precompute polygon vertices if applicable
+    const isCircle = shape === 'circle';
+    const isSquare = shape === 'square';
+    const poly = (!isCircle && !isSquare) ? getPolyVertices(shape) : null;
+    const polyN = poly ? poly.x.length : 0;
 
     // Draw instances
     ctx.lineWidth = Math.max(1, minDim * 0.003);
+    const waveSpd2 = waveSpd * 2;
+    const bassAmp = 0.35 + audioBass * 0.8;
+    const midAmp = 0.5 + audioMid * 0.6;
 
-    for (const inst of instances) {
-      // Wave animation
-      const phase = inst.dist * 0.008 - time * waveSpd * 2;
-      const scaleWave = 1 + (0.35 + audioBass * 0.8) * Math.sin(phase);
-      const rotWave = (0.5 + audioMid * 0.6) * Math.sin(phase * 0.7 + 1.2);
+    for (let si = 0; si < instCount; si++) {
+      const ii = sortIdx[si];
+      const phase = instDist[ii] * 0.008 - time * waveSpd2;
+      const sinPhase = Math.sin(phase);
+      const scaleWave = 1 + bassAmp * sinPhase;
+      const rotWave = midAmp * Math.sin(phase * 0.7 + 1.2);
       const alphaWave = 0.55 + 0.45 * Math.sin(phase * 0.5 + 0.8);
 
-      const sz = inst.baseSize * scaleWave;
-      const rot = inst.baseRotation + rotWave;
-      const color = hexToRgba(palette.colors[inst.colorIdx], alphaWave);
+      const sz = instSize[ii] * scaleWave;
+      const rot = instRot[ii] + rotWave;
+      const ci = instColorIdx[ii];
 
-      drawShape(ctx, shape, inst.x, inst.y, sz, rot);
+      // Set style
+      const alphaStr = alphaWave.toFixed(2);
+      const colorStr = `rgba(${palR[ci]},${palG[ci]},${palB[ci]},${alphaStr})`;
 
-      if (inst.filled) {
-        ctx.fillStyle = color;
+      const ix = instX[ii], iy = instY[ii];
+
+      // Draw shape using setTransform (avoids save/restore overhead)
+      const cosR = Math.cos(rot);
+      const sinR = Math.sin(rot);
+      ctx.setTransform(cosR, sinR, -sinR, cosR, ix, iy);
+      ctx.beginPath();
+
+      if (isCircle) {
+        ctx.arc(0, 0, sz, 0, TAU);
+      } else if (isSquare) {
+        ctx.rect(-sz, -sz, sz * 2, sz * 2);
+      } else {
+        ctx.moveTo(poly!.x[0] * sz, poly!.y[0] * sz);
+        for (let v = 1; v < polyN; v++) {
+          ctx.lineTo(poly!.x[v] * sz, poly!.y[v] * sz);
+        }
+        ctx.closePath();
+      }
+
+      if (instFilled[ii]) {
+        ctx.fillStyle = colorStr;
         ctx.fill();
       } else {
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = colorStr;
         ctx.stroke();
       }
     }
+
+    // Reset transform
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   },
 
   renderWebGL2(gl) {

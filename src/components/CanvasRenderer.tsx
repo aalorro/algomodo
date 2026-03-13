@@ -54,6 +54,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     audioFile,
     setAudioFile,
     setAudioFileName,
+    setAudioProgress,
+    setAudioDuration,
+    audioSeekTo,
+    setAudioSeekTo,
     interactionEnabled,
     recordingDuration,
     undo,
@@ -81,6 +85,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     audioFile: s.audioFile,
     setAudioFile: s.setAudioFile,
     setAudioFileName: s.setAudioFileName,
+    setAudioProgress: s.setAudioProgress,
+    setAudioDuration: s.setAudioDuration,
+    audioSeekTo: s.audioSeekTo,
+    setAudioSeekTo: s.setAudioSeekTo,
     interactionEnabled: s.interactionEnabled,
     recordingDuration: s.recordingDuration,
     undo: s.undo,
@@ -110,7 +118,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const processor = new AudioProcessor();
     let cancelled = false;
     processor.loadFile(audioFile).then(() => {
-      if (!cancelled) audioRef.current = processor;
+      if (!cancelled) {
+        audioRef.current = processor;
+        setAudioDuration(processor.getDuration());
+        setAudioProgress(0);
+      }
     });
     return () => {
       cancelled = true;
@@ -118,6 +130,24 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       if (audioRef.current === processor) audioRef.current = null;
     };
   }, [audioFile]);
+
+  // Handle audio seek requests from sidebar slider
+  useEffect(() => {
+    if (audioSeekTo == null || !audioRef.current) return;
+    const dur = audioRef.current.getDuration();
+    if (dur <= 0) return;
+    const offset = audioSeekTo * dur;
+    if (audioRef.current.isPlaying()) {
+      audioRef.current.play(offset);
+    } else {
+      // Update the paused offset so resume starts here
+      audioRef.current.pause();
+      audioRef.current.play(offset);
+      audioRef.current.pause();
+    }
+    setAudioProgress(audioSeekTo);
+    setAudioSeekTo(null);
+  }, [audioSeekTo]);
 
   // ── Image ingestion helpers ─────────────────────────────────────────────────
   const readFileAsDataUrl = (file: File) => {
@@ -343,8 +373,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
     const resumeFrom = useStore.getState().pausedTime ?? 0;
 
-    // Sync audio playback with animation
-    if (audioRef.current) audioRef.current.play(resumeFrom);
+    // Sync audio playback — always start from beginning
+    if (audioRef.current) {
+      audioRef.current.play(0);
+      setAudioProgress(0);
+    }
 
     const animate = (timestamp: number) => {
       // On first frame, set the time base so animation continues from paused time
@@ -366,12 +399,14 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           const finalParams: Record<string, any> = { ...generator.defaultParams, ...rd.params };
           if (rd.loadedImage) finalParams._sourceImage = rd.loadedImage;
           finalParams._renderKey = rd.renderKey;
-          // Inject real-time audio data
+          // Inject real-time audio data + update progress
           if (audioRef.current?.isPlaying()) {
             finalParams._audioData = audioRef.current.getFrequencyData(finalParams.bandCount ?? 32);
             finalParams._audioBass = audioRef.current.getBassEnergy();
             finalParams._audioMid = audioRef.current.getMidEnergy();
             finalParams._audioHigh = audioRef.current.getHighEnergy();
+            const dur = audioRef.current.getDuration();
+            if (dur > 0) setAudioProgress(audioRef.current.getCurrentOffset() / dur);
           }
           generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, animTime);
         }
