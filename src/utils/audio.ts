@@ -18,7 +18,7 @@ export class AudioProcessor {
   private startTime = 0;        // ctx.currentTime when playback started
   private startOffset = 0;      // offset into buffer (for resume)
   private _isPlaying = false;
-  private freqData: Uint8Array;
+  private freqData: Uint8Array<ArrayBuffer>;
   private disposed = false;
 
   constructor() {
