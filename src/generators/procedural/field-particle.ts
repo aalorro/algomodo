@@ -55,10 +55,6 @@ const parameterSchema: ParameterSchema = {
   },
 };
 
-interface VortexCenter {
-  x: number; y: number; strength: number;
-}
-
 export const fieldParticle: Generator = {
   id: 'procedural-field-particle',
   family: 'procedural',
@@ -104,11 +100,16 @@ export const fieldParticle: Generator = {
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, w, h);
 
+    // Velocity clamping — prevents attractor/dipole from sending particles
+    // across the canvas dozens of times, which freezes the rasterizer
+    const maxVel = minDim * 0.025;
+    const maxVelSq = maxVel * maxVel;
+
     // Field-specific setup
     const noiseScale = 3.0 / minDim;
     const epsNS = 0.5 * noiseScale;
 
-    // Vortex / attractor / dipole centers — use flat arrays for speed
+    // Vortex / attractor / dipole centers — flat arrays
     const centersX: number[] = [];
     const centersY: number[] = [];
     const centersStr: number[] = [];
@@ -166,7 +167,7 @@ export const fieldParticle: Generator = {
       }
     };
 
-    // Seed particles into typed arrays
+    // Seed particles
     const startX = new Float32Array(actualCount);
     const startY = new Float32Array(actualCount);
     const pColorIdx = new Uint8Array(actualCount);
@@ -176,7 +177,7 @@ export const fieldParticle: Generator = {
       pColorIdx[i] = rng.integer(0, nC - 1);
     }
 
-    // Integrate and draw trails
+    // Trail buffers — reused per particle
     ctx.lineWidth = lw;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -184,14 +185,14 @@ export const fieldParticle: Generator = {
     const phaseOffset = t * 0.5;
     const baseAlpha = 0.7 + audioHigh * 0.3;
 
-    // Flat trail buffer — avoids thousands of small array allocations
     const trailX = new Float32Array(trailLen + 1);
     const trailY = new Float32Array(trailLen + 1);
+    const trailWrap = new Uint8Array(trailLen); // 1 if segment crosses canvas boundary
+    // Cache velocity magnitude during integration for velocity color mode
+    const needSpeedCache = colorMode === 'velocity';
+    const trailSpeed = needSpeedCache ? new Float32Array(trailLen) : null;
 
-    // Pre-build alpha breakpoint: find max segment index where alpha >= 0.02
     const maxVisibleSeg = Math.min(trailLen, Math.ceil(baseAlpha / 0.02 * trailLen)) | 0;
-
-    // For palette/age modes, batch segments into polylines per alpha band
     const isFixedColor = colorMode === 'palette' || colorMode === 'age';
 
     for (let i = 0; i < actualCount; i++) {
@@ -201,22 +202,44 @@ export const fieldParticle: Generator = {
       trailX[0] = px;
       trailY[0] = py;
 
-      // Integrate trail
+      // Integrate trail with velocity clamping + wrap tracking
       for (let s = 0; s < trailLen; s++) {
         computeVelocity(px, py);
-        px += outVx * dt;
-        py += outVy * dt;
-        if (px < 0) px += w; else if (px > w) px -= w;
-        if (py < 0) py += h; else if (py > h) py -= h;
+
+        // Cache unclamped speed for velocity color mode
+        if (trailSpeed) {
+          trailSpeed[s] = Math.sqrt(outVx * outVx + outVy * outVy);
+        }
+
+        // Clamp velocity magnitude
+        const magSq = outVx * outVx + outVy * outVy;
+        if (magSq > maxVelSq) {
+          const scale = maxVel / Math.sqrt(magSq);
+          outVx *= scale;
+          outVy *= scale;
+        }
+
+        const newPx = px + outVx * dt;
+        const newPy = py + outVy * dt;
+
+        // Wrap with flag
+        let wrapped = 0;
+        if (newPx < 0) { px = newPx + w; wrapped = 1; }
+        else if (newPx > w) { px = newPx - w; wrapped = 1; }
+        else { px = newPx; }
+
+        if (newPy < 0) { py = newPy + h; wrapped = 1; }
+        else if (newPy > h) { py = newPy - h; wrapped = 1; }
+        else { py = newPy; }
+
+        trailWrap[s] = wrapped;
         trailX[s + 1] = px;
         trailY[s + 1] = py;
       }
 
-      // Draw trail — batch consecutive segments with same color into polylines
+      // Draw trail with wrap-aware path breaks
       if (isFixedColor && colorMode === 'palette') {
-        // All segments same color — draw as one polyline with gradient alpha via segments
         const [r, g, b] = colors[pColorIdx[i]];
-        // Group into alpha bands (4 bands) to reduce stroke calls
         const bands = 4;
         const segsPerBand = Math.ceil(maxVisibleSeg / bands);
         for (let band = 0; band < bands; band++) {
@@ -229,27 +252,41 @@ export const fieldParticle: Generator = {
           ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
           ctx.beginPath();
           ctx.moveTo(trailX[sStart], trailY[sStart]);
-          for (let s = sStart + 1; s <= sEnd && s <= trailLen; s++) {
-            ctx.lineTo(trailX[s], trailY[s]);
+          for (let s = sStart; s < sEnd && s < trailLen; s++) {
+            if (trailWrap[s]) {
+              // Wrapped segment — break path, don't draw cross-canvas line
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(trailX[s + 1], trailY[s + 1]);
+            } else {
+              ctx.lineTo(trailX[s + 1], trailY[s + 1]);
+            }
           }
           ctx.stroke();
         }
       } else {
         // Variable color per segment — batch consecutive same-color segments
         let prevR = -1, prevG = -1, prevB = -1, prevAlphaQ = -1;
-        let batchStart = 0;
+        let pathOpen = false;
 
         for (let s = 0; s < maxVisibleSeg && s < trailLen; s++) {
           const age = s / trailLen;
           const alpha = (1 - age) * baseAlpha;
           if (alpha < 0.02) break;
-          // Quantize alpha to reduce style changes
+
+          // Wrapped segment — flush and skip
+          if (trailWrap[s]) {
+            if (pathOpen) { ctx.stroke(); pathOpen = false; }
+            prevR = -1; // force new batch after wrap
+            continue;
+          }
+
           const alphaQ = (alpha * 10 + 0.5) | 0;
 
           let r: number, g: number, b: number;
           if (colorMode === 'velocity') {
-            computeVelocity(trailX[s], trailY[s]);
-            const speed = Math.sqrt(outVx * outVx + outVy * outVy);
+            // Use cached speed — no recomputation needed
+            const speed = trailSpeed![s];
             const ci = Math.min(nC - 1, (Math.min(1, speed * 0.3) * (nC - 1)) | 0);
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
           } else if (colorMode === 'direction') {
@@ -265,20 +302,16 @@ export const fieldParticle: Generator = {
           }
 
           if (r !== prevR || g !== prevG || b !== prevB || alphaQ !== prevAlphaQ) {
-            // Flush previous batch
-            if (s > batchStart && prevR >= 0) {
-              ctx.stroke();
-            }
+            if (pathOpen) ctx.stroke();
             ctx.strokeStyle = `rgba(${r},${g},${b},${(alphaQ / 10).toFixed(1)})`;
             ctx.beginPath();
             ctx.moveTo(trailX[s], trailY[s]);
             prevR = r; prevG = g; prevB = b; prevAlphaQ = alphaQ;
-            batchStart = s;
+            pathOpen = true;
           }
           ctx.lineTo(trailX[s + 1], trailY[s + 1]);
         }
-        // Flush final batch
-        if (prevR >= 0) ctx.stroke();
+        if (pathOpen) ctx.stroke();
       }
     }
   },
