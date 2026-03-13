@@ -112,7 +112,7 @@ export const instancedGeometry: Generator = {
     shape: 'hexagon', count: 150, arrangement: 'grid', sizeVar: 0.3,
     rotationVar: 0.4, waveSpeed: 1.0, fillMode: 'filled',
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -128,6 +128,10 @@ export const instancedGeometry: Generator = {
     const waveSpd = params.waveSpeed ?? 1.0;
     const fillMode = params.fillMode || 'filled';
     const nC = palette.colors.length;
+
+    // Audio reactivity
+    const audioBass = params._audioBass ?? 0;
+    const audioMid = params._audioMid ?? 0;
 
     // Background
     ctx.fillStyle = '#0a0a0f';
@@ -219,8 +223,8 @@ export const instancedGeometry: Generator = {
     for (const inst of instances) {
       // Wave animation
       const phase = inst.dist * 0.008 - time * waveSpd * 2;
-      const scaleWave = 1 + 0.35 * Math.sin(phase);
-      const rotWave = 0.5 * Math.sin(phase * 0.7 + 1.2);
+      const scaleWave = 1 + (0.35 + audioBass * 0.8) * Math.sin(phase);
+      const rotWave = (0.5 + audioMid * 0.6) * Math.sin(phase * 0.7 + 1.2);
       const alphaWave = 0.55 + 0.45 * Math.sin(phase * 0.5 + 0.8);
 
       const sz = inst.baseSize * scaleWave;

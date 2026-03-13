@@ -95,7 +95,7 @@ export const sdfRaymarch: Generator = {
     sceneType: 'spheres', complexity: 4, glowIntensity: 0.5, bandWidth: 0.3,
     smoothBlend: 0.3, rotationSpeed: 0.5, speed: 0.5,
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -105,10 +105,14 @@ export const sdfRaymarch: Generator = {
 
     const sceneType = params.sceneType || 'spheres';
     const complexity = Math.max(1, params.complexity ?? 4) | 0;
-    const glowIntensity = params.glowIntensity ?? 0.5;
+    // Audio reactivity
+    const audioBass = params._audioBass ?? 0;
+    const audioMid = params._audioMid ?? 0;
+
+    const glowIntensity = (params.glowIntensity ?? 0.5) + audioBass * 0.5;
     const bandWidth = params.bandWidth ?? 0.3;
     const smoothK = (params.smoothBlend ?? 0.3) * minDim * 0.15;
-    const rotSpeed = params.rotationSpeed ?? 0.5;
+    const rotSpeed = (params.rotationSpeed ?? 0.5) * (1 + audioMid * 1.5);
     const spd = params.speed ?? 0.5;
     const t = time * spd;
 

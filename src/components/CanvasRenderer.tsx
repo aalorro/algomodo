@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
 import { loadImageFromUrl } from '../utils/imageUrl';
+import { AudioProcessor } from '../utils/audio';
 
 interface CanvasRendererProps {
   showFPS?: boolean;
@@ -31,6 +32,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   const timeBaseRef = useRef(0);       // RAF timestamp offset for smooth resume
   const animTimeRef = useRef(0);       // current animation time in seconds
   const [isSaving, setIsSaving] = useState(false);
+  const audioRef = useRef<AudioProcessor | null>(null);
 
   const {
     canvasSettings,
@@ -49,6 +51,9 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     postFX,
     sourceImage,
     setSourceImage,
+    audioFile,
+    setAudioFile,
+    setAudioFileName,
     interactionEnabled,
     recordingDuration,
     undo,
@@ -73,6 +78,9 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     postFX: s.postFX,
     sourceImage: s.sourceImage,
     setSourceImage: s.setSourceImage,
+    audioFile: s.audioFile,
+    setAudioFile: s.setAudioFile,
+    setAudioFileName: s.setAudioFileName,
     interactionEnabled: s.interactionEnabled,
     recordingDuration: s.recordingDuration,
     undo: s.undo,
@@ -91,6 +99,25 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     img.onerror = () => setLoadedImage(null);
     img.src = sourceImage;
   }, [sourceImage]);
+
+  // Decode audio file → AudioProcessor
+  useEffect(() => {
+    if (!audioFile) {
+      audioRef.current?.dispose();
+      audioRef.current = null;
+      return;
+    }
+    const processor = new AudioProcessor();
+    let cancelled = false;
+    processor.loadFile(audioFile).then(() => {
+      if (!cancelled) audioRef.current = processor;
+    });
+    return () => {
+      cancelled = true;
+      processor.dispose();
+      if (audioRef.current === processor) audioRef.current = null;
+    };
+  }, [audioFile]);
 
   // ── Image ingestion helpers ─────────────────────────────────────────────────
   const readFileAsDataUrl = (file: File) => {
@@ -128,6 +155,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
     // Prefer file drop
     const file = e.dataTransfer.files[0];
+    if (file?.type.startsWith('audio/')) {
+      setAudioFile(file);
+      setAudioFileName(file.name);
+      return;
+    }
     if (file?.type.startsWith('image/')) {
       readFileAsDataUrl(file);
       return;
@@ -224,6 +256,13 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
     if (loadedImage) finalParams._sourceImage = loadedImage;
     finalParams._renderKey = renderKey;
+    // Inject audio data if available
+    if (audioRef.current?.isPlaying()) {
+      finalParams._audioData = audioRef.current.getFrequencyData(finalParams.bandCount ?? 32);
+      finalParams._audioBass = audioRef.current.getBassEnergy();
+      finalParams._audioMid = audioRef.current.getMidEnergy();
+      finalParams._audioHigh = audioRef.current.getHighEnergy();
+    }
 
     // Use paused time if provided, otherwise 0 for static renders
     const time = renderTime ?? pausedTime ?? 0;
@@ -304,6 +343,9 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
     const resumeFrom = useStore.getState().pausedTime ?? 0;
 
+    // Sync audio playback with animation
+    if (audioRef.current) audioRef.current.play(resumeFrom);
+
     const animate = (timestamp: number) => {
       // On first frame, set the time base so animation continues from paused time
       if (timeBaseRef.current === 0) {
@@ -324,6 +366,13 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           const finalParams: Record<string, any> = { ...generator.defaultParams, ...rd.params };
           if (rd.loadedImage) finalParams._sourceImage = rd.loadedImage;
           finalParams._renderKey = rd.renderKey;
+          // Inject real-time audio data
+          if (audioRef.current?.isPlaying()) {
+            finalParams._audioData = audioRef.current.getFrequencyData(finalParams.bandCount ?? 32);
+            finalParams._audioBass = audioRef.current.getBassEnergy();
+            finalParams._audioMid = audioRef.current.getMidEnergy();
+            finalParams._audioHigh = audioRef.current.getHighEnergy();
+          }
           generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, animTime);
         }
 
@@ -356,6 +405,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      audioRef.current?.pause();
     };
   }, [isAnimating, renderKey]);
 

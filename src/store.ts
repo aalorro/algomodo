@@ -49,6 +49,10 @@ export const useStore = create<AppState>()(
       // Source image (not persisted — too large for localStorage)
       sourceImage: null,
 
+      // Audio source (not persisted)
+      audioFile: null as File | null,
+      audioFileName: null as string | null,
+
       // History (not persisted)
       historyPast: [] as HistorySnapshot[],
       historyFuture: [] as HistorySnapshot[],
@@ -204,6 +208,9 @@ export const useStore = create<AppState>()(
       },
 
       setSourceImage: (dataUrl) => set({ sourceImage: dataUrl }),
+
+      setAudioFile: (file) => set({ audioFile: file }),
+      setAudioFileName: (name) => set({ audioFileName: name }),
 
       savePreset: (name: string) => {
         const s = get();

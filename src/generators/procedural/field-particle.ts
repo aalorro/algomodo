@@ -71,7 +71,7 @@ export const fieldParticle: Generator = {
     particleCount: 1500, fieldType: 'curl', trailLength: 80, fieldStrength: 1.0,
     lineWidth: 1.0, colorMode: 'velocity', speed: 1.0,
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -82,10 +82,15 @@ export const fieldParticle: Generator = {
     const pCount = Math.max(50, params.particleCount ?? 1500) | 0;
     const fieldType = params.fieldType || 'curl';
     const trailLen = Math.max(5, params.trailLength ?? 80) | 0;
-    const fStr = params.fieldStrength ?? 1.0;
+    const baseFStr = params.fieldStrength ?? 1.0;
     const lw = params.lineWidth ?? 1.0;
     const colorMode = params.colorMode || 'velocity';
     const spd = params.speed ?? 1.0;
+
+    // Audio reactivity
+    const audioBass = params._audioBass ?? 0;
+    const audioHigh = params._audioHigh ?? 0;
+    const fStr = baseFStr * (1 + audioBass * 2.5);
     const t = time * spd;
 
     const qualityMult = quality === 'draft' ? 0.5 : quality === 'ultra' ? 1.0 : 0.75;
@@ -202,7 +207,7 @@ export const fieldParticle: Generator = {
       // Draw trail segments with fading alpha
       for (let s = 0; s < trail.length - 1; s++) {
         const age = s / trailLen; // 0 = head, 1 = tail
-        const alpha = (1 - age) * 0.7;
+        const alpha = (1 - age) * (0.7 + audioHigh * 0.3);
         if (alpha < 0.02) break;
 
         let r: number, g: number, b: number;

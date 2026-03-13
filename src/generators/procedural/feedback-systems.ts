@@ -122,7 +122,7 @@ export const feedbackSystems: Generator = {
     iterations: 12, zoomFactor: 0.97, rotationRate: 0.5,
     seedShape: 'circles', colorDrift: 0.3, blendOpacity: 0.75,
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, _quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -130,11 +130,16 @@ export const feedbackSystems: Generator = {
     const rng = new SeededRNG(seed);
 
     const iterations = Math.max(1, params.iterations ?? 12) | 0;
-    const zoom = params.zoomFactor ?? 0.97;
+    let zoom = params.zoomFactor ?? 0.97;
     const rotRate = params.rotationRate ?? 0.5;
     const seedShape = params.seedShape || 'circles';
     const colorDrift = params.colorDrift ?? 0.3;
     const blendOpacity = params.blendOpacity ?? 0.75;
+
+    // Audio reactivity
+    const audioBass = params._audioBass ?? 0;
+    const audioMid = params._audioMid ?? 0;
+    zoom *= (1 + audioBass * 0.15);
 
     // Create offscreen buffers
     const bufA = document.createElement('canvas');
@@ -156,7 +161,7 @@ export const feedbackSystems: Generator = {
 
     // Feedback iterations
     for (let i = 0; i < iterations; i++) {
-      const angle = rotRate * (time + i * 0.12);
+      const angle = rotRate * (time + i * 0.12) + audioMid * 0.4;
 
       // Transform A → B: clear B, then draw A with transform
       ctxB.clearRect(0, 0, w, h);

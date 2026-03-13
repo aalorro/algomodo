@@ -58,7 +58,7 @@ export const proceduralVfx: Generator = {
     noiseScale: 3, octaves: 4, displaceAmount: 0.4, edgeIntensity: 0.5,
     quantizeLevels: 6, opChain: 'full-chain', speed: 0.5,
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -66,8 +66,12 @@ export const proceduralVfx: Generator = {
 
     const noiseScale = params.noiseScale ?? 3;
     const octaves = Math.max(1, params.octaves ?? 4) | 0;
-    const displaceAmt = params.displaceAmount ?? 0.4;
-    const edgeInt = params.edgeIntensity ?? 0.5;
+    // Audio reactivity
+    const audioBass = params._audioBass ?? 0;
+    const audioHigh = params._audioHigh ?? 0;
+
+    const displaceAmt = (params.displaceAmount ?? 0.4) + audioBass * 0.5;
+    const edgeInt = (params.edgeIntensity ?? 0.5) + audioHigh * 0.4;
     const qLevels = Math.max(2, params.quantizeLevels ?? 6) | 0;
     const opChain = params.opChain || 'full-chain';
     const spd = params.speed ?? 0.5;

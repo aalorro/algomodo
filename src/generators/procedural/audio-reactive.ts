@@ -118,7 +118,7 @@ export const audioReactive: Generator = {
     bandCount: 32, style: 'bars', reactivity: 1.0, beatRate: 1.5,
     smoothing: 0.5, symmetry: false, speed: 1,
   },
-  supportsVector: false, supportsWebGPU: false, supportsAnimation: true,
+  supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
@@ -137,14 +137,30 @@ export const audioReactive: Generator = {
     const colors = palette.colors.map(hexToRgb);
     const nC = colors.length;
 
+    // Use real audio data when available, otherwise synthesize
+    const realAudio: Float32Array | null = params._audioData ?? null;
+    const audioBass = params._audioBass ?? 0;
+
     // Background
-    const beat = Math.pow(Math.max(0, Math.sin(t * beatRate * Math.PI)), 8);
+    const beat = realAudio
+      ? Math.pow(Math.min(1, audioBass * 3), 4)
+      : Math.pow(Math.max(0, Math.sin(t * beatRate * Math.PI)), 8);
     const bgBright = Math.round(8 + beat * 12);
     ctx.fillStyle = `rgb(${bgBright},${bgBright},${bgBright + 2})`;
     ctx.fillRect(0, 0, w, h);
 
-    // Spectrum
-    const spectrum = synthesizeSpectrum(bandCount, seed, t, reactivity, smoothing, beatRate);
+    // Spectrum — real audio or synthetic fallback
+    let spectrum: Float32Array;
+    if (realAudio) {
+      // Resample real audio data to match bandCount
+      spectrum = new Float32Array(bandCount);
+      for (let i = 0; i < bandCount; i++) {
+        const srcIdx = Math.floor((i / bandCount) * realAudio.length);
+        spectrum[i] = Math.min(1.5, (realAudio[srcIdx] ?? 0) * reactivity * (1 + beat * 1.5));
+      }
+    } else {
+      spectrum = synthesizeSpectrum(bandCount, seed, t, reactivity, smoothing, beatRate);
+    }
 
     if (style === 'bars') {
       const barW = w / (doSymmetry ? bandCount * 2 : bandCount);

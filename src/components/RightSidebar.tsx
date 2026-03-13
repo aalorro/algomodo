@@ -49,6 +49,10 @@ export const RightSidebar: React.FC = React.memo(() => {
     importPresets,
     sourceImage,
     setSourceImage,
+    audioFile,
+    audioFileName,
+    setAudioFile,
+    setAudioFileName,
     recordingDuration,
     setRecordingDuration,
     boomerangGif,
@@ -95,6 +99,10 @@ export const RightSidebar: React.FC = React.memo(() => {
     importPresets: s.importPresets,
     sourceImage: s.sourceImage,
     setSourceImage: s.setSourceImage,
+    audioFile: s.audioFile,
+    audioFileName: s.audioFileName,
+    setAudioFile: s.setAudioFile,
+    setAudioFileName: s.setAudioFileName,
     recordingDuration: s.recordingDuration,
     setRecordingDuration: s.setRecordingDuration,
     boomerangGif: s.boomerangGif,
@@ -221,6 +229,14 @@ export const RightSidebar: React.FC = React.memo(() => {
     const reader = new FileReader();
     reader.onload = (ev) => setSourceImage(ev.target?.result as string);
     reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAudioFile(file);
+    setAudioFileName(file.name);
     e.target.value = '';
   };
 
@@ -605,6 +621,47 @@ export const RightSidebar: React.FC = React.memo(() => {
             >
               Load JSON Recipe
             </button>
+          </>
+        )}
+      </div>
+
+      {/* Audio Source */}
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">Audio Source</label>
+        {audioFile ? (
+          <div className="flex items-center gap-2">
+            <div className="w-12 h-12 rounded bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{audioFileName}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Plays when animating</p>
+              <button
+                onClick={() => { setAudioFile(null); setAudioFileName(null); }}
+                className="text-xs text-red-500 dark:text-red-400 hover:text-red-400 dark:hover:text-red-300"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <input
+              id="sidebar-audio-upload"
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={handleAudioUpload}
+            />
+            <button
+              onClick={() => document.getElementById('sidebar-audio-upload')?.click()}
+              className="w-full px-3 py-2 text-sm bg-purple-500 hover:bg-purple-600 text-white rounded text-center"
+            >
+              Upload Audio
+            </button>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">or drag audio onto canvas</p>
           </>
         )}
       </div>
