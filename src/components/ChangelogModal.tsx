@@ -30,7 +30,7 @@ export const ChangelogModal: React.FC = () => {
               <div>
                 <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Procedural family</strong> — 6 generators: Feedback Systems, Procedural VFX, Field + Particle Motion, Instanced Geometry, Audio-Reactive, SDF Raymarch</li>
+                  <li><strong>Procedural family</strong> — 6 generators: Feedback Systems, Warp, Field + Particle Motion, Instanced Geometry, Audio-Reactive, SDF Raymarch</li>
                   <li><strong>Audio upload &amp; reactivity</strong> — upload audio files, all procedural generators react to real-time frequency data (bass, mid, high energy bands)</li>
                   <li><strong>Audio seek slider</strong> — scrub through audio with progress bar and elapsed/total time display</li>
                   <li><strong>Audio Reactivity parameter</strong> — per-generator sensitivity slider (0–2) on procedural generators</li>
