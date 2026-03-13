@@ -1,31 +1,79 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 import { clearCanvas } from '../../renderers/canvas2d/utils';
+import {
+  hexToRgb, metricFromName, jitteredGridFlat, animateSitesFlat,
+  buildSiteGrid, METRIC_EUCLIDEAN, METRIC_MANHATTAN,
+} from './voronoi-utils';
+import type { SiteGrid } from './voronoi-utils';
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
+/**
+ * Weighted nearest-neighbor search using spatial grid.
+ * Weights change the effective distance so we must check all candidates in the
+ * grid neighbourhood — but the grid still massively narrows the set vs brute-force.
+ * For power mode with high weight variance the winner may be far away, so we use
+ * a wider 7×7 search window.
+ */
+function findNearestWeighted(
+  x: number, y: number,
+  sites: Float64Array, grid: SiteGrid,
+  metric: number,
+  weights: Float64Array, mode: string, scaleW: number,
+  radius: number,
+): { nearest: number; wd1: number; wd2: number } {
+  const gs = grid.size;
+  const gx = Math.min(gs - 1, Math.max(0, (x * grid.invW * gs) | 0));
+  const gy = Math.min(gs - 1, Math.max(0, (y * grid.invH * gs) | 0));
 
-function jitteredGrid(count: number, w: number, h: number, rng: SeededRNG): [number, number][] {
-  const cols = Math.ceil(Math.sqrt(count * (w / h)));
-  const rows = Math.ceil(count / cols);
-  const cw = w / cols, ch = h / rows;
-  const pts: [number, number][] = [];
-  for (let r = 0; r < rows && pts.length < count; r++) {
-    for (let c = 0; c < cols && pts.length < count; c++) {
-      pts.push([(c + 0.2 + rng.random() * 0.6) * cw, (r + 0.2 + rng.random() * 0.6) * ch]);
+  // Wider search for weighted — power mode can shift winners farther
+  const r = radius;
+  const ylo = gy > r ? gy - r : 0;
+  const yhi = gy < gs - r ? gy + r : gs - 1;
+  const xlo = gx > r ? gx - r : 0;
+  const xhi = gx < gs - r ? gx + r : gs - 1;
+
+  let wd1 = Infinity, wd2 = Infinity, nearest = 0;
+  const useSquared = metric === METRIC_EUCLIDEAN;
+  const isPower = mode === 'power';
+  const isMult = mode === 'multiplicative';
+
+  for (let cy = ylo; cy <= yhi; cy++) {
+    const rowOff = cy * gs;
+    for (let cx = xlo; cx <= xhi; cx++) {
+      const ci = rowOff + cx;
+      const off = grid.offsets[ci];
+      const cnt = grid.counts[ci];
+      for (let k = 0; k < cnt; k++) {
+        const si = grid.cells[off + k];
+        const si2 = si * 2;
+        const dx = x - sites[si2];
+        const dy = y - sites[si2 + 1];
+        let d: number;
+        if (useSquared) {
+          d = Math.sqrt(dx * dx + dy * dy);
+        } else if (metric === METRIC_MANHATTAN) {
+          d = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+        } else {
+          d = Math.max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
+        }
+
+        const wi = weights[si];
+        let wd: number;
+        if (isMult) {
+          wd = d / wi;
+        } else if (isPower) {
+          wd = d > 0 ? Math.pow(d, 1 / wi) : 0;
+        } else {
+          wd = d - (wi - 1) * scaleW;
+        }
+
+        if (wd < wd1) { wd2 = wd1; wd1 = wd; nearest = si; }
+        else if (wd < wd2) { wd2 = wd; }
+      }
     }
   }
-  while (pts.length < count) pts.push([rng.random() * w, rng.random() * h]);
-  return pts;
-}
 
-function animateSites(base: [number, number][], amp: number, speed: number, time: number): [number, number][] {
-  return base.map(([bx, by], i) => {
-    const ph = i * 2.39996;
-    return [bx + Math.cos(time * speed + ph) * amp, by + Math.sin(time * speed * 1.3 + ph * 1.7) * amp];
-  });
+  return { nearest, wd1, wd2 };
 }
 
 const parameterSchema: ParameterSchema = {
@@ -86,7 +134,7 @@ export const weightedVoronoi: Generator = {
   family: 'voronoi',
   styleName: 'Weighted',
   definition: 'Voronoi diagram where each site has a random weight that distorts its region size, producing irregular organic cells',
-  algorithmNotes: 'Each site i receives a random weight wᵢ drawn from a log-normal distribution. The effective distance from a pixel to site i is modified by wᵢ via additive (d−w), multiplicative (d/w), or power (d^(1/w)) modes. Weighted cells near the same size yield near-standard Voronoi; high spread creates dramatic size contrasts.',
+  algorithmNotes: 'Spatial-grid acceleration with flat Float64Array sites. Each site receives a log-normal weight. Effective distance modified via additive (d−w), multiplicative (d/w), or power (d^(1/w)) modes. Power mode uses a wider 7×7 grid search to account for weight-shifted winners.',
   parameterSchema,
   defaultParams: {
     cellCount: 40, weightSpread: 0.7, weightMode: 'additive',
@@ -105,60 +153,41 @@ export const weightedVoronoi: Generator = {
     const mode = params.weightMode || 'additive';
     const borderW = params.borderWidth ?? 1;
     const colorMode = params.colorMode || 'By Index';
+    const metric = metricFromName(params.distanceMetric || 'Euclidean');
 
-    const baseSites = jitteredGrid(count, w, h, rng);
+    const baseSites = jitteredGridFlat(count, w, h, rng);
 
-    // Per-site weights: log-normal distribution scaled by spread
-    // weight ∈ [0.2, 5] roughly, spread=0 → all weights ≈ 1
     const avgCellSize = Math.sqrt((w * h) / count);
-    const weights: number[] = Array.from({ length: count }, () => {
-      const u = rng.random() * 2 - 1; // uniform [-1, 1]
-      return Math.exp(u * spread * 1.4); // log-normal
-    });
-
-    // Normalise weights so their effect is relative to avgCellSize
-    const maxW = Math.max(...weights);
+    const weights = new Float64Array(count);
+    let maxW = 0;
+    for (let i = 0; i < count; i++) {
+      const u = rng.random() * 2 - 1;
+      weights[i] = Math.exp(u * spread * 1.4);
+      if (weights[i] > maxW) maxW = weights[i];
+    }
     const scaleW = avgCellSize * 0.5 * spread;
 
     const amp = (params.animAmp ?? 0.2) * avgCellSize;
     const sites = time > 0 && amp > 0
-      ? animateSites(baseSites, amp, params.animSpeed ?? 0.4, time)
+      ? animateSitesFlat(baseSites, count, amp, params.animSpeed ?? 0.4, time)
       : baseSites;
 
+    const grid = buildSiteGrid(sites, count, w, h);
+    // Power mode can shift winners farther, use wider search
+    const searchRadius = mode === 'power' ? 3 : 2;
+
     const colors = palette.colors.map(hexToRgb);
-    const metric = params.distanceMetric || 'Euclidean';
     const pstep = quality === 'draft' ? 3 : quality === 'balanced' ? 2 : 1;
     const imageData = ctx.createImageData(w, h);
     const data = imageData.data;
 
     for (let y = 0; y < h; y += pstep) {
       for (let x = 0; x < w; x += pstep) {
-        let wdMin = Infinity, wdMin2 = Infinity, nearest = 0;
+        const { nearest, wd1, wd2 } = findNearestWeighted(
+          x, y, sites, grid, metric, weights, mode, scaleW, searchRadius,
+        );
 
-        for (let i = 0; i < count; i++) {
-          const dx = Math.abs(x - sites[i][0]), dy = Math.abs(y - sites[i][1]);
-          let d: number;
-          if (metric === 'Manhattan') d = dx + dy;
-          else if (metric === 'Chebyshev') d = Math.max(dx, dy);
-          else d = Math.sqrt(dx * dx + dy * dy);
-
-          // Apply weight
-          let wd: number;
-          const wi = weights[i];
-          if (mode === 'multiplicative') {
-            wd = d / wi; // larger weight → smaller effective distance → bigger cell
-          } else if (mode === 'power') {
-            wd = d > 0 ? Math.pow(d, 1 / wi) : 0;
-          } else {
-            // additive: subtract weight scaled to cell size
-            wd = d - (wi - 1) * scaleW;
-          }
-
-          if (wd < wdMin) { wdMin2 = wdMin; wdMin = wd; nearest = i; }
-          else if (wd < wdMin2) { wdMin2 = wd; }
-        }
-
-        const isBorder = borderW > 0 && (wdMin2 - wdMin) < borderW;
+        const isBorder = borderW > 0 && (wd2 - wd1) < borderW;
         let r: number, g: number, b: number;
 
         if (isBorder) {
@@ -166,7 +195,6 @@ export const weightedVoronoi: Generator = {
         } else {
           let base: [number, number, number];
           if (colorMode === 'By Weight') {
-            // Map normalised weight to palette
             const t = Math.min(1, (weights[nearest] - 0.1) / (maxW - 0.1 + 1e-6));
             const ci = t * (colors.length - 1);
             const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
@@ -177,7 +205,7 @@ export const weightedVoronoi: Generator = {
               (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
             ];
           } else if (colorMode === 'By Distance') {
-            const t = Math.min(1, Math.max(0, wdMin) / (avgCellSize * 0.6));
+            const t = Math.min(1, Math.max(0, wd1) / (avgCellSize * 0.6));
             const ci = t * (colors.length - 1);
             const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
             const f = ci - i0;

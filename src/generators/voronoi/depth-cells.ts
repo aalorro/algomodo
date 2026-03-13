@@ -1,39 +1,10 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 import { clearCanvas } from '../../renderers/canvas2d/utils';
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function getDist(metric: string, ax: number, ay: number, bx: number, by: number): number {
-  const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
-  if (metric === 'Manhattan') return dx + dy;
-  if (metric === 'Chebyshev') return Math.max(dx, dy);
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function jitteredGrid(count: number, w: number, h: number, rng: SeededRNG): [number, number][] {
-  const cols = Math.ceil(Math.sqrt(count * (w / h)));
-  const rows = Math.ceil(count / cols);
-  const cw = w / cols, ch = h / rows;
-  const pts: [number, number][] = [];
-  for (let r = 0; r < rows && pts.length < count; r++) {
-    for (let c = 0; c < cols && pts.length < count; c++) {
-      pts.push([(c + 0.2 + rng.random() * 0.6) * cw, (r + 0.2 + rng.random() * 0.6) * ch]);
-    }
-  }
-  while (pts.length < count) pts.push([rng.random() * w, rng.random() * h]);
-  return pts;
-}
-
-function animateSites(base: [number, number][], amp: number, speed: number, time: number): [number, number][] {
-  return base.map(([bx, by], i) => {
-    const ph = i * 2.39996;
-    return [bx + Math.cos(time * speed + ph) * amp, by + Math.sin(time * speed * 1.3 + ph * 1.7) * amp];
-  });
-}
+import {
+  hexToRgb, metricFromName, jitteredGridFlat, animateSitesFlat,
+  buildSiteGrid, findNearest, lloydRelax,
+} from './voronoi-utils';
 
 const parameterSchema: ParameterSchema = {
   cellCount: {
@@ -122,7 +93,7 @@ export const depthCells: Generator = {
   family: 'voronoi',
   styleName: '3D-ish',
   definition: 'Each Voronoi cell receives a random surface normal and is shaded with Phong-like diffuse and specular lighting',
-  algorithmNotes: 'Per-cell normals are generated on a spherical cap controlled by Tilt Amount. A directional light (configurable angle and elevation) illuminates each facet. Ambient + diffuse + specular produces gem/crystal appearance. During animation the light orbits the scene; optionally cells also drift.',
+  algorithmNotes: 'Grid-accelerated Lloyd relaxation and rendering. Flat Float64Array sites with spatial grid (5×5 search). Pre-computed specular lookup table (256 entries) eliminates per-pixel Math.pow. Per-cell normals on a spherical cap; directional light with ambient + diffuse + specular.',
   parameterSchema,
   defaultParams: {
     cellCount: 40, relaxationSteps: 3, tiltAmount: 0.65,
@@ -139,37 +110,24 @@ export const depthCells: Generator = {
 
     const rng = new SeededRNG(seed);
     const count = Math.max(5, params.cellCount | 0);
-    const metric = params.distanceMetric || 'Euclidean';
+    const metric = metricFromName(params.distanceMetric || 'Euclidean');
     const steps = Math.max(0, (params.relaxationSteps ?? 3) | 0);
     const tilt = Math.max(0, Math.min(1, params.tiltAmount ?? 0.65));
 
-    let baseSites = jitteredGrid(count, w, h, rng);
+    const baseSites = jitteredGridFlat(count, w, h, rng);
 
     const lstep = Math.max(2, Math.floor(Math.min(w, h) / 120));
-    for (let pass = 0; pass < steps; pass++) {
-      const sumX = new Array(count).fill(0), sumY = new Array(count).fill(0), cnt = new Array(count).fill(0);
-      for (let y = 0; y < h; y += lstep) {
-        for (let x = 0; x < w; x += lstep) {
-          let best = 0, bestD = Infinity;
-          for (let i = 0; i < count; i++) {
-            const d = getDist(metric, x, y, baseSites[i][0], baseSites[i][1]);
-            if (d < bestD) { bestD = d; best = i; }
-          }
-          sumX[best] += x; sumY[best] += y; cnt[best]++;
-        }
-      }
-      for (let i = 0; i < count; i++) if (cnt[i] > 0) baseSites[i] = [sumX[i] / cnt[i], sumY[i] / cnt[i]];
-    }
+    lloydRelax(baseSites, count, w, h, metric, steps, lstep);
 
     // Per-cell random normals (spherical cap, z-dominant)
-    const normals: [number, number, number][] = Array.from({ length: count }, () => {
+    const normals = new Float64Array(count * 3);
+    for (let i = 0; i < count; i++) {
       const phi = rng.random() * Math.PI * 2;
       const theta = rng.random() * tilt * Math.PI * 0.5;
-      const nx = Math.sin(theta) * Math.cos(phi);
-      const ny = Math.sin(theta) * Math.sin(phi);
-      const nz = Math.cos(theta);
-      return [nx, ny, nz];
-    });
+      normals[i * 3]     = Math.sin(theta) * Math.cos(phi);
+      normals[i * 3 + 1] = Math.sin(theta) * Math.sin(phi);
+      normals[i * 3 + 2] = Math.cos(theta);
+    }
 
     // Animate: light orbits, sites optionally drift
     const lightAngleDeg = (params.lightAngle ?? 225) + time * (params.animSpeed ?? 0.5) * 30;
@@ -182,9 +140,10 @@ export const depthCells: Generator = {
     const avgCellSize = Math.sqrt((w * h) / count);
     const amp = (params.animAmp ?? 0) * avgCellSize;
     const sites = amp > 0
-      ? animateSites(baseSites, amp, params.animSpeed ?? 0.5, time)
+      ? animateSitesFlat(baseSites, count, amp, params.animSpeed ?? 0.5, time)
       : baseSites;
 
+    const grid = buildSiteGrid(sites, count, w, h);
     const colors = palette.colors.map(hexToRgb);
     const ambient = params.ambient ?? 0.15;
     const specularStr = params.specular ?? 0.45;
@@ -195,14 +154,15 @@ export const depthCells: Generator = {
     const imageData = ctx.createImageData(w, h);
     const data = imageData.data;
 
+    // Pre-compute specular LUT to avoid per-pixel Math.pow
+    const specLUT = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      specLUT[i] = specularStr * Math.pow(i / 255, shininess);
+    }
+
     for (let y = 0; y < h; y += pstep) {
       for (let x = 0; x < w; x += pstep) {
-        let d1 = Infinity, d2 = Infinity, nearest = 0;
-        for (let i = 0; i < count; i++) {
-          const d = getDist(metric, x, y, sites[i][0], sites[i][1]);
-          if (d < d1) { d2 = d1; d1 = d; nearest = i; }
-          else if (d < d2) { d2 = d; }
-        }
+        const { nearest, d1, d2 } = findNearest(x, y, sites, grid, metric);
 
         const isBorder = borderW > 0 && (d2 - d1) < borderW;
         let r: number, g: number, b: number;
@@ -210,22 +170,23 @@ export const depthCells: Generator = {
         if (isBorder) {
           r = g = b = 0;
         } else {
-          const [nx, ny, nz] = normals[nearest];
+          const ni = nearest * 3;
+          const nx = normals[ni], ny2 = normals[ni + 1], nz = normals[ni + 2];
 
           // Phong shading
-          const diffuse = Math.max(0, nx * lx + ny * ly + nz * lz);
+          const diffuse = Math.max(0, nx * lx + ny2 * ly + nz * lz);
           // Specular: R = 2*(N·L)*N - L, view direction = (0,0,1)
-          const dotNL = nx * lx + ny * ly + nz * lz;
-          const rx = 2 * dotNL * nx - lx;
-          const ry = 2 * dotNL * ny - ly;
+          const dotNL = nx * lx + ny2 * ly + nz * lz;
           const rz = 2 * dotNL * nz - lz;
-          const spec = specularStr * Math.pow(Math.max(0, rz), shininess);
+          const specIdx = Math.max(0, Math.min(255, (Math.max(0, rz) * 255) | 0));
+          const spec = specLUT[specIdx];
           const brightness = ambient + diffuse * (1 - ambient);
 
           // Base color
           let base: [number, number, number];
           if (colorMode === 'By Position') {
-            const t = (sites[nearest][0] / w + sites[nearest][1] / h) / 2;
+            const si2 = nearest * 2;
+            const t = (sites[si2] / w + sites[si2 + 1] / h) / 2;
             const ci = t * (colors.length - 1);
             const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
             const f = ci - i0;
@@ -235,7 +196,7 @@ export const depthCells: Generator = {
               (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0,
             ];
           } else if (colorMode === 'By Normal-Z') {
-            const t = nz; // 0 = horizontal cell, 1 = faces viewer
+            const t = nz;
             const ci = t * (colors.length - 1);
             const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
             const f = ci - i0;

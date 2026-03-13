@@ -1,39 +1,10 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 import { clearCanvas } from '../../renderers/canvas2d/utils';
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function getDist(metric: string, ax: number, ay: number, bx: number, by: number): number {
-  const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
-  if (metric === 'Manhattan') return dx + dy;
-  if (metric === 'Chebyshev') return Math.max(dx, dy);
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function jitteredGrid(count: number, w: number, h: number, rng: SeededRNG): [number, number][] {
-  const cols = Math.ceil(Math.sqrt(count * (w / h)));
-  const rows = Math.ceil(count / cols);
-  const cw = w / cols, ch = h / rows;
-  const pts: [number, number][] = [];
-  for (let r = 0; r < rows && pts.length < count; r++) {
-    for (let c = 0; c < cols && pts.length < count; c++) {
-      pts.push([(c + 0.2 + rng.random() * 0.6) * cw, (r + 0.2 + rng.random() * 0.6) * ch]);
-    }
-  }
-  while (pts.length < count) pts.push([rng.random() * w, rng.random() * h]);
-  return pts;
-}
-
-function animateSites(base: [number, number][], amp: number, speed: number, time: number): [number, number][] {
-  return base.map(([bx, by], i) => {
-    const ph = i * 2.39996;
-    return [bx + Math.cos(time * speed + ph) * amp, by + Math.sin(time * speed * 1.3 + ph * 1.7) * amp];
-  });
-}
+import {
+  hexToRgb, metricFromName, jitteredGridFlat, animateSitesFlat,
+  buildSiteGrid, findNearest, lloydRelax,
+} from './voronoi-utils';
 
 const parameterSchema: ParameterSchema = {
   cellCount: {
@@ -90,7 +61,7 @@ export const centroidalVoronoi: Generator = {
   family: 'voronoi',
   styleName: 'Centroidal Voronoi',
   definition: 'Iteratively relaxes Voronoi seed points toward cell centroids to produce highly regular, near-hexagonal tilings',
-  algorithmNotes: 'Repeatedly executes Lloyd relaxation: computes the centroid of each cell, then moves the site to that centroid. More steps produce tighter hexagonal packing. Jittered-grid initial placement ensures full-canvas coverage.',
+  algorithmNotes: 'Grid-accelerated Lloyd relaxation: each pass rebuilds a spatial grid so centroid sampling uses O(~20) distance checks per pixel instead of O(n). Flat Float64Array site storage for cache locality. Jittered-grid initial placement ensures full-canvas coverage.',
   parameterSchema,
   defaultParams: {
     cellCount: 50, relaxationSteps: 5, borderWidth: 1.5,
@@ -105,33 +76,21 @@ export const centroidalVoronoi: Generator = {
 
     const rng = new SeededRNG(seed);
     const count = Math.max(5, params.cellCount | 0);
-    const metric = params.distanceMetric || 'Euclidean';
+    const metric = metricFromName(params.distanceMetric || 'Euclidean');
     const steps = Math.max(0, (params.relaxationSteps ?? 5) | 0);
 
-    let baseSites = jitteredGrid(count, w, h, rng);
+    const baseSites = jitteredGridFlat(count, w, h, rng);
 
     const lstep = Math.max(2, Math.floor(Math.min(w, h) / 120));
-    for (let pass = 0; pass < steps; pass++) {
-      const sumX = new Array(count).fill(0), sumY = new Array(count).fill(0), cnt = new Array(count).fill(0);
-      for (let y = 0; y < h; y += lstep) {
-        for (let x = 0; x < w; x += lstep) {
-          let best = 0, bestD = Infinity;
-          for (let i = 0; i < count; i++) {
-            const d = getDist(metric, x, y, baseSites[i][0], baseSites[i][1]);
-            if (d < bestD) { bestD = d; best = i; }
-          }
-          sumX[best] += x; sumY[best] += y; cnt[best]++;
-        }
-      }
-      for (let i = 0; i < count; i++) if (cnt[i] > 0) baseSites[i] = [sumX[i] / cnt[i], sumY[i] / cnt[i]];
-    }
+    lloydRelax(baseSites, count, w, h, metric, steps, lstep);
 
     const avgCellSize = Math.sqrt((w * h) / count);
     const amp = (params.animAmp ?? 0.2) * avgCellSize;
     const sites = time > 0 && amp > 0
-      ? animateSites(baseSites, amp, params.animSpeed ?? 0.4, time)
+      ? animateSitesFlat(baseSites, count, amp, params.animSpeed ?? 0.4, time)
       : baseSites;
 
+    const grid = buildSiteGrid(sites, count, w, h);
     const colors = palette.colors.map(hexToRgb);
     const borderW = params.borderWidth ?? 1.5;
     const pstep = quality === 'draft' ? 3 : quality === 'balanced' ? 2 : 1;
@@ -140,12 +99,7 @@ export const centroidalVoronoi: Generator = {
 
     for (let y = 0; y < h; y += pstep) {
       for (let x = 0; x < w; x += pstep) {
-        let d1 = Infinity, d2 = Infinity, nearest = 0;
-        for (let i = 0; i < count; i++) {
-          const d = getDist(metric, x, y, sites[i][0], sites[i][1]);
-          if (d < d1) { d2 = d1; d1 = d; nearest = i; }
-          else if (d < d2) { d2 = d; }
-        }
+        const { nearest, d1, d2 } = findNearest(x, y, sites, grid, metric);
 
         const isBorder = borderW > 0 && (d2 - d1) < borderW;
         let r: number, g: number, b: number;
@@ -160,7 +114,8 @@ export const centroidalVoronoi: Generator = {
           g = (colors[i0][1] + (colors[i1][1] - colors[i0][1]) * f) | 0;
           b = (colors[i0][2] + (colors[i1][2] - colors[i0][2]) * f) | 0;
         } else if (params.colorMode === 'By Position') {
-          const t = (sites[nearest][0] / w + sites[nearest][1] / h) / 2;
+          const si2 = nearest * 2;
+          const t = (sites[si2] / w + sites[si2 + 1] / h) / 2;
           const ci = t * (colors.length - 1);
           const i0 = Math.floor(ci), i1 = Math.min(colors.length - 1, i0 + 1);
           const f = ci - i0;
@@ -184,8 +139,10 @@ export const centroidalVoronoi: Generator = {
     if (params.showSeeds) {
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       const dotR = Math.max(2, w * 0.003);
-      for (const [sx, sy] of sites) {
-        ctx.beginPath(); ctx.arc(sx, sy, dotR, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < count; i++) {
+        ctx.beginPath();
+        ctx.arc(sites[i * 2], sites[i * 2 + 1], dotR, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   },

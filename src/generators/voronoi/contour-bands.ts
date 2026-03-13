@@ -1,39 +1,10 @@
 import type { Generator, ParameterSchema } from '../../types';
 import { SeededRNG } from '../../core/rng';
 import { clearCanvas } from '../../renderers/canvas2d/utils';
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function getDist(metric: string, ax: number, ay: number, bx: number, by: number): number {
-  const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
-  if (metric === 'Manhattan') return dx + dy;
-  if (metric === 'Chebyshev') return Math.max(dx, dy);
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function jitteredGrid(count: number, w: number, h: number, rng: SeededRNG): [number, number][] {
-  const cols = Math.ceil(Math.sqrt(count * (w / h)));
-  const rows = Math.ceil(count / cols);
-  const cw = w / cols, ch = h / rows;
-  const pts: [number, number][] = [];
-  for (let r = 0; r < rows && pts.length < count; r++) {
-    for (let c = 0; c < cols && pts.length < count; c++) {
-      pts.push([(c + 0.2 + rng.random() * 0.6) * cw, (r + 0.2 + rng.random() * 0.6) * ch]);
-    }
-  }
-  while (pts.length < count) pts.push([rng.random() * w, rng.random() * h]);
-  return pts;
-}
-
-function animateSites(base: [number, number][], amp: number, speed: number, time: number): [number, number][] {
-  return base.map(([bx, by], i) => {
-    const ph = i * 2.39996;
-    return [bx + Math.cos(time * speed + ph) * amp, by + Math.sin(time * speed * 1.3 + ph * 1.7) * amp];
-  });
-}
+import {
+  hexToRgb, metricFromName, jitteredGridFlat, animateSitesFlat,
+  buildSiteGrid, findNearest, lloydRelax,
+} from './voronoi-utils';
 
 const parameterSchema: ParameterSchema = {
   cellCount: {
@@ -98,7 +69,7 @@ export const contourBands: Generator = {
   family: 'voronoi',
   styleName: 'Contour Bands',
   definition: 'Draws concentric topographic-style contour rings around each Voronoi seed point based on the nearest-distance field',
-  algorithmNotes: 'The nearest-distance value d₁ is quantised into evenly spaced bands within each cell. Band boundaries produce contour lines. Three modes: hard (crisp), smooth (continuous), stepped (posterised). Sites use jittered-grid placement for full-canvas coverage.',
+  algorithmNotes: 'Spatial-grid acceleration with flat Float64Array sites. d₁ quantised into evenly spaced bands; band boundaries produce contour lines. Three modes: hard (crisp), smooth (continuous), stepped (posterised).',
   parameterSchema,
   defaultParams: {
     cellCount: 25, bandCount: 8, bandMode: 'hard', contourLineWidth: 1,
@@ -113,33 +84,23 @@ export const contourBands: Generator = {
 
     const rng = new SeededRNG(seed);
     const count = Math.max(3, params.cellCount | 0);
-    const metric = params.distanceMetric || 'Euclidean';
+    const metric = metricFromName(params.distanceMetric || 'Euclidean');
     const bands = Math.max(2, params.bandCount | 0);
 
-    let baseSites = jitteredGrid(count, w, h, rng);
+    const baseSites = jitteredGridFlat(count, w, h, rng);
 
     if (params.relaxed) {
-      const sumX = new Array(count).fill(0), sumY = new Array(count).fill(0), cnt = new Array(count).fill(0);
       const lstep = Math.max(2, Math.floor(Math.min(w, h) / 100));
-      for (let y = 0; y < h; y += lstep) {
-        for (let x = 0; x < w; x += lstep) {
-          let best = 0, bestD = Infinity;
-          for (let i = 0; i < count; i++) {
-            const d = getDist(metric, x, y, baseSites[i][0], baseSites[i][1]);
-            if (d < bestD) { bestD = d; best = i; }
-          }
-          sumX[best] += x; sumY[best] += y; cnt[best]++;
-        }
-      }
-      for (let i = 0; i < count; i++) if (cnt[i] > 0) baseSites[i] = [sumX[i] / cnt[i], sumY[i] / cnt[i]];
+      lloydRelax(baseSites, count, w, h, metric, 1, lstep);
     }
 
     const avgRadius = Math.sqrt((w * h) / count) * 0.65;
     const amp = (params.animAmp ?? 0.2) * Math.sqrt((w * h) / count);
     const sites = time > 0 && amp > 0
-      ? animateSites(baseSites, amp, params.animSpeed ?? 0.4, time)
+      ? animateSitesFlat(baseSites, count, amp, params.animSpeed ?? 0.4, time)
       : baseSites;
 
+    const grid = buildSiteGrid(sites, count, w, h);
     const colors = palette.colors.map(hexToRgb);
     const lineW = params.contourLineWidth ?? 1;
     const pstep = quality === 'draft' ? 3 : quality === 'balanced' ? 2 : 1;
@@ -148,12 +109,7 @@ export const contourBands: Generator = {
 
     for (let y = 0; y < h; y += pstep) {
       for (let x = 0; x < w; x += pstep) {
-        let d1 = Infinity, d2 = Infinity, nearest = 0;
-        for (let i = 0; i < count; i++) {
-          const d = getDist(metric, x, y, sites[i][0], sites[i][1]);
-          if (d < d1) { d2 = d1; d1 = d; nearest = i; }
-          else if (d < d2) { d2 = d; }
-        }
+        const { nearest, d1 } = findNearest(x, y, sites, grid, metric);
 
         const tRaw = Math.min(1, d1 / avgRadius);
         const bandIdx = tRaw * bands;
