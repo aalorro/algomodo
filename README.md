@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.6.2 · © 2026 ArtMondo
+MIT License · v1.7.0 · © 2026 ArtMondo
 
 ---
 
@@ -10,7 +10,8 @@ MIT License · v1.6.2 · © 2026 ArtMondo
 
 | Feature | Details |
 |---|---|
-| **105 generators** | Across 10 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs |
+| **111 generators** | Across 11 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs, Procedural |
+| **Audio reactivity** | Upload audio files (MP3/WAV/OGG) — procedural generators react to real-time frequency data with adjustable sensitivity |
 | **Live animation** | requestAnimationFrame loop with persistent simulation state; per-generator steps/frame control |
 | **Seeded RNG** | xorshift128+ — every output is fully reproducible from its integer seed |
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
@@ -189,6 +190,19 @@ Graph-theory-based generators — tessellations, triangulations, proximity graph
 | **k-Nearest Neighbor** | k-NN graph — each node connects to its k closest neighbors, revealing local structure and cluster boundaries |
 | **Gabriel Graph** | Gabriel graph — edge (i,j) exists iff no other point lies inside the diametral circle of i and j |
 | **Planar Graph** | Planar graph from Delaunay triangulation — density controls edge thinning by removing longest edges |
+
+### Procedural (6)
+
+Audio-reactive procedural generators with real-time animation and optional audio file input.
+
+| Name | Key Feature |
+|---|---|
+| **Feedback Systems** | Iterative zoom, rotate, and color-shift feedback loops creating fractal-like recursive patterns from seed shapes (circles, lines, grid, spiral) |
+| **Procedural VFX** | TouchDesigner-style texture ops: FBM noise → displacement warp → quantize → Sobel edge detect → palette color ramp with configurable operation chain |
+| **Field + Particle Motion** | Vector field visualization: particles trace flow lines through curl noise, point attractors, tangential vortices, or two-pole dipole fields |
+| **Instanced Geometry** | Many copies of a parametric shape (triangle, hexagon, circle, square, star) in grid, radial, golden-angle spiral, or scatter arrangements with wave animation |
+| **Audio-Reactive** | Simulated audio spectrum visualization (bars, radial spokes, concentric rings, waveform); uses real uploaded audio when available |
+| **SDF Raymarch** | 2D signed-distance-field rendering with smooth boolean union/subtract, exponential glow halos, and sinusoidal distance-band contours |
 
 ---
 

@@ -106,6 +106,12 @@ import { geodesic } from './graphs/geodesic';
 import { constrained } from './graphs/constrained';
 import { anisotropic } from './graphs/anisotropic';
 import { eulerTrails } from './graphs/euler-trails';
+import { feedbackSystems } from './procedural/feedback-systems';
+import { proceduralVfx } from './procedural/procedural-vfx';
+import { fieldParticle } from './procedural/field-particle';
+import { instancedGeometry } from './procedural/instanced-geometry';
+import { audioReactive } from './procedural/audio-reactive';
+import { sdfRaymarch } from './procedural/sdf-raymarch';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -215,6 +221,12 @@ export function initializeGenerators() {
   registerGenerator(constrained);
   registerGenerator(anisotropic);
   registerGenerator(eulerTrails);
+  registerGenerator(feedbackSystems);
+  registerGenerator(proceduralVfx);
+  registerGenerator(fieldParticle);
+  registerGenerator(instancedGeometry);
+  registerGenerator(audioReactive);
+  registerGenerator(sdfRaymarch);
 }
 
 export {
@@ -240,4 +252,6 @@ export {
   tessellations, lowPoly, ecosystems, steinerNetworks,
   kNearestNeighbor, gabrielGraph, planarGraph,
   geodesic, constrained, anisotropic, eulerTrails,
+  feedbackSystems, proceduralVfx, fieldParticle,
+  instancedGeometry, audioReactive, sdfRaymarch,
 };

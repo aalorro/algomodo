@@ -10,6 +10,12 @@ import { exportMp4, isWebCodecsSupported } from '../utils/mp4-exporter';
 import { CURATED_PALETTES } from '../data/palettes';
 import { loadImageFromUrl } from '../utils/imageUrl';
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export const RightSidebar: React.FC = React.memo(() => {
   const {
     selectedGeneratorId,
@@ -49,6 +55,13 @@ export const RightSidebar: React.FC = React.memo(() => {
     importPresets,
     sourceImage,
     setSourceImage,
+    audioFile,
+    audioFileName,
+    setAudioFile,
+    setAudioFileName,
+    audioProgress,
+    audioDuration,
+    setAudioSeekTo,
     recordingDuration,
     setRecordingDuration,
     boomerangGif,
@@ -95,6 +108,13 @@ export const RightSidebar: React.FC = React.memo(() => {
     importPresets: s.importPresets,
     sourceImage: s.sourceImage,
     setSourceImage: s.setSourceImage,
+    audioFile: s.audioFile,
+    audioFileName: s.audioFileName,
+    setAudioFile: s.setAudioFile,
+    setAudioFileName: s.setAudioFileName,
+    audioProgress: s.audioProgress,
+    audioDuration: s.audioDuration,
+    setAudioSeekTo: s.setAudioSeekTo,
     recordingDuration: s.recordingDuration,
     setRecordingDuration: s.setRecordingDuration,
     boomerangGif: s.boomerangGif,
@@ -221,6 +241,14 @@ export const RightSidebar: React.FC = React.memo(() => {
     const reader = new FileReader();
     reader.onload = (ev) => setSourceImage(ev.target?.result as string);
     reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAudioFile(file);
+    setAudioFileName(file.name);
     e.target.value = '';
   };
 
@@ -581,62 +609,93 @@ export const RightSidebar: React.FC = React.memo(() => {
             )}
 
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">or drag / paste onto canvas</p>
+          </>
+        )}
+      </div>
 
+      {/* Audio Source */}
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">Audio Source</label>
+        {audioFile ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-300 truncate flex-1 min-w-0">{audioFileName}</p>
+              <button
+                onClick={() => { setAudioFile(null); setAudioFileName(null); }}
+                className="text-xs text-red-500 dark:text-red-400 hover:text-red-400 dark:hover:text-red-300 flex-shrink-0"
+              >
+                Remove
+              </button>
+            </div>
+            {/* Audio seek slider + timer — hidden on small screens */}
+            <div className="hidden sm:block">
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.001}
+                value={audioProgress}
+                onChange={(e) => setAudioSeekTo(parseFloat(e.target.value))}
+                className="w-full h-1 accent-purple-500 cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">
+                <span>{formatTime(audioProgress * audioDuration)}</span>
+                <span>{formatTime(audioDuration)}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
             <input
-              id="sidebar-recipe-upload"
+              id="sidebar-audio-upload"
               type="file"
-              accept=".json"
+              accept="audio/*"
               className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try {
-                  const recipe = await uploadRecipe(file);
-                  loadRecipe(recipe);
-                } catch {
-                  alert('Invalid JSON recipe file');
-                }
-                e.target.value = '';
-              }}
+              onChange={handleAudioUpload}
             />
             <button
-              onClick={() => document.getElementById('sidebar-recipe-upload')?.click()}
-              className="w-full px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded text-center mt-1"
+              onClick={() => document.getElementById('sidebar-audio-upload')?.click()}
+              className="w-full px-3 py-2 text-sm bg-purple-500 hover:bg-purple-600 text-white rounded text-center"
             >
-              Load JSON Recipe
+              Upload Audio
             </button>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">or drag audio onto canvas</p>
           </>
         )}
       </div>
 
       {/* Seed Control */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 space-y-3">
-        <div>
-          <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">Seed</label>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={seed}
-              onChange={(e) => setSeed(parseInt(e.target.value) || 0)}
-              className="flex-1 px-2 py-3 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm font-mono border border-white"
-            />
-            <button
-              onClick={() => setSeedLocked(!seedLocked)}
-              className={`px-3 py-2 rounded text-sm ${
-                seedLocked ? 'bg-green-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-              }`}
-              title={seedLocked ? 'Seed locked' : 'Seed unlocked'}
-            >
-              🔒
-            </button>
-          </div>
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">Seed</label>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={seed}
+            onChange={(e) => setSeed(parseInt(e.target.value) || 0)}
+            className="flex-1 min-w-0 px-2 py-2 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded text-sm font-mono border border-white"
+          />
+          <button
+            onClick={() => setSeedLocked(!seedLocked)}
+            className={`px-2 py-2 rounded text-sm ${
+              seedLocked ? 'bg-green-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+            }`}
+            title={seedLocked ? 'Seed locked' : 'Seed unlocked'}
+          >
+            🔒
+          </button>
+          <button
+            onClick={randomizeSeed}
+            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm whitespace-nowrap"
+          >
+            <span className="hidden sm:inline">Randomize Seed</span>
+            <span className="sm:hidden">🎲</span>
+          </button>
         </div>
-        <button
-          onClick={randomizeSeed}
-          className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm"
-        >
-          Randomize Seed
-        </button>
       </div>
 
       {/* Palette Picker */}
@@ -1311,7 +1370,7 @@ export const RightSidebar: React.FC = React.memo(() => {
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
                 Version
               </label>
-              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.5.0</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.7.0</p>
             </div>
             </div>
           </div>
