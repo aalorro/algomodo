@@ -112,6 +112,9 @@ import { fieldParticle } from './procedural/field-particle';
 import { instancedGeometry } from './procedural/instanced-geometry';
 import { audioReactive } from './procedural/audio-reactive';
 import { sdfRaymarch } from './procedural/sdf-raymarch';
+import { displacement } from './procedural/displacement';
+import { particleAdvection } from './procedural/particle-advection';
+import { edgeGlow } from './procedural/edge-glow';
 
 export function initializeGenerators() {
   registerGenerator(pixelSort);
@@ -227,6 +230,9 @@ export function initializeGenerators() {
   registerGenerator(instancedGeometry);
   registerGenerator(audioReactive);
   registerGenerator(sdfRaymarch);
+  registerGenerator(displacement);
+  registerGenerator(particleAdvection);
+  registerGenerator(edgeGlow);
 }
 
 export {
@@ -254,4 +260,5 @@ export {
   geodesic, constrained, anisotropic, eulerTrails,
   feedbackSystems, warp, fieldParticle,
   instancedGeometry, audioReactive, sdfRaymarch,
+  displacement, particleAdvection, edgeGlow,
 };
