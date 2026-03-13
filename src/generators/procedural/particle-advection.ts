@@ -17,12 +17,12 @@ const parameterSchema: ParameterSchema = {
     group: 'Composition',
   },
   particleCount: {
-    name: 'Particles', type: 'number', min: 500, max: 5000, step: 100, default: 2000,
+    name: 'Particles', type: 'number', min: 800, max: 5000, step: 100, default: 2500,
     help: 'Number of advected particles',
     group: 'Composition',
   },
   trailLength: {
-    name: 'Trail Length', type: 'number', min: 10, max: 200, step: 10, default: 60,
+    name: 'Trail Length', type: 'number', min: 20, max: 200, step: 10, default: 80,
     help: 'Integration steps per particle trail',
     group: 'Flow/Motion',
   },
@@ -32,12 +32,17 @@ const parameterSchema: ParameterSchema = {
     group: 'Geometry',
   },
   fieldStrength: {
-    name: 'Field Strength', type: 'number', min: 0.5, max: 5, step: 0.1, default: 2.0,
+    name: 'Field Strength', type: 'number', min: 1.0, max: 5, step: 0.1, default: 2.5,
     help: 'Velocity magnitude multiplier',
     group: 'Flow/Motion',
   },
+  lineWidth: {
+    name: 'Line Width', type: 'number', min: 0.5, max: 4, step: 0.25, default: 1.5,
+    help: 'Stroke width of particle trails',
+    group: 'Texture',
+  },
   fadeRate: {
-    name: 'Fade Rate', type: 'number', min: 0.01, max: 0.5, step: 0.01, default: 0.1,
+    name: 'Fade Rate', type: 'number', min: 0.01, max: 0.3, step: 0.01, default: 0.05,
     help: 'How quickly trail segments fade with age',
     group: 'Texture',
   },
@@ -69,8 +74,8 @@ export const particleAdvection: Generator = {
     'Seeds particles deterministically and integrates them through a 2D velocity field. Curl and gradient modes use angle-based flow (1 noise call + sin/cos) instead of finite-difference derivatives (4 noise calls) for ~4× fewer noise evaluations per step. Orbital mode adds tangential velocity around seeded attractor points with noise perturbation. Turbulent mode layers two noise frequencies for chaotic advection. Speed color mode uses squared velocity to avoid per-step sqrt. Trails are drawn with butt line caps and miter joins for reduced canvas overhead. Audio bass modulates field strength, mid shifts field scale.',
   parameterSchema,
   defaultParams: {
-    fieldMode: 'curl', particleCount: 2000, trailLength: 60, fieldScale: 2.0,
-    fieldStrength: 2.0, fadeRate: 0.1, colorMode: 'speed', speed: 0.7, reactivity: 1.0,
+    fieldMode: 'curl', particleCount: 2500, trailLength: 80, fieldScale: 2.0,
+    fieldStrength: 2.5, lineWidth: 1.5, fadeRate: 0.05, colorMode: 'speed', speed: 0.7, reactivity: 1.0,
   },
   supportsVector: false, supportsWebGPU: false, supportsAnimation: true, supportsAudio: true,
 
@@ -80,11 +85,12 @@ export const particleAdvection: Generator = {
     const minDim = Math.min(w, h);
 
     const fieldMode = params.fieldMode || 'curl';
-    const pCount = Math.max(100, params.particleCount ?? 2000) | 0;
-    const trailLen = Math.max(5, params.trailLength ?? 60) | 0;
+    const pCount = Math.max(800, params.particleCount ?? 2500) | 0;
+    const trailLen = Math.max(20, params.trailLength ?? 80) | 0;
     const fScale = params.fieldScale ?? 2.0;
-    const baseFStr = params.fieldStrength ?? 2.0;
-    const fadeRate = params.fadeRate ?? 0.1;
+    const baseFStr = Math.max(1.0, params.fieldStrength ?? 2.5);
+    const lw = Math.max(0.5, params.lineWidth ?? 1.5);
+    const fadeRate = params.fadeRate ?? 0.05;
     const colorMode = params.colorMode || 'speed';
     const spd = params.speed ?? 0.7;
 
@@ -137,10 +143,13 @@ export const particleAdvection: Generator = {
     ctx.fillStyle = '#080810';
     ctx.fillRect(0, 0, w, h);
 
+    // Additive blending — overlapping trails accumulate brightness
+    ctx.globalCompositeOperation = 'lighter';
+
     // ── Field setup ──────────────────────────────────────────────
     const noiseScale = effScale / minDim;
-    const velMag = fStr * 4;
-    const maxVel = minDim * 0.02;
+    const velMag = fStr * 6;
+    const maxVel = minDim * 0.03;
     const maxVelSq = maxVel * maxVel;
     const dt = 0.6;
 
@@ -238,13 +247,13 @@ export const particleAdvection: Generator = {
     }
 
     // ── Trail integration + drawing ──────────────────────────────
-    ctx.lineWidth = 1.0;
+    ctx.lineWidth = lw;
     ctx.lineCap = 'butt';    // faster than 'round'
     ctx.lineJoin = 'miter';  // faster than 'round'
 
-    const baseAlpha = 0.6 + audioHigh * 0.3;
+    const baseAlpha = 0.85 + audioHigh * 0.15;
     const phaseOffset = t * 0.4;
-    const fadeMult = 1 + fadeRate * 3;
+    const fadeMult = 1 + fadeRate * 2;
     const invTrailLen = 1 / trailLen;
 
     const trailX = new Float32Array(trailLen + 1);
@@ -372,6 +381,9 @@ export const particleAdvection: Generator = {
         if (pathOpen) ctx.stroke();
       }
     }
+
+    // Restore default composite
+    ctx.globalCompositeOperation = 'source-over';
   },
 
   renderWebGL2(gl) {
@@ -380,6 +392,6 @@ export const particleAdvection: Generator = {
   },
 
   estimateCost(params) {
-    return Math.round((params.particleCount ?? 2000) * (params.trailLength ?? 60) * 0.012);
+    return Math.round((params.particleCount ?? 2500) * (params.trailLength ?? 80) * 0.012);
   },
 };
