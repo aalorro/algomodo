@@ -204,5 +204,8 @@ const failures = results.filter(r => !r.ok);
 if (failures.length > 0) {
   console.log(`\n⚠ ${failures.length} file(s) had no matches — verify patterns manually.`);
 } else {
-  console.log(`\nDone! Fill in release notes in CHANGELOG.md and ChangelogModal.tsx.`);
+  console.log(`\nDone! Review and complete these manual steps:`);
+  console.log(`  1. CHANGELOG.md — replace TODO lines with actual release notes`);
+  console.log(`  2. ChangelogModal.tsx — replace TODO lines with actual JSX release notes`);
+  console.log(`  3. InstructionsModal.tsx — add new instruction items if this release introduces new features or workflows`);
 }
