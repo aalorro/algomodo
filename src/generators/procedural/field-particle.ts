@@ -1,5 +1,5 @@
 import type { Generator, ParameterSchema } from '../../types';
-import { SeededRNG, SimplexNoise } from '../../core/rng';
+import { SeededRNG } from '../../core/rng';
 
 function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
@@ -61,7 +61,7 @@ export const fieldParticle: Generator = {
   styleName: 'Field + Particle Motion',
   definition: 'Vector field visualization with particles tracing flow lines through curl noise, attractors, vortices, or dipole fields',
   algorithmNotes:
-    'Defines a vector field (curl of simplex noise, point attractors, tangential vortices, or two-pole dipole). Particles are seeded from deterministic positions and integrated forward through the field. Each frame recomputes all trails statelessly from a time-offset starting point. Trails are drawn as polylines with fading alpha. Color maps to speed, direction, age, or fixed palette assignment.',
+    'Defines a vector field (curl of noise, point attractors, tangential vortices, or two-pole dipole). Particles are seeded from deterministic positions and integrated forward through the field. Each frame recomputes all trails statelessly from a time-offset starting point. Curl and dipole modes show a background grid of field direction lines. Trails are drawn as polylines with fading alpha. Color maps to speed, direction, age, or fixed palette assignment.',
   parameterSchema,
   defaultParams: {
     particleCount: 1500, fieldType: 'curl', trailLength: 80, fieldStrength: 1.0,
@@ -72,7 +72,6 @@ export const fieldParticle: Generator = {
   renderCanvas2D(ctx, params, seed, palette, quality, time = 0) {
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const rng = new SeededRNG(seed);
-    const noise = new SimplexNoise(seed);
     const minDim = Math.min(w, h);
 
     const pCount = Math.max(50, params.particleCount ?? 1500) | 0;
@@ -83,7 +82,6 @@ export const fieldParticle: Generator = {
     const colorMode = params.colorMode || 'velocity';
     const spd = params.speed ?? 1.0;
 
-    // Audio reactivity
     const rx = params.reactivity ?? 1.0;
     const audioBass = (params._audioBass ?? 0) * rx;
     const audioHigh = (params._audioHigh ?? 0) * rx;
@@ -96,47 +94,90 @@ export const fieldParticle: Generator = {
     const colors = palette.colors.map(hexToRgb);
     const nC = colors.length;
 
+    // ── Fast hash-based value noise (~3× faster than SimplexNoise) ──
+    const PERM = new Uint8Array(512);
+    const VALS = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      PERM[i] = i;
+      VALS[i] = rng.random() * 2 - 1;
+    }
+    for (let i = 255; i > 0; i--) {
+      const j = (rng.random() * (i + 1)) | 0;
+      const tmp = PERM[i]; PERM[i] = PERM[j]; PERM[j] = tmp;
+    }
+    for (let i = 0; i < 256; i++) PERM[i + 256] = PERM[i];
+
+    const vN = (x: number, y: number): number => {
+      const xb = x + 65536, yb = y + 65536;
+      const xi = xb | 0, yi = yb | 0;
+      const fx = xb - xi, fy = yb - yi;
+      const X = xi & 255, Y = yi & 255;
+      const sx = fx * fx * (3 - 2 * fx);
+      const sy = fy * fy * (3 - 2 * fy);
+      const py0 = PERM[Y], py1 = PERM[Y + 1];
+      const a = VALS[PERM[X + py0]];
+      const b = VALS[PERM[X + 1 + py0]];
+      const c = VALS[PERM[X + py1]];
+      const d = VALS[PERM[X + 1 + py1]];
+      const p = a + sx * (b - a);
+      const q = c + sx * (d - c);
+      return p + sy * (q - p);
+    };
+
     // Background
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, w, h);
 
-    // Velocity clamping — prevents attractor/dipole from sending particles
-    // across the canvas dozens of times, which freezes the rasterizer
+    // Velocity clamping
     const maxVel = minDim * 0.025;
     const maxVelSq = maxVel * maxVel;
 
-    // Field-specific setup
+    // ── Field setup ──────────────────────────────────────────────
     const noiseScale = 3.0 / minDim;
-    const epsNS = 0.5 * noiseScale;
 
-    // Vortex / attractor / dipole centers — flat arrays
+    // Curl: angle-based flow field — 1 noise call vs 4 finite-difference calls
+    const curlMag = fStr * 6;
+    const curlTimeX = t * 0.01;
+    const curlTimeY = t * 0.007;
+
+    // Centers for vortex/attractor/dipole
     const centersX: number[] = [];
     const centersY: number[] = [];
     const centersStr: number[] = [];
     let nCenters = 0;
-    if (fieldType === 'vortex' || fieldType === 'attractor' || fieldType === 'dipole') {
-      nCenters = fieldType === 'dipole' ? 2 : rng.integer(2, 4);
+
+    if (fieldType === 'dipole') {
+      // Place dipole poles near center with clear separation
+      nCenters = 2;
+      const sep = rng.range(minDim * 0.12, minDim * 0.22);
+      const cx = w * 0.5, cy = h * 0.5;
+      const angle = rng.range(0, TAU);
+      const cosA = Math.cos(angle), sinA = Math.sin(angle);
+      centersX.push(cx + cosA * sep, cx - cosA * sep);
+      centersY.push(cy + sinA * sep, cy - sinA * sep);
+      centersStr.push(1.5, -1.5);
+    } else if (fieldType === 'vortex' || fieldType === 'attractor') {
+      nCenters = rng.integer(2, 4);
       for (let i = 0; i < nCenters; i++) {
         centersX.push(rng.range(w * 0.2, w * 0.8));
         centersY.push(rng.range(h * 0.2, h * 0.8));
-        centersStr.push(rng.range(0.5, 2.0) * (fieldType === 'dipole' ? (i === 0 ? 1 : -1) : 1));
+        centersStr.push(rng.range(0.5, 2.0));
       }
     }
 
-    // Precompute field constants
-    const curlFStr2 = fStr * 2;
+    // Force constants
     const attractFStr = fStr * 50000;
     const vortexFStr = fStr * 200;
-    const dipoleFStr = fStr * 30000;
+    const dipoleFStr = fStr * 500000;
 
-    // Inline velocity — avoids tuple allocation and function call overhead
+    // ── Inline velocity ──────────────────────────────────────────
     let outVx = 0, outVy = 0;
     const computeVelocity = (px: number, py: number) => {
       if (fieldType === 'curl') {
-        const nx = px * noiseScale;
-        const ny = py * noiseScale;
-        outVx = (noise.noise2D(nx, ny + epsNS) - noise.noise2D(nx, ny - epsNS)) * curlFStr2;
-        outVy = -(noise.noise2D(nx + epsNS, ny) - noise.noise2D(nx - epsNS, ny)) * curlFStr2;
+        // Angle-based flow: 1 fast noise call instead of 4 expensive SimplexNoise calls
+        const angle = vN(px * noiseScale + curlTimeX, py * noiseScale + curlTimeY) * TAU;
+        outVx = Math.cos(angle) * curlMag;
+        outVy = Math.sin(angle) * curlMag;
       } else if (fieldType === 'attractor') {
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
@@ -155,19 +196,44 @@ export const fieldParticle: Generator = {
           outVy += dx * f;
         }
       } else {
+        // dipole — strong force, tight softening, tangential + radial
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
           const dx = px - centersX[c], dy = py - centersY[c];
-          const r2 = dx * dx + dy * dy + 500;
+          const r2 = dx * dx + dy * dy + 200;
           const invR = 1 / Math.sqrt(r2);
           const f = centersStr[c] * dipoleFStr * invR * invR;
-          outVx += dx * f * invR;
-          outVy += dy * f * invR;
+          outVx += (-dy * 0.5 + dx * 0.5) * f * invR;
+          outVy += (dx * 0.5 + dy * 0.5) * f * invR;
         }
       }
     };
 
-    // Seed particles
+    // ── Field line grid (curl and dipole only) ───────────────────
+    if (fieldType === 'curl' || fieldType === 'dipole') {
+      const spacing = quality === 'draft' ? 50 : quality === 'ultra' ? 25 : 35;
+      const lineLen = spacing * 0.35;
+      ctx.lineWidth = 0.5;
+      const gc = colors[0];
+      ctx.strokeStyle = `rgba(${gc[0]},${gc[1]},${gc[2]},0.1)`;
+      ctx.beginPath();
+
+      for (let gy = spacing * 0.5; gy < h; gy += spacing) {
+        for (let gx = spacing * 0.5; gx < w; gx += spacing) {
+          computeVelocity(gx, gy);
+          const mag = Math.sqrt(outVx * outVx + outVy * outVy);
+          if (mag < 0.001) continue;
+          const sc = lineLen / mag * 0.5;
+          const dx = outVx * sc;
+          const dy = outVy * sc;
+          ctx.moveTo(gx - dx, gy - dy);
+          ctx.lineTo(gx + dx, gy + dy);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // ── Seed particles ───────────────────────────────────────────
     const startX = new Float32Array(actualCount);
     const startY = new Float32Array(actualCount);
     const pColorIdx = new Uint8Array(actualCount);
@@ -177,7 +243,7 @@ export const fieldParticle: Generator = {
       pColorIdx[i] = rng.integer(0, nC - 1);
     }
 
-    // Trail buffers — reused per particle
+    // ── Trail integration + drawing ──────────────────────────────
     ctx.lineWidth = lw;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -187,17 +253,18 @@ export const fieldParticle: Generator = {
 
     const trailX = new Float32Array(trailLen + 1);
     const trailY = new Float32Array(trailLen + 1);
-    const trailWrap = new Uint8Array(trailLen); // 1 if segment crosses canvas boundary
-    // Cache velocity magnitude during integration for velocity color mode
+    const trailWrap = new Uint8Array(trailLen);
     const needSpeedCache = colorMode === 'velocity';
     const trailSpeed = needSpeedCache ? new Float32Array(trailLen) : null;
 
     const maxVisibleSeg = Math.min(trailLen, Math.ceil(baseAlpha / 0.02 * trailLen)) | 0;
-    const isFixedColor = colorMode === 'palette' || colorMode === 'age';
 
     for (let i = 0; i < actualCount; i++) {
-      let px = startX[i] + noise.noise2D(startX[i] * 0.001 + phaseOffset, startY[i] * 0.001) * minDim * 0.1;
-      let py = startY[i] + noise.noise2D(startX[i] * 0.001, startY[i] * 0.001 + phaseOffset) * minDim * 0.1;
+      // Initial position with noise-based drift (1 cheap noise call instead of 2 SimplexNoise)
+      const driftAngle = vN(startX[i] * 0.001 + phaseOffset, startY[i] * 0.001) * TAU;
+      const driftMag = minDim * 0.1;
+      let px = startX[i] + Math.cos(driftAngle) * driftMag;
+      let py = startY[i] + Math.sin(driftAngle) * driftMag;
 
       trailX[0] = px;
       trailY[0] = py;
@@ -222,7 +289,6 @@ export const fieldParticle: Generator = {
         const newPx = px + outVx * dt;
         const newPy = py + outVy * dt;
 
-        // Wrap with flag
         let wrapped = 0;
         if (newPx < 0) { px = newPx + w; wrapped = 1; }
         else if (newPx > w) { px = newPx - w; wrapped = 1; }
@@ -237,8 +303,8 @@ export const fieldParticle: Generator = {
         trailY[s + 1] = py;
       }
 
-      // Draw trail with wrap-aware path breaks
-      if (isFixedColor && colorMode === 'palette') {
+      // ── Draw trail ─────────────────────────────────────────────
+      if (colorMode === 'palette') {
         const [r, g, b] = colors[pColorIdx[i]];
         const bands = 4;
         const segsPerBand = Math.ceil(maxVisibleSeg / bands);
@@ -254,7 +320,6 @@ export const fieldParticle: Generator = {
           ctx.moveTo(trailX[sStart], trailY[sStart]);
           for (let s = sStart; s < sEnd && s < trailLen; s++) {
             if (trailWrap[s]) {
-              // Wrapped segment — break path, don't draw cross-canvas line
               ctx.stroke();
               ctx.beginPath();
               ctx.moveTo(trailX[s + 1], trailY[s + 1]);
@@ -274,10 +339,9 @@ export const fieldParticle: Generator = {
           const alpha = (1 - age) * baseAlpha;
           if (alpha < 0.02) break;
 
-          // Wrapped segment — flush and skip
           if (trailWrap[s]) {
             if (pathOpen) { ctx.stroke(); pathOpen = false; }
-            prevR = -1; // force new batch after wrap
+            prevR = -1;
             continue;
           }
 
@@ -285,15 +349,14 @@ export const fieldParticle: Generator = {
 
           let r: number, g: number, b: number;
           if (colorMode === 'velocity') {
-            // Use cached speed — no recomputation needed
             const speed = trailSpeed![s];
             const ci = Math.min(nC - 1, (Math.min(1, speed * 0.3) * (nC - 1)) | 0);
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
           } else if (colorMode === 'direction') {
-            const dx = trailX[s + 1] - trailX[s];
-            const dy = trailY[s + 1] - trailY[s];
-            const angle = (Math.atan2(dy, dx) + Math.PI) / TAU;
-            const ci = Math.max(0, Math.min(nC - 1, (angle * (nC - 1)) | 0));
+            const ddx = trailX[s + 1] - trailX[s];
+            const ddy = trailY[s + 1] - trailY[s];
+            const ang = (Math.atan2(ddy, ddx) + Math.PI) / TAU;
+            const ci = Math.max(0, Math.min(nC - 1, (ang * (nC - 1)) | 0));
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
           } else {
             // age
