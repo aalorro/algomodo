@@ -53,8 +53,8 @@ body {
 }
 
 @keyframes surprise-glow {
-  0%, 100% { box-shadow: 0 0 8px rgba(168, 85, 247, 0.4); }
-  50%      { box-shadow: 0 0 20px rgba(168, 85, 247, 0.8), 0 0 40px rgba(168, 85, 247, 0.3); }
+  0%, 100% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+  50%      { box-shadow: 0 0 20px rgba(245, 158, 11, 0.8), 0 0 40px rgba(245, 158, 11, 0.3); }
 }
 
 @keyframes render-progress {
