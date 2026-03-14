@@ -284,7 +284,7 @@ export const elementaryCA: Generator = {
       return;
     }
 
-    const key = `${seed}|${width}|${rule}|${ic}|${blendMode}|${wide}|${params._renderKey ?? 0}`;
+    const key = `${seed}|${width}|${rule}|${ruleB}|${ic}|${blendMode}|${wide}|${mutationRate}|${params._renderKey ?? 0}`;
     if (!_ecaAnim || _ecaAnim.key !== key) {
       const rng = new SeededRNG(seed);
       let row = makeInitRow(width, ic, rng);
