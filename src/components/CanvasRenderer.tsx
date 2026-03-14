@@ -841,7 +841,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
               const pick = all[Math.floor(Math.random() * all.length)];
               if (pick) selectGenerator(pick.id);
             }}
-            className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all"
+            className="px-5 py-2 bg-purple-500/60 hover:bg-purple-600/70 backdrop-blur text-white font-semibold rounded-lg transition-all hover:scale-105"
+            style={{ animation: 'surprise-glow 2s ease-in-out infinite' }}
           >
             ✨ SURPRISE ME
           </button>
