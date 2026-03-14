@@ -9,6 +9,7 @@ import { CanvasRecorder } from '../utils/recorder';
 import { exportMp4, isWebCodecsSupported } from '../utils/mp4-exporter';
 import { CURATED_PALETTES } from '../data/palettes';
 import { loadImageFromUrl } from '../utils/imageUrl';
+import { OVERLAY_EXCLUDED_FAMILIES } from '../types';
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -70,6 +71,10 @@ export const RightSidebar: React.FC = React.memo(() => {
     setEndlessGif,
     loadRecipe,
     setOpenModal,
+    overlayImage,
+    overlaySettings,
+    setOverlayImage,
+    updateOverlaySetting,
   } = useStore(useShallow(s => ({
     selectedGeneratorId: s.selectedGeneratorId,
     selectedPresetId: s.selectedPresetId,
@@ -123,6 +128,10 @@ export const RightSidebar: React.FC = React.memo(() => {
     setEndlessGif: s.setEndlessGif,
     loadRecipe: s.loadRecipe,
     setOpenModal: s.setOpenModal,
+    overlayImage: s.overlayImage,
+    overlaySettings: s.overlaySettings,
+    setOverlayImage: s.setOverlayImage,
+    updateOverlaySetting: s.updateOverlaySetting,
   })));
 
   const generator = selectedGeneratorId ? getGenerator(selectedGeneratorId) : undefined;
@@ -135,6 +144,9 @@ export const RightSidebar: React.FC = React.memo(() => {
   const [recordingProgress, setRecordingProgress] = useState(0);
   const [gifSize, setGifSize] = useState(600);
   const [imageFileName, setImageFileName] = useState('');
+  const [overlayFileName, setOverlayFileName] = useState('');
+  const [showOverlayUrlInput, setShowOverlayUrlInput] = useState(false);
+  const [overlayUrlValue, setOverlayUrlValue] = useState('');
   const [filePrefix, setFilePrefix] = useState('');
   const [presetPrefix, setPresetPrefix] = useState('');
   const [recipePrefix, setRecipePrefix] = useState('');
@@ -242,6 +254,20 @@ export const RightSidebar: React.FC = React.memo(() => {
     reader.onload = (ev) => setSourceImage(ev.target?.result as string);
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleOverlayUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setOverlayFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => setOverlayImage(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const loadOverlayFromUrl = (url: string) => {
+    loadImageFromUrl(url, (dataUrl) => setOverlayImage(dataUrl));
   };
 
   const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1366,11 +1392,146 @@ export const RightSidebar: React.FC = React.memo(() => {
               </div>
             </div>
 
+            {/* Image Overlay */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
+                Image Overlay
+              </label>
+              {generator && OVERLAY_EXCLUDED_FAMILIES.has(generator.family) ? (
+                <p className="text-xs text-gray-400 dark:text-gray-500">Not available for {generator.family} generators</p>
+              ) : (
+                <div className="space-y-2">
+                  {overlayImage ? (
+                    <div className="flex items-center gap-2">
+                      <img src={overlayImage} alt="overlay" className="w-12 h-12 object-cover rounded flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-600 dark:text-gray-300 truncate">{overlayFileName}</p>
+                        <button
+                          onClick={() => { setOverlayImage(null); setOverlayFileName(''); }}
+                          className="text-xs text-red-500 dark:text-red-400 hover:text-red-400 dark:hover:text-red-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        id="sidebar-overlay-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleOverlayUpload}
+                      />
+                      <button
+                        onClick={() => document.getElementById('sidebar-overlay-upload')?.click()}
+                        className="w-full px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded text-center"
+                      >
+                        Upload Image
+                      </button>
+                      {!showOverlayUrlInput ? (
+                        <button
+                          onClick={() => setShowOverlayUrlInput(true)}
+                          className="w-full px-3 py-2 text-sm bg-sky-700 hover:bg-sky-800 text-white rounded text-center"
+                        >
+                          Load from URL
+                        </button>
+                      ) : (
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            value={overlayUrlValue}
+                            onChange={(e) => setOverlayUrlValue(e.target.value)}
+                            placeholder="https://..."
+                            className="w-full px-2 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded border border-gray-300 dark:border-gray-600"
+                          />
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => { if (overlayUrlValue.trim()) { loadOverlayFromUrl(overlayUrlValue.trim()); setOverlayFileName(overlayUrlValue.trim().split('/').pop() || 'url'); } setShowOverlayUrlInput(false); setOverlayUrlValue(''); }}
+                              className="flex-1 px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded"
+                            >
+                              Load
+                            </button>
+                            <button
+                              onClick={() => { setShowOverlayUrlInput(false); setOverlayUrlValue(''); }}
+                              className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {overlayImage && (
+                    <>
+                      <div>
+                        <label className="flex justify-between text-xs text-gray-600 dark:text-gray-300 mb-1">
+                          <span>Opacity</span>
+                          <span className="text-gray-400 dark:text-gray-500 font-mono">{overlaySettings.opacity.toFixed(2)}</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={overlaySettings.opacity}
+                          onChange={(e) => updateOverlaySetting('opacity', parseFloat(e.target.value))}
+                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="flex justify-between text-xs text-gray-600 dark:text-gray-300 mb-1">
+                          <span>Angle</span>
+                          <span className="text-gray-400 dark:text-gray-500 font-mono">{overlaySettings.angle}°</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={360}
+                          step={1}
+                          value={overlaySettings.angle}
+                          onChange={(e) => updateOverlaySetting('angle', parseFloat(e.target.value))}
+                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600 dark:text-gray-300 block mb-1">Blend Mode</label>
+                        <select
+                          value={overlaySettings.blendMode}
+                          onChange={(e) => updateOverlaySetting('blendMode', e.target.value)}
+                          className="w-full px-2 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded text-sm border border-white"
+                        >
+                          {[
+                            { value: 'source-over', label: 'Normal' },
+                            { value: 'multiply', label: 'Multiply' },
+                            { value: 'screen', label: 'Screen' },
+                            { value: 'overlay', label: 'Overlay' },
+                            { value: 'darken', label: 'Darken' },
+                            { value: 'lighten', label: 'Lighten' },
+                            { value: 'color-dodge', label: 'Color Dodge' },
+                            { value: 'color-burn', label: 'Color Burn' },
+                            { value: 'hard-light', label: 'Hard Light' },
+                            { value: 'soft-light', label: 'Soft Light' },
+                            { value: 'difference', label: 'Difference' },
+                            { value: 'exclusion', label: 'Exclusion' },
+                          ].map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
                 Version
               </label>
-              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.7.0</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.8.0</p>
             </div>
             </div>
           </div>

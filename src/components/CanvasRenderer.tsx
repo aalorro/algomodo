@@ -5,6 +5,8 @@ import { getGenerator, getAllGenerators } from '../core/registry';
 import { applyGrain, applyVignette, applyDither, applyPosterize } from '../renderers/canvas2d/utils';
 import { loadImageFromUrl } from '../utils/imageUrl';
 import { AudioProcessor } from '../utils/audio';
+import type { OverlaySettings } from '../types';
+import { OVERLAY_EXCLUDED_FAMILIES } from '../types';
 
 interface CanvasRendererProps {
   showFPS?: boolean;
@@ -65,6 +67,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     renderKey,
     forceReload,
     clearCanvas,
+    overlayImage,
+    overlaySettings,
   } = useStore(useShallow(s => ({
     canvasSettings: s.canvasSettings,
     selectedGeneratorId: s.selectedGeneratorId,
@@ -96,6 +100,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     renderKey: s.renderKey,
     forceReload: s.forceReload,
     clearCanvas: s.clearCanvas,
+    overlayImage: s.overlayImage,
+    overlaySettings: s.overlaySettings,
   })));
 
   // Decode source image data-URL → HTMLImageElement
@@ -107,6 +113,16 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     img.onerror = () => setLoadedImage(null);
     img.src = sourceImage;
   }, [sourceImage]);
+
+  // Decode overlay image data-URL → HTMLImageElement
+  const [loadedOverlayImage, setLoadedOverlayImage] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!overlayImage) { setLoadedOverlayImage(null); return; }
+    const img = new Image();
+    img.onload = () => setLoadedOverlayImage(img);
+    img.onerror = () => setLoadedOverlayImage(null);
+    img.src = overlayImage;
+  }, [overlayImage]);
 
   // Decode audio file → AudioProcessor
   useEffect(() => {
@@ -230,6 +246,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   // ── Refs for mutable render data (animation reads from these, not closures) ──
   const renderDataRef = useRef({
     selectedGeneratorId, seed, params, palette, quality, postFX, showFPS, animationFps, loadedImage, renderKey,
+    loadedOverlayImage, overlaySettings,
   });
   // Update individual properties instead of allocating a new object every render
   const rd = renderDataRef.current;
@@ -243,6 +260,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
   rd.animationFps = animationFps;
   rd.loadedImage = loadedImage;
   rd.renderKey = renderKey;
+  rd.loadedOverlayImage = loadedOverlayImage;
+  rd.overlaySettings = overlaySettings;
 
   const canvasSizeRef = useRef({ w: 0, h: 0 });
   const staticTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -268,6 +287,38 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       overlay.height = newH;
     }
   }, [canvasSettings]);
+
+  // ── Overlay image compositing helper ────────────────────────────────────────
+  const drawOverlay = (
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    settings: OverlaySettings,
+    generatorFamily: string | undefined,
+  ) => {
+    if (!img || settings.opacity <= 0) return;
+    if (generatorFamily && OVERLAY_EXCLUDED_FAMILIES.has(generatorFamily)) return;
+
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+
+    ctx.save();
+    ctx.globalAlpha = settings.opacity;
+    ctx.globalCompositeOperation = settings.blendMode;
+
+    // Translate to center, rotate, then draw cover-fit
+    ctx.translate(w / 2, h / 2);
+    if (settings.angle !== 0) {
+      ctx.rotate((settings.angle * Math.PI) / 180);
+    }
+
+    // Cover-fit: scale image to cover the canvas
+    const scale = Math.max(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+
+    ctx.restore();
+  };
 
   // ── Static render — shared logic ────────────────────────────────────────────
   const doStaticRender = (renderTime?: number) => {
@@ -313,6 +364,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
         ctx.putImageData(imageData, 0, 0);
       }
+
+      // Apply overlay image
+      if (loadedOverlayImage) {
+        drawOverlay(ctx, loadedOverlayImage, overlaySettings, generator.family);
+      }
     } catch (err) {
       console.error('Rendering error:', err);
       ctx.fillStyle = '#ff0000';
@@ -355,7 +411,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       setIsRendering(false);
     };
-  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating, pausedTime, renderKey]);
+  }, [selectedGeneratorId, seed, params, palette, quality, postFX, loadedImage, isAnimating, pausedTime, renderKey, loadedOverlayImage, overlaySettings]);
 
   // ── Animation loop effect — long-lived, reads from refs ─────────────────────
   useEffect(() => {
@@ -409,6 +465,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
             if (dur > 0) setAudioProgress(audioRef.current.getCurrentOffset() / dur);
           }
           generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, animTime);
+
+          // Apply overlay image during animation
+          if (rd.loadedOverlayImage) {
+            drawOverlay(ctx, rd.loadedOverlayImage, rd.overlaySettings, generator.family);
+          }
         }
 
         if (rd.showFPS) {
@@ -588,6 +649,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
         offCtx.putImageData(imageData, 0, 0);
       }
+      // Apply overlay image to export
+      if (loadedOverlayImage) {
+        drawOverlay(offCtx, loadedOverlayImage, overlaySettings, generator.family);
+      }
       const link = document.createElement('a');
       link.download = `algomodo-${timestamp}.png`;
       link.href = offscreen.toDataURL('image/png');
@@ -657,6 +722,10 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         lastFrame = ts - (elapsed % fpsInterval);
         if (generator.renderCanvas2D) {
           generator.renderCanvas2D(offCtx, finalParams, seed, palette, quality, ts / 1000);
+        }
+        // Apply overlay image to recording
+        if (loadedOverlayImage) {
+          drawOverlay(offCtx, loadedOverlayImage, overlaySettings, generator.family);
         }
       }
       recordAnimId = requestAnimationFrame(renderLoop);

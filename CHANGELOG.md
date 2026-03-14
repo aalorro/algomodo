@@ -5,6 +5,29 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-14
+
+### Added
+
+**Image Overlay:**
+
+- **Image overlay compositing** — overlay any uploaded image on top of generator output with adjustable opacity, rotation angle, and blend mode
+- **12 blend modes** — Normal, Multiply, Screen, Overlay, Darken, Lighten, Color Dodge, Color Burn, Hard Light, Soft Light, Difference, Exclusion
+- **Overlay upload** — upload via file picker or URL in the Settings tab; same drag-drop pattern as source image upload
+- **Export support** — overlay is included in PNG saves, WebM recordings, and animated exports at full fidelity
+
+**New Procedural generators (3):**
+
+- **Displacement** — noise-driven UV displacement mapping with organic distortion, fracture, radial ripple, and wave effects
+- **Edge + Glow** — neon edge detection on noise fields with glowing contour lines, gradient edges, and circuit-board step patterns
+- **Particle Advection** — particles advected through time-varying velocity fields revealing flow structure as luminous trails
+
+### Changed
+
+- Image overlay is disabled for image, noise, procedural, and fractal generator families
+
+---
+
 ## [1.7.0] - 2026-03-12
 
 ### Added

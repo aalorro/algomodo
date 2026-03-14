@@ -2,7 +2,7 @@
 
 An open-source generative art studio that runs entirely in the browser. Pick an algorithm, tweak parameters, and export — no install, no account, no cloud.
 
-MIT License · v1.7.0 · © 2026 ArtMondo
+MIT License · v1.8.0 · © 2026 ArtMondo
 
 ---
 
@@ -10,12 +10,13 @@ MIT License · v1.7.0 · © 2026 ArtMondo
 
 | Feature | Details |
 |---|---|
-| **111 generators** | Across 11 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs, Procedural |
+| **116 generators** | Across 11 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs, Procedural |
 | **Audio reactivity** | Upload audio files (MP3/WAV/OGG) — procedural generators react to real-time frequency data with adjustable sensitivity |
 | **Live animation** | requestAnimationFrame loop with persistent simulation state; per-generator steps/frame control |
 | **Seeded RNG** | xorshift128+ — every output is fully reproducible from its integer seed |
 | **Curated palettes** | Switchable colour palettes applied consistently across all generators |
 | **PostFX pipeline** | Grain, vignette, ordered dither, and posterize as post-render ImageData pixel passes |
+| **Image overlay** | Composite any uploaded image over generator output with opacity, rotation angle, and 12 blend modes (disabled for image, noise, procedural, fractal families) |
 | **Image input** | Drop or paste any image (JPEG / PNG / URL) to activate the Image family generators |
 | **Recipe save / load** | Export or import a compact JSON snapshot: generator + seed + params + palette + PostFX; load JSON recipes from file |
 | **Preset export / import** | Export presets as human-readable text files and import them back; individual or bulk export with configurable filenames |
@@ -191,7 +192,7 @@ Graph-theory-based generators — tessellations, triangulations, proximity graph
 | **Gabriel Graph** | Gabriel graph — edge (i,j) exists iff no other point lies inside the diametral circle of i and j |
 | **Planar Graph** | Planar graph from Delaunay triangulation — density controls edge thinning by removing longest edges |
 
-### Procedural (6)
+### Procedural (9)
 
 Audio-reactive procedural generators with real-time animation and optional audio file input.
 
@@ -203,6 +204,9 @@ Audio-reactive procedural generators with real-time animation and optional audio
 | **Instanced Geometry** | Many copies of a parametric shape (triangle, hexagon, circle, square, star) in grid, radial, golden-angle spiral, or scatter arrangements with wave animation |
 | **Audio-Reactive** | Simulated audio spectrum visualization (bars, radial spokes, concentric rings, waveform); uses real uploaded audio when available |
 | **SDF Raymarch** | 2D signed-distance-field rendering with smooth boolean union/subtract, exponential glow halos, and sinusoidal distance-band contours |
+| **Displacement** | Noise-driven UV displacement mapping — pixels offset through vector fields for organic distortion, fracture, radial ripple, and wave effects |
+| **Edge + Glow** | Neon edge detection on noise fields — glowing contour lines, gradient edges, ridges, and circuit-board step patterns against dark backgrounds |
+| **Particle Advection** | Particles advected through time-varying velocity fields — curl noise, gradient flow, orbital motion, and turbulent chaos revealed as luminous trails |
 
 ---
 

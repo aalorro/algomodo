@@ -28,7 +28,7 @@ export const InstructionsModal: React.FC = () => {
               Algomodo is an algorithmic art generator that runs entirely in your browser. Nothing is uploaded &mdash; all processing happens locally on your device.
             </p>
             <p>
-              Choose a <strong>family</strong> from the left panel, then pick a <strong>style</strong> to generate art. There are <strong>111 generators</strong> across 11 families: Cellular, Geometry, Noise, Plotter, Voronoi, Animation, Image, Fractals, Text, Graphs, and Procedural.
+              Choose a <strong>family</strong> from the left panel, then pick a <strong>style</strong> to generate art. There are <strong>116 generators</strong> across 11 families: Animation, Cellular, Fractals, Geometry, Graphs, Image, Noise, Plotter, Procedural, Text, and Voronoi.
             </p>
           </div>
 
