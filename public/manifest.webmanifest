@@ -1,7 +1,7 @@
 {
   "name": "Algomodo - Algorithmic Art Generator",
   "short_name": "Algomodo",
-  "description": "Create algorithmic art with 73+ procedural generators using pure mathematics",
+  "description": "Create algorithmic art with 116+ procedural generators using pure mathematics",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

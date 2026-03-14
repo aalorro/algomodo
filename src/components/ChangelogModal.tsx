@@ -20,6 +20,34 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.8.0 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.8.0] - 2026-03-14
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Image overlay</strong> — composite any uploaded image on top of generator output with adjustable opacity, rotation angle, and 12 blend modes</li>
+                  <li><strong>Overlay upload</strong> — upload via file picker or URL in the Settings tab</li>
+                  <li><strong>Export support</strong> — overlay included in PNG saves, WebM recordings, and animated exports</li>
+                  <li><strong>Displacement</strong> — noise-driven UV displacement mapping with organic distortion, fracture, radial ripple, and wave effects</li>
+                  <li><strong>Edge + Glow</strong> — neon edge detection on noise fields with glowing contour lines and circuit-board step patterns</li>
+                  <li><strong>Particle Advection</strong> — particles advected through time-varying velocity fields revealing flow structure as luminous trails</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Changed</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Overlay exclusions</strong> — image overlay disabled for image, noise, procedural, and fractal generator families</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.7.0 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
