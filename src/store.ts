@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AppState, Palette, CanvasSettings, ParameterSchema, Preset, HistorySnapshot, Recipe } from './types';
+import type { AppState, Palette, CanvasSettings, ParameterSchema, Preset, HistorySnapshot, Recipe, OverlaySettings } from './types';
 import { getGenerator } from './core/registry';
 import { CURATED_PALETTES } from './data/palettes';
 
@@ -48,6 +48,14 @@ export const useStore = create<AppState>()(
 
       // Source image (not persisted — too large for localStorage)
       sourceImage: null,
+
+      // Overlay image (not persisted — too large for localStorage)
+      overlayImage: null,
+      overlaySettings: {
+        opacity: 0.5,
+        angle: 0,
+        blendMode: 'source-over' as GlobalCompositeOperation,
+      },
 
       // Audio source (not persisted)
       audioFile: null as File | null,
@@ -212,6 +220,12 @@ export const useStore = create<AppState>()(
 
       setSourceImage: (dataUrl) => set({ sourceImage: dataUrl }),
 
+      setOverlayImage: (dataUrl) => set({ overlayImage: dataUrl }),
+      updateOverlaySetting: (key, value) =>
+        set((state) => ({
+          overlaySettings: { ...state.overlaySettings, [key]: value },
+        })),
+
       setAudioFile: (file) => set({ audioFile: file }),
       setAudioFileName: (name) => set({ audioFileName: name }),
       setAudioProgress: (p) => set({ audioProgress: p }),
@@ -373,6 +387,7 @@ export const useStore = create<AppState>()(
         showFPS: state.showFPS,
         seedLocked: state.seedLocked,
         presets: state.presets,
+        overlaySettings: state.overlaySettings,
       }),
     }
   )

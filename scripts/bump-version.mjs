@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+claude#!/usr/bin/env node
 // scripts/bump-version.mjs — Automated version bump for Algomodo
 // Zero dependencies. Usage: node scripts/bump-version.mjs <X.Y.Z> [--date=YYYY-MM-DD]
 

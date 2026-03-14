@@ -117,6 +117,14 @@ export interface SVGPath {
   opacity?: number;
 }
 
+export interface OverlaySettings {
+  opacity: number;
+  angle: number;
+  blendMode: GlobalCompositeOperation;
+}
+
+export const OVERLAY_EXCLUDED_FAMILIES = new Set(['image', 'noise', 'procedural', 'fractals']);
+
 export interface HistorySnapshot {
   params: Record<string, any>;
   palette: Palette;
@@ -165,6 +173,12 @@ export interface AppState {
   // Source image (data URL, not persisted)
   sourceImage: string | null;
   setSourceImage: (dataUrl: string | null) => void;
+
+  // Overlay image (data URL, not persisted)
+  overlayImage: string | null;
+  overlaySettings: OverlaySettings;
+  setOverlayImage: (dataUrl: string | null) => void;
+  updateOverlaySetting: (key: keyof OverlaySettings, value: any) => void;
 
   // Audio source (not persisted)
   audioFile: File | null;
