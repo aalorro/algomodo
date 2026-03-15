@@ -261,11 +261,17 @@ export const fieldParticle: Generator = {
     ctx.lineWidth = lw;
     ctx.lineCap = 'butt';
     ctx.lineJoin = 'bevel';
-    // For thick lines, skip every Nth point — the thick stroke fills visual gaps
-    const drawSkip = lw > 1.5 ? Math.max(1, Math.round(lw)) : 1;
     const dt = 0.5;
     const phaseOffset = t * 0.5;
     const baseAlpha = 0.7 + audioHigh * 0.3;
+
+    // For thick lines (lw > 1) Canvas2D leaves the hairline fast path and
+    // constructs full stroke geometry — ~10-20× slower per segment.  Compensate
+    // by (a) skipping trail points (thick stroke fills gaps) and (b) batching
+    // all same-colour particles into shared Path2D objects so stroke() is called
+    // nColors×bands times (~10) instead of particles×bands (~12 000).
+    const thickLine = lw > 1;
+    const drawSkip = thickLine ? Math.max(2, Math.ceil(lw * 2)) : 1;
 
     const trailX = new Float32Array(trailLen + 1);
     const trailY = new Float32Array(trailLen + 1);
@@ -275,8 +281,24 @@ export const fieldParticle: Generator = {
 
     const maxVisibleSeg = Math.min(trailLen, Math.ceil(baseAlpha / 0.02 * trailLen)) | 0;
 
+    // ── Batched Path2D approach for palette mode ────────────────
+    // Accumulate geometry for all particles into per-colour, per-band Path2D
+    // objects, then stroke each once.  This slashes stroke() call count from
+    // actualCount × bands  →  nC × bands.
+    const bands = thickLine ? 2 : 4;
+    const segsPerBand = Math.ceil(maxVisibleSeg / bands);
+    const useBatched = colorMode === 'palette';
+    let pathGrid: Path2D[][] | null = null;
+    if (useBatched) {
+      pathGrid = [];
+      for (let ci = 0; ci < nC; ci++) {
+        pathGrid[ci] = [];
+        for (let b = 0; b < bands; b++) pathGrid[ci][b] = new Path2D();
+      }
+    }
+
     for (let i = 0; i < actualCount; i++) {
-      // Initial position with noise-based drift (1 cheap noise call instead of 2 SimplexNoise)
+      // Initial position with noise-based drift
       const driftAngle = vN(startX[i] * 0.001 + phaseOffset, startY[i] * 0.001) * TAU;
       const driftMag = minDim * 0.1;
       let px = startX[i] + Math.cos(driftAngle) * driftMag;
@@ -289,12 +311,10 @@ export const fieldParticle: Generator = {
       for (let s = 0; s < trailLen; s++) {
         computeVelocity(px, py);
 
-        // Cache unclamped speed for velocity color mode
         if (trailSpeed) {
           trailSpeed[s] = Math.sqrt(outVx * outVx + outVy * outVy);
         }
 
-        // Clamp velocity magnitude
         const magSq = outVx * outVx + outVy * outVy;
         if (magSq > maxVelSq) {
           const scale = maxVel / Math.sqrt(magSq);
@@ -319,40 +339,31 @@ export const fieldParticle: Generator = {
         trailY[s + 1] = py;
       }
 
-      // ── Draw trail ─────────────────────────────────────────────
-      if (colorMode === 'palette') {
-        const [r, g, b] = colors[pColorIdx[i]];
-        const bands = 4;
-        const segsPerBand = Math.ceil(maxVisibleSeg / bands);
+      // ── Accumulate / draw trail ──────────────────────────────
+      if (useBatched && pathGrid) {
+        // Palette mode: accumulate into batched Path2D objects
+        const ci = pColorIdx[i];
         for (let band = 0; band < bands; band++) {
           const sStart = band * segsPerBand;
           const sEnd = Math.min((band + 1) * segsPerBand, maxVisibleSeg);
           if (sStart >= trailLen) break;
-          const midAge = ((sStart + sEnd) / 2) / trailLen;
-          const alpha = (1 - midAge) * baseAlpha;
-          if (alpha < 0.02) break;
-          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
-          ctx.beginPath();
-          ctx.moveTo(trailX[sStart], trailY[sStart]);
+          const path = pathGrid[ci][band];
+          path.moveTo(trailX[sStart], trailY[sStart]);
           for (let s = sStart; s < sEnd && s < trailLen; s += drawSkip) {
-            const sNext = Math.min(s + drawSkip, trailLen);
-            // Check for any wrap in the skipped range
+            const sNext = Math.min(s + drawSkip, trailLen, sEnd);
             let wrapped = false;
             for (let k = s; k < sNext; k++) {
               if (trailWrap[k]) { wrapped = true; break; }
             }
             if (wrapped) {
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.moveTo(trailX[sNext], trailY[sNext]);
+              path.moveTo(trailX[sNext], trailY[sNext]);
             } else {
-              ctx.lineTo(trailX[sNext], trailY[sNext]);
+              path.lineTo(trailX[sNext], trailY[sNext]);
             }
           }
-          ctx.stroke();
         }
-      } else {
-        // Variable color per segment — batch consecutive same-color segments
+      } else if (!useBatched) {
+        // Variable color per segment — draw immediately with drawSkip
         let prevR = -1, prevG = -1, prevB = -1, prevAlphaQ = -1;
         let pathOpen = false;
 
@@ -362,7 +373,6 @@ export const fieldParticle: Generator = {
           const alpha = (1 - age) * baseAlpha;
           if (alpha < 0.02) break;
 
-          // Check for any wrap in the skipped range
           let wrapped = false;
           for (let k = s; k < sNext; k++) {
             if (trailWrap[k]) { wrapped = true; break; }
@@ -403,6 +413,22 @@ export const fieldParticle: Generator = {
           ctx.lineTo(trailX[sNext], trailY[sNext]);
         }
         if (pathOpen) ctx.stroke();
+      }
+    }
+
+    // ── Flush batched palette paths ────────────────────────────
+    if (useBatched && pathGrid) {
+      for (let ci = 0; ci < nC; ci++) {
+        const [r, g, b] = colors[ci];
+        for (let band = 0; band < bands; band++) {
+          const sStart = band * segsPerBand;
+          const sEnd = Math.min((band + 1) * segsPerBand, maxVisibleSeg);
+          const midAge = ((sStart + sEnd) / 2) / trailLen;
+          const alpha = (1 - midAge) * baseAlpha;
+          if (alpha < 0.02) continue;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+          ctx.stroke(pathGrid[ci][band]);
+        }
       }
     }
   },
