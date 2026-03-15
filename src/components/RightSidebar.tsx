@@ -159,6 +159,8 @@ export const RightSidebar: React.FC = React.memo(() => {
   const [mp4Progress, setMp4Progress] = useState(0);
   const [mp4Elapsed, setMp4Elapsed] = useState(0);
   const mp4AbortRef = useRef<AbortController | null>(null);
+  const [mp4AudioStart, setMp4AudioStart] = useState(0);
+  const [mp4AudioStop, setMp4AudioStop] = useState(15);
 
   const buildFilename = (ext: string): string => {
     if (filePrefix.trim()) return `${filePrefix.trim()}.${ext}`;
@@ -486,6 +488,19 @@ export const RightSidebar: React.FC = React.memo(() => {
         });
       }
 
+      // Decode audio file to AudioBuffer if available
+      let decodedAudio: AudioBuffer | null = null;
+      if (audioFile) {
+        try {
+          const audioCtx = new AudioContext();
+          const arrayBuf = await audioFile.arrayBuffer();
+          decodedAudio = await audioCtx.decodeAudioData(arrayBuf);
+          audioCtx.close();
+        } catch (e) {
+          console.warn('Failed to decode audio for MP4 export:', e);
+        }
+      }
+
       const blob = await exportMp4({
         generator,
         params,
@@ -498,6 +513,9 @@ export const RightSidebar: React.FC = React.memo(() => {
         fps: 30,
         maxDuration: mp4MaxDuration,
         sourceImage: loadedImg,
+        audioBuffer: decodedAudio,
+        audioStartTime: mp4AudioStart,
+        audioStopTime: mp4AudioStop,
         onProgress: (pct, elapsed) => {
           setMp4Progress(pct);
           setMp4Elapsed(elapsed);
@@ -1113,60 +1131,122 @@ export const RightSidebar: React.FC = React.memo(() => {
                 <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
                   <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">MP4 (H.264)</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                    Renders offscreen at full speed. Stops automatically when the animation completes or max duration is reached.
+                    Renders offscreen at full speed.{audioFile ? ' Audio is included in the export.' : ' Stops automatically when the animation completes or max duration is reached.'}
                   </p>
-                  <div className="mb-2">
-                    <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Max Duration</label>
-                    <div className="flex gap-1">
-                      {[8, 15, 30].map((sec) => (
-                        <button
-                          key={sec}
-                          onClick={() => { setMp4MaxDuration(sec); setMp4CustomInput(''); }}
-                          disabled={isMp4Exporting}
-                          className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
-                            mp4MaxDuration === sec
-                              ? 'bg-red-600 text-white'
-                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                          } disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                          {sec}s
-                        </button>
-                      ))}
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="Custom (1-60)"
-                        value={![8, 15, 30].includes(mp4MaxDuration) ? mp4CustomInput : ''}
-                        onFocus={() => {
-                          if ([8, 15, 30].includes(mp4MaxDuration)) setMp4CustomInput('');
-                        }}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
-                          setMp4CustomInput(raw);
-                          if (raw !== '') {
-                            const v = Math.max(1, Math.min(60, parseInt(raw)));
-                            setMp4MaxDuration(v);
-                          }
-                        }}
-                        onBlur={() => {
-                          if (mp4CustomInput === '' || parseInt(mp4CustomInput) < 1) {
-                            setMp4MaxDuration(8);
-                            setMp4CustomInput('');
-                          } else {
-                            const v = Math.max(1, Math.min(60, parseInt(mp4CustomInput)));
-                            setMp4MaxDuration(v);
-                            setMp4CustomInput(String(v));
-                          }
-                        }}
-                        disabled={isMp4Exporting}
-                        className={`flex-1 py-1 rounded text-sm font-medium text-center border border-white focus:outline-none focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed ${
-                          ![8, 15, 30].includes(mp4MaxDuration)
-                            ? 'bg-red-600 text-white placeholder-red-300'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500'
-                        }`}
-                      />
+
+                  {audioFile ? (
+                    /* ── Audio mode: start / stop time controls ── */
+                    <div className="mb-2 space-y-2">
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="flex justify-between text-xs text-gray-600 dark:text-gray-300 mb-1">
+                            <span>Start (s)</span>
+                            <span className="text-gray-400 dark:text-gray-500 font-mono">{mp4AudioStart}s</span>
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={mp4AudioStart}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, '');
+                              if (raw === '') { setMp4AudioStart(0); return; }
+                              setMp4AudioStart(parseInt(raw));
+                            }}
+                            onBlur={() => {
+                              const v = Math.max(0, mp4AudioStart);
+                              setMp4AudioStart(v);
+                              if (mp4AudioStop <= v) setMp4AudioStop(v + 1);
+                              else if (mp4AudioStop - v > 60) setMp4AudioStop(v + 60);
+                            }}
+                            disabled={isMp4Exporting}
+                            className="w-full py-1 px-2 rounded text-sm text-center bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-white focus:outline-none focus:border-blue-500 disabled:opacity-40"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="flex justify-between text-xs text-gray-600 dark:text-gray-300 mb-1">
+                            <span>Stop (s)</span>
+                            <span className="text-gray-400 dark:text-gray-500 font-mono">{mp4AudioStop}s</span>
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={mp4AudioStop}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, '');
+                              if (raw === '') { setMp4AudioStop(0); return; }
+                              setMp4AudioStop(parseInt(raw));
+                            }}
+                            onBlur={() => {
+                              let v = mp4AudioStop;
+                              if (v <= mp4AudioStart) v = mp4AudioStart + 1;
+                              if (v - mp4AudioStart > 60) v = mp4AudioStart + 60;
+                              setMp4AudioStop(v);
+                            }}
+                            disabled={isMp4Exporting}
+                            className="w-full py-1 px-2 rounded text-sm text-center bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-white focus:outline-none focus:border-blue-500 disabled:opacity-40"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                        Duration: {Math.max(0, mp4AudioStop - mp4AudioStart)}s (max 60s)
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    /* ── No audio: max duration controls ── */
+                    <div className="mb-2">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Max Duration</label>
+                      <div className="flex gap-1">
+                        {[8, 15, 30].map((sec) => (
+                          <button
+                            key={sec}
+                            onClick={() => { setMp4MaxDuration(sec); setMp4CustomInput(''); }}
+                            disabled={isMp4Exporting}
+                            className={`flex-1 py-1 rounded text-sm font-medium transition-colors ${
+                              mp4MaxDuration === sec
+                                ? 'bg-red-600 text-white'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                          >
+                            {sec}s
+                          </button>
+                        ))}
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="Custom (1-60)"
+                          value={![8, 15, 30].includes(mp4MaxDuration) ? mp4CustomInput : ''}
+                          onFocus={() => {
+                            if ([8, 15, 30].includes(mp4MaxDuration)) setMp4CustomInput('');
+                          }}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
+                            setMp4CustomInput(raw);
+                            if (raw !== '') {
+                              const v = Math.max(1, Math.min(60, parseInt(raw)));
+                              setMp4MaxDuration(v);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (mp4CustomInput === '' || parseInt(mp4CustomInput) < 1) {
+                              setMp4MaxDuration(8);
+                              setMp4CustomInput('');
+                            } else {
+                              const v = Math.max(1, Math.min(60, parseInt(mp4CustomInput)));
+                              setMp4MaxDuration(v);
+                              setMp4CustomInput(String(v));
+                            }
+                          }}
+                          disabled={isMp4Exporting}
+                          className={`flex-1 py-1 rounded text-sm font-medium text-center border border-white focus:outline-none focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed ${
+                            ![8, 15, 30].includes(mp4MaxDuration)
+                              ? 'bg-red-600 text-white placeholder-red-300'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     onClick={isMp4Exporting ? () => mp4AbortRef.current?.abort() : handleExportMP4}
                     disabled={isMp4Exporting ? false : !generator?.renderCanvas2D}
@@ -1180,7 +1260,7 @@ export const RightSidebar: React.FC = React.memo(() => {
                   >
                     {isMp4Exporting
                       ? `Exporting... ${mp4Progress}% (${mp4Elapsed.toFixed(1)}s) — click to cancel`
-                      : 'Export MP4'}
+                      : audioFile ? 'Export MP4 with Audio' : 'Export MP4'}
                   </button>
                   {!isWebCodecsSupported() && (
                     <p className="text-xs text-red-400 mt-1">
