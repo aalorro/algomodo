@@ -93,7 +93,7 @@ export const InstructionsModal: React.FC = () => {
               <li>
                 <strong>Settings</strong>
                 <br />
-                <span className="text-gray-500 dark:text-gray-400">Controls for theme (light/dark), canvas dimensions, animation FPS, mouse/touch interaction, and PostFX. PostFX are pixel-level effects (Grain, Vignette, Dither, Posterize) applied on top of any generator to add texture and atmosphere.</span>
+                <span className="text-gray-500 dark:text-gray-400">Controls for theme (light/dark), canvas dimensions, animation FPS, mouse/touch interaction, PostFX, and Image Overlay. PostFX are pixel-level effects (Grain, Vignette, Dither, Posterize) applied on top of any generator. Image Overlay lets you composite a photo over the generator output with blend modes.</span>
               </li>
             </ul>
           </div>
@@ -114,6 +114,25 @@ export const InstructionsModal: React.FC = () => {
             </ul>
             <p>
               Once loaded, the image feeds into generators like Pixel Sort, Mosaic, Halftone, ASCII Art, Dither, Lino Cut, Edge Detect, and more. Each transforms your image in a different way. Your image stays in your browser &mdash; it is never uploaded anywhere.
+            </p>
+          </div>
+
+          {/* Image Overlay */}
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Image Overlay</h3>
+            <p className="mb-2">
+              You can overlay any image on top of a generator&rsquo;s output to blend photography with algorithmic art. This is separate from the Source Image used by Image family generators.
+            </p>
+            <p className="mb-2">
+              To set up an overlay, go to the <strong>Settings</strong> tab and find the <strong>Image Overlay</strong> section. Upload an image via file picker or paste a URL.
+            </p>
+            <ul className="list-disc list-inside space-y-1 mb-2">
+              <li><strong>Opacity</strong> &mdash; Controls how transparent the overlay is (0 = invisible, 1 = fully opaque).</li>
+              <li><strong>Angle</strong> &mdash; Rotates the overlay image (0&ndash;360&deg;).</li>
+              <li><strong>Blend Mode</strong> &mdash; Choose how the overlay combines with the generator output: Normal, Multiply, Screen, Overlay, Darken, Lighten, Color Dodge, Color Burn, Hard Light, Soft Light, Difference, or Exclusion.</li>
+            </ul>
+            <p>
+              The overlay is included in all exports (PNG, WebM, GIF, MP4). It is not available for Image, Noise, Procedural, and Fractal generators.
             </p>
           </div>
 
