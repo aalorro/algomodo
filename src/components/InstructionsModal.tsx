@@ -88,7 +88,7 @@ export const InstructionsModal: React.FC = () => {
               <li>
                 <strong>Export</strong>
                 <br />
-                <span className="text-gray-500 dark:text-gray-400">Download your artwork in multiple formats. Static formats (PNG, JPG, SVG) are always available. Animation formats (GIF, WebM) require animation to be enabled first. MP4 export renders offscreen at full speed and auto-stops when the animation completes. You can also export/import JSON recipe files that save every setting so the artwork can be recreated exactly.</span>
+                <span className="text-gray-500 dark:text-gray-400">Download your artwork in multiple formats. Static formats (PNG, JPG, SVG) are always available. Animation formats (GIF, WebM) require animation to be enabled first. MP4 export renders offscreen at full speed and auto-stops when the animation completes. When an audio file is loaded, MP4 export includes the audio track &mdash; set start and stop times to choose which portion to include (max 60 seconds). You can also export/import JSON recipe files that save every setting so the artwork can be recreated exactly.</span>
               </li>
               <li>
                 <strong>Settings</strong>

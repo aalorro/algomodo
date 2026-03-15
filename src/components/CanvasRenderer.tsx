@@ -634,7 +634,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     if (!canvas) return;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const exportSize = 1080;
+    const exportW = canvasSettings.width;
+    const exportH = canvasSettings.height;
 
     if (!selectedGeneratorId) return;
     const generator = getGenerator(selectedGeneratorId);
@@ -642,11 +643,11 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     const finalParams: Record<string, any> = { ...generator.defaultParams, ...params };
 
     if (!isAnimating) {
-      // Static or paused: render at 1080x1080 on offscreen canvas, save PNG
+      // Static or paused: render on offscreen canvas, save PNG
       const exportTime = pausedTime ?? 0;
       const offscreen = document.createElement('canvas');
-      offscreen.width = exportSize;
-      offscreen.height = exportSize;
+      offscreen.width = exportW;
+      offscreen.height = exportH;
       const offCtx = offscreen.getContext('2d');
       if (!offCtx) return;
       if (generator.renderCanvas2D) {
@@ -657,9 +658,9 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         postFX.grain > 0 || postFX.vignette > 0 ||
         postFX.dither >= 2 || postFX.posterize >= 1;
       if (hasPostFX) {
-        let imageData = offCtx.getImageData(0, 0, exportSize, exportSize);
+        let imageData = offCtx.getImageData(0, 0, exportW, exportH);
         if (postFX.grain > 0) imageData = applyGrain(offCtx, imageData, postFX.grain);
-        if (postFX.vignette > 0) imageData = applyVignette(offCtx, imageData, exportSize, exportSize, postFX.vignette);
+        if (postFX.vignette > 0) imageData = applyVignette(offCtx, imageData, exportW, exportH, postFX.vignette);
         if (postFX.dither >= 2) imageData = applyDither(offCtx, imageData, postFX.dither);
         if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
         offCtx.putImageData(imageData, 0, 0);
@@ -675,7 +676,7 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       return;
     }
 
-    // Animating: record WebM at 1080x1080 on offscreen canvas
+    // Animating: record WebM on offscreen canvas
     const mimeTypes = [
       'video/webm;codecs=vp9',
       'video/webm;codecs=vp8',
@@ -690,8 +691,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
     setIsSaving(true);
 
     const offscreen = document.createElement('canvas');
-    offscreen.width = exportSize;
-    offscreen.height = exportSize;
+    offscreen.width = exportW;
+    offscreen.height = exportH;
     const offCtx = offscreen.getContext('2d');
     if (!offCtx) { setIsSaving(false); return; }
 
@@ -743,9 +744,9 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           postFX.grain > 0 || postFX.vignette > 0 ||
           postFX.dither >= 2 || postFX.posterize >= 1;
         if (hasRecPostFX) {
-          let imageData = offCtx.getImageData(0, 0, exportSize, exportSize);
+          let imageData = offCtx.getImageData(0, 0, exportW, exportH);
           if (postFX.grain > 0) imageData = applyGrain(offCtx, imageData, postFX.grain);
-          if (postFX.vignette > 0) imageData = applyVignette(offCtx, imageData, exportSize, exportSize, postFX.vignette);
+          if (postFX.vignette > 0) imageData = applyVignette(offCtx, imageData, exportW, exportH, postFX.vignette);
           if (postFX.dither >= 2) imageData = applyDither(offCtx, imageData, postFX.dither);
           if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
           offCtx.putImageData(imageData, 0, 0);

@@ -5,6 +5,24 @@ All notable changes to Algomodo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-03-15
+
+### Added
+
+- **MP4 export with audio** — when an audio file is loaded, MP4 exports now include the audio track (AAC). Set start and stop times (in seconds, max 60s range) to choose which portion of the audio to include. Audio-reactive generators respond to the audio during offscreen export via offline frequency analysis
+- **Overlay zoom control** — new zoom slider (1×–3×) in the Image Overlay settings to crop out corner gaps when rotating the overlay image
+
+### Improved
+
+- **Field + Particle performance** — optimized all field types (curl, vortex, dipole) to match attractor efficiency: sin/cos lookup tables for curl, eliminated Math.sqrt from vortex and dipole inner loops
+- **Thick line rendering** — batched all same-colour particles into shared Path2D objects, reducing stroke() calls from ~12,000 to ~10 per frame; line width above 1.0 no longer causes FPS to drop
+- **PostFX in animation** — grain, vignette, dither, and posterize effects now apply during animation and WebM recording (previously only worked on static renders)
+- **Elementary CA fix** — blend modes, mutation rate, and Rule B now correctly take effect during animation (fixed missing params in animation cache key)
+- **Mobile layout** — canvas stays visible when sidebars are opened on mobile devices instead of disappearing behind the overlay
+- **Generator label** — added white border and increased size for better visibility on canvas
+
+---
+
 ## [1.8.0] - 2026-03-14
 
 ### Added

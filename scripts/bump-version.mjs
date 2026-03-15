@@ -3,6 +3,7 @@
 // Zero dependencies. Usage: node scripts/bump-version.mjs <X.Y.Z> [--date=YYYY-MM-DD]
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
 
 // ── Parse args ──────────────────────────────────────────────────────────────
@@ -46,6 +47,88 @@ if (version === oldVersion) {
   process.exit(1);
 }
 
+// ── Gather commits since last version ──────────────────────────────────────
+function getCommitsSinceLastVersion() {
+  const cmds = [
+    `git log --oneline v${oldVersion}..HEAD`,
+    `git log --oneline ${oldVersion}..HEAD`,
+    `git log --oneline -30`,
+  ];
+  for (const cmd of cmds) {
+    try {
+      const out = execSync(cmd, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+      if (out) return out.split('\n');
+    } catch { /* try next */ }
+  }
+  return [];
+}
+
+const NOISE_RE = /^(bump|update)\s+(version|changelog|readme)/i;
+const MERGE_RE = /^Merge\s/;
+
+function parseCommits(lines) {
+  const added = [];
+  const fixed = [];
+  const improved = [];
+
+  for (const line of lines) {
+    // Strip leading hash
+    const msg = line.replace(/^[a-f0-9]+\s+/, '').trim();
+    if (!msg) continue;
+    if (NOISE_RE.test(msg)) continue;
+    if (MERGE_RE.test(msg)) continue;
+
+    // Capitalize first letter
+    const clean = msg.charAt(0).toUpperCase() + msg.slice(1);
+
+    if (/^(add|new|implement|create|introduce)\b/i.test(msg)) {
+      added.push(clean);
+    } else if (/^(fix|bug|patch|resolve|correct)\b/i.test(msg)) {
+      fixed.push(clean);
+    } else {
+      improved.push(clean);
+    }
+  }
+
+  return { added, fixed, improved };
+}
+
+const commitLines = getCommitsSinceLastVersion();
+const categories = parseCommits(commitLines);
+
+// ── Helper: escape text for JSX ────────────────────────────────────────────
+function escapeJsx(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Helper: split commit into bold title + description for JSX ─────────────
+function formatCommitJsx(msg) {
+  const escaped = escapeJsx(msg);
+  // Try splitting at colon or em-dash first
+  const colonIdx = escaped.indexOf(':');
+  const dashIdx = escaped.indexOf(' — ');
+  const hyphenIdx = escaped.indexOf(' - ');
+
+  let splitIdx = -1;
+  let sepLen = 0;
+  if (colonIdx > 0 && colonIdx < 60) { splitIdx = colonIdx; sepLen = 1; }
+  else if (dashIdx > 0 && dashIdx < 60) { splitIdx = dashIdx; sepLen = 3; }
+  else if (hyphenIdx > 0 && hyphenIdx < 60) { splitIdx = hyphenIdx; sepLen = 3; }
+
+  if (splitIdx > 0) {
+    const title = escaped.slice(0, splitIdx).trim();
+    const desc = escaped.slice(splitIdx + sepLen).trim();
+    return desc ? `<strong>${title}</strong> &mdash; ${desc}` : `<strong>${title}</strong>`;
+  }
+
+  // Fallback: bold first 3-5 words
+  const words = escaped.split(/\s+/);
+  const titleWords = Math.min(words.length, words.length <= 5 ? words.length : 4);
+  const title = words.slice(0, titleWords).join(' ');
+  const desc = words.slice(titleWords).join(' ');
+  return desc ? `<strong>${title}</strong> &mdash; ${desc}` : `<strong>${title}</strong>`;
+}
+
 // ── Helper: read → replace → write ─────────────────────────────────────────
 const results = [];
 
@@ -85,25 +168,27 @@ update('public/manifest.webmanifest', [
   [/\d+\+?\s*procedural generators/, `${genCount}+ procedural generators`],
 ]);
 
-// ── 4. CHANGELOG.md — insert new version section after [Unreleased] block ──
+// ── 4. CHANGELOG.md — insert new version section with auto-generated entries ─
 {
   const filePath = join(root, 'CHANGELOG.md');
   let content = readFileSync(filePath, 'utf8');
 
-  const changelogEntry =
-`## [${version}] - ${date}
+  // Build markdown sections only for non-empty categories
+  let sections = '';
+  if (categories.added.length) {
+    sections += `\n### Added\n\n${categories.added.map(m => `- ${m}`).join('\n')}\n`;
+  }
+  if (categories.fixed.length) {
+    sections += `\n### Fixed\n\n${categories.fixed.map(m => `- ${m}`).join('\n')}\n`;
+  }
+  if (categories.improved.length) {
+    sections += `\n### Improved\n\n${categories.improved.map(m => `- ${m}`).join('\n')}\n`;
+  }
+  if (!sections) {
+    sections = '\n- No categorizable commits found. Fill in manually.\n';
+  }
 
-### Added
-
-- TODO: List new features here
-
-### Improved
-
-- TODO: List improvements here
-
----
-
-`;
+  const changelogEntry = `## [${version}] - ${date}\n${sections}\n---\n\n`;
 
   // Insert before the first existing version entry (## [X.Y.Z])
   const firstVersionRe = /^## \[\d+\.\d+\.\d+\]/m;
@@ -112,7 +197,7 @@ update('public/manifest.webmanifest', [
     const idx = content.indexOf(match[0]);
     content = content.slice(0, idx) + changelogEntry + content.slice(idx);
     writeFileSync(filePath, content, 'utf8');
-    results.push({ file: 'CHANGELOG.md', ok: true, note: 'template inserted' });
+    results.push({ file: 'CHANGELOG.md', ok: true, note: 'auto-generated from git' });
   } else {
     results.push({ file: 'CHANGELOG.md', ok: false, reason: 'no version entry found' });
   }
@@ -131,10 +216,34 @@ update('src/components/AboutModal.tsx', [
   [/\d+ generators across \d+ families:[^<]*/, `${genCount} generators across ${familyCount} families: ${familyNames}`],
 ]);
 
-// ── 7. ChangelogModal.tsx — insert new version block ────────────────────────
+// ── 7. ChangelogModal.tsx — insert new version block with auto-generated JSX ─
 {
   const filePath = join(root, 'src/components/ChangelogModal.tsx');
   let content = readFileSync(filePath, 'utf8');
+
+  // Build JSX sections only for non-empty categories
+  const jsxSections = [];
+  const catEntries = [
+    ['Added', categories.added],
+    ['Fixed', categories.fixed],
+    ['Improved', categories.improved],
+  ];
+  for (const [label, items] of catEntries) {
+    if (!items.length) continue;
+    const lis = items.map(m => `                  <li>${formatCommitJsx(m)}</li>`).join('\n');
+    jsxSections.push(
+`              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">${label}</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+${lis}
+                </ul>
+              </div>`
+    );
+  }
+
+  const sectionsJsx = jsxSections.length
+    ? jsxSections.join('\n\n')
+    : '              <p className="text-xs">No categorizable commits found. Fill in manually.</p>';
 
   const newBlock =
 `          {/* Version ${version} */}
@@ -144,19 +253,7 @@ update('src/components/AboutModal.tsx', [
             </h3>
 
             <div className="space-y-3">
-              <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>TODO</strong> — fill in release notes</li>
-                </ul>
-              </div>
-
-              <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Improved</h4>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>TODO</strong> — fill in improvements</li>
-                </ul>
-              </div>
+${sectionsJsx}
             </div>
           </div>
 
@@ -169,7 +266,7 @@ update('src/components/AboutModal.tsx', [
     const idx = content.indexOf(match[0]);
     content = content.slice(0, idx) + newBlock + content.slice(idx);
     writeFileSync(filePath, content, 'utf8');
-    results.push({ file: 'src/components/ChangelogModal.tsx', ok: true, note: 'template inserted' });
+    results.push({ file: 'src/components/ChangelogModal.tsx', ok: true, note: 'auto-generated from git' });
   } else {
     results.push({ file: 'src/components/ChangelogModal.tsx', ok: false, reason: 'no version comment found' });
   }
@@ -210,12 +307,25 @@ for (const r of results) {
   console.log(`${status} ${r.file}${detail}`);
 }
 
+// Print generated changelog entries for review
+if (commitLines.length) {
+  console.log(`\n── Auto-generated changelog (${commitLines.length} commits) ──`);
+  for (const [label, items] of [['Added', categories.added], ['Fixed', categories.fixed], ['Improved', categories.improved]]) {
+    if (items.length) {
+      console.log(`\n  ${label}:`);
+      for (const m of items) console.log(`    - ${m}`);
+    }
+  }
+} else {
+  console.log('\n⚠ No commits found — changelog entries are empty. Fill in manually.');
+}
+
 const failures = results.filter(r => !r.ok);
 if (failures.length > 0) {
   console.log(`\n⚠ ${failures.length} file(s) had no matches — verify patterns manually.`);
 } else {
-  console.log(`\nDone! Review and complete these manual steps:`);
-  console.log(`  1. CHANGELOG.md — replace TODO lines with actual release notes`);
-  console.log(`  2. ChangelogModal.tsx — replace TODO lines with actual JSX release notes`);
+  console.log(`\nDone! Review the auto-generated entries above, then:`);
+  console.log(`  1. CHANGELOG.md — edit entries if wording needs polish`);
+  console.log(`  2. ChangelogModal.tsx — edit entries if wording needs polish`);
   console.log(`  3. InstructionsModal.tsx — add new instruction items if this release introduces new features or workflows`);
 }

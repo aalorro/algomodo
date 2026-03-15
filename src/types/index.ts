@@ -26,7 +26,7 @@ export interface Palette {
 export interface CanvasSettings {
   width: number;
   height: number;
-  aspect?: 'square' | '4:5' | '3:4' | '16:9' | 'custom';
+  aspect?: 'square' | '4:5' | '3:4' | '4:3' | '16:9' | 'custom';
   background: string;
   transparency: boolean;
   devicePixelRatio: number;

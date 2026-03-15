@@ -9,7 +9,7 @@ import { CanvasRecorder } from '../utils/recorder';
 import { exportMp4, isWebCodecsSupported } from '../utils/mp4-exporter';
 import { CURATED_PALETTES } from '../data/palettes';
 import { loadImageFromUrl } from '../utils/imageUrl';
-import { OVERLAY_EXCLUDED_FAMILIES } from '../types';
+import { OVERLAY_EXCLUDED_FAMILIES, CanvasSettings } from '../types';
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -27,6 +27,7 @@ export const RightSidebar: React.FC = React.memo(() => {
     setSeedLocked,
     randomizeSeed,
     canvasSettings,
+    setCanvasSettings,
     params,
     palette,
     setPalette,
@@ -84,6 +85,7 @@ export const RightSidebar: React.FC = React.memo(() => {
     setSeedLocked: s.setSeedLocked,
     randomizeSeed: s.randomizeSeed,
     canvasSettings: s.canvasSettings,
+    setCanvasSettings: s.setCanvasSettings,
     params: s.params,
     palette: s.palette,
     setPalette: s.setPalette,
@@ -323,13 +325,19 @@ export const RightSidebar: React.FC = React.memo(() => {
 
     try {
       setIsRecording(true);
-      console.log(`Starting GIF recording for ${recordingDuration} seconds at ${gifSize}x${gifSize}...`);
+      const gifW = canvasSettings.width >= canvasSettings.height
+        ? gifSize
+        : Math.round(gifSize * canvasSettings.width / canvasSettings.height);
+      const gifH = canvasSettings.height >= canvasSettings.width
+        ? gifSize
+        : Math.round(gifSize * canvasSettings.height / canvasSettings.width);
+      console.log(`Starting GIF recording for ${recordingDuration} seconds at ${gifW}x${gifH}...`);
 
       const recorder = new CanvasRecorder({
         duration: recordingDuration,
         fps: 24,
-        width: gifSize,
-        height: gifSize,
+        width: gifW,
+        height: gifH,
       });
 
       recorderRef.current = recorder;
@@ -348,7 +356,7 @@ export const RightSidebar: React.FC = React.memo(() => {
       }
 
       console.log('Starting GIF encoding...');
-      const blob = await recorder.exportGIF(gifSize, gifSize, recordingDuration, { boomerang: boomerangGif, endless: endlessGif });
+      const blob = await recorder.exportGIF(gifW, gifH, recordingDuration, { boomerang: boomerangGif, endless: endlessGif });
 
       if (!blob || blob.size === 0) {
         throw new Error('Generated GIF is empty');
@@ -508,8 +516,8 @@ export const RightSidebar: React.FC = React.memo(() => {
         palette,
         quality,
         postFX,
-        width: 1080,
-        height: 1080,
+        width: canvasSettings.width,
+        height: canvasSettings.height,
         fps: 30,
         maxDuration: mp4MaxDuration,
         sourceImage: loadedImg,
@@ -992,7 +1000,7 @@ export const RightSidebar: React.FC = React.memo(() => {
             {/* ── Still Image ─────────────────────────────────────── */}
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
               <h3 className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Still Image</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Export current frame as a 1080 x 1080 image.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Export current frame as a {canvasSettings.width} x {canvasSettings.height} image.</p>
               <div className="flex gap-2">
                 <button
                   onClick={handleExportPNG}
@@ -1410,6 +1418,30 @@ export const RightSidebar: React.FC = React.memo(() => {
               </select>
             </div>
 
+            <div>
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
+                Aspect Ratio
+              </label>
+              <select
+                value={canvasSettings.aspect || 'square'}
+                onChange={(e) => {
+                  const aspect = e.target.value as CanvasSettings['aspect'];
+                  const dims: Record<string, [number, number]> = {
+                    'square': [1080, 1080],
+                    '3:4': [810, 1080],
+                    '4:3': [1080, 810],
+                  };
+                  const [width, height] = dims[aspect!] || [1080, 1080];
+                  setCanvasSettings({ aspect, width, height });
+                }}
+                className="w-full px-2 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded text-sm border border-white"
+              >
+                <option value="square">Square (1:1)</option>
+                <option value="3:4">Portrait (3:4)</option>
+                <option value="4:3">Landscape (4:3)</option>
+              </select>
+            </div>
+
             {generator?.supportsAnimation && (
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -1626,7 +1658,7 @@ export const RightSidebar: React.FC = React.memo(() => {
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
                 Version
               </label>
-              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.8.0</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.8.1</p>
             </div>
             </div>
           </div>
