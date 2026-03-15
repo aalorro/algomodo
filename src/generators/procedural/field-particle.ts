@@ -259,8 +259,10 @@ export const fieldParticle: Generator = {
 
     // ── Trail integration + drawing ──────────────────────────────
     ctx.lineWidth = lw;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'bevel';
+    // For thick lines, skip every Nth point — the thick stroke fills visual gaps
+    const drawSkip = lw > 1.5 ? Math.max(1, Math.round(lw)) : 1;
     const dt = 0.5;
     const phaseOffset = t * 0.5;
     const baseAlpha = 0.7 + audioHigh * 0.3;
@@ -332,13 +334,19 @@ export const fieldParticle: Generator = {
           ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
           ctx.beginPath();
           ctx.moveTo(trailX[sStart], trailY[sStart]);
-          for (let s = sStart; s < sEnd && s < trailLen; s++) {
-            if (trailWrap[s]) {
+          for (let s = sStart; s < sEnd && s < trailLen; s += drawSkip) {
+            const sNext = Math.min(s + drawSkip, trailLen);
+            // Check for any wrap in the skipped range
+            let wrapped = false;
+            for (let k = s; k < sNext; k++) {
+              if (trailWrap[k]) { wrapped = true; break; }
+            }
+            if (wrapped) {
               ctx.stroke();
               ctx.beginPath();
-              ctx.moveTo(trailX[s + 1], trailY[s + 1]);
+              ctx.moveTo(trailX[sNext], trailY[sNext]);
             } else {
-              ctx.lineTo(trailX[s + 1], trailY[s + 1]);
+              ctx.lineTo(trailX[sNext], trailY[sNext]);
             }
           }
           ctx.stroke();
@@ -348,12 +356,18 @@ export const fieldParticle: Generator = {
         let prevR = -1, prevG = -1, prevB = -1, prevAlphaQ = -1;
         let pathOpen = false;
 
-        for (let s = 0; s < maxVisibleSeg && s < trailLen; s++) {
+        for (let s = 0; s < maxVisibleSeg && s < trailLen; s += drawSkip) {
+          const sNext = Math.min(s + drawSkip, trailLen);
           const age = s / trailLen;
           const alpha = (1 - age) * baseAlpha;
           if (alpha < 0.02) break;
 
-          if (trailWrap[s]) {
+          // Check for any wrap in the skipped range
+          let wrapped = false;
+          for (let k = s; k < sNext; k++) {
+            if (trailWrap[k]) { wrapped = true; break; }
+          }
+          if (wrapped) {
             if (pathOpen) { ctx.stroke(); pathOpen = false; }
             prevR = -1;
             continue;
@@ -367,8 +381,8 @@ export const fieldParticle: Generator = {
             const ci = Math.min(nC - 1, (Math.min(1, speed * 0.3) * (nC - 1)) | 0);
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
           } else if (colorMode === 'direction') {
-            const ddx = trailX[s + 1] - trailX[s];
-            const ddy = trailY[s + 1] - trailY[s];
+            const ddx = trailX[sNext] - trailX[s];
+            const ddy = trailY[sNext] - trailY[s];
             const ang = (Math.atan2(ddy, ddx) + Math.PI) / TAU;
             const ci = Math.max(0, Math.min(nC - 1, (ang * (nC - 1)) | 0));
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
@@ -386,7 +400,7 @@ export const fieldParticle: Generator = {
             prevR = r; prevG = g; prevB = b; prevAlphaQ = alphaQ;
             pathOpen = true;
           }
-          ctx.lineTo(trailX[s + 1], trailY[s + 1]);
+          ctx.lineTo(trailX[sNext], trailY[sNext]);
         }
         if (pathOpen) ctx.stroke();
       }
