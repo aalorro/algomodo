@@ -178,7 +178,7 @@ export const InstructionsModal: React.FC = () => {
             <ul className="list-disc list-inside space-y-1">
               <li><strong>GIF</strong> &mdash; Records an animated GIF. Choose a resolution: 600px (fastest), 800px, or 1000px (highest quality, may take longer). Encoding uses multiple workers for larger sizes.</li>
               <li><strong>WebM</strong> &mdash; Records video directly from the live canvas at its native resolution. Smaller file size and higher quality than GIF. Uses the same duration as GIF.</li>
-              <li><strong>MP4 (H.264)</strong> &mdash; Renders the animation offscreen at full speed, much faster than real-time. Automatically stops when the animation completes (e.g. DLA fills the canvas, Game of Life stabilizes) or when the max duration is reached (8 / 15 / 30 / 45 seconds). Does not require live animation to be enabled.</li>
+              <li><strong>MP4 (H.264)</strong> &mdash; Renders the animation offscreen at full speed, much faster than real-time. Automatically stops when the animation completes (e.g. DLA fills the canvas, Game of Life stabilizes) or when the max duration is reached (8 / 15 / 30 / 45 seconds). Does not require live animation to be enabled. When an audio file is loaded, the MP4 includes the audio track &mdash; set start and stop times (in seconds, max 60s range) to choose which portion of the audio to include. Audio-reactive generators will respond to the audio during export.</li>
             </ul>
             <p className="mt-2 font-medium text-gray-900 dark:text-white">GIF loop options:</p>
             <ul className="list-disc list-inside space-y-1 mt-1">

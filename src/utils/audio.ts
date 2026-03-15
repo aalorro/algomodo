@@ -142,6 +142,11 @@ export class AudioProcessor {
     return sum / ((this.freqData.length - lo) * 255);
   }
 
+  /** Expose the decoded AudioBuffer for offline processing (e.g. MP4 export). */
+  getBuffer(): AudioBuffer | null {
+    return this.audioBuffer;
+  }
+
   dispose(): void {
     this.stopSource();
     this._isPlaying = false;
@@ -156,4 +161,144 @@ export class AudioProcessor {
       this.source = null;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Offline audio analysis — used by MP4 exporter to provide frequency data
+// to generators without a real-time AudioContext.
+// ---------------------------------------------------------------------------
+
+const FFT_SIZE = 256;
+const FFT_BINS = FFT_SIZE / 2; // 128
+
+/** Pre-computed Hann window coefficients. */
+const HANN = new Float32Array(FFT_SIZE);
+for (let i = 0; i < FFT_SIZE; i++) {
+  HANN[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FFT_SIZE - 1));
+}
+
+/** Pre-computed cos/sin tables for DFT. */
+const DFT_COS = new Float32Array(FFT_BINS * FFT_SIZE);
+const DFT_SIN = new Float32Array(FFT_BINS * FFT_SIZE);
+for (let k = 0; k < FFT_BINS; k++) {
+  for (let n = 0; n < FFT_SIZE; n++) {
+    const angle = (-2 * Math.PI * k * n) / FFT_SIZE;
+    DFT_COS[k * FFT_SIZE + n] = Math.cos(angle);
+    DFT_SIN[k * FFT_SIZE + n] = Math.sin(angle);
+  }
+}
+
+/**
+ * Extract mono samples from an AudioBuffer at a given time, applying Hann window.
+ * Mixes all channels to mono.
+ */
+function extractWindowedSamples(
+  buffer: AudioBuffer,
+  timeSeconds: number,
+): Float32Array {
+  const sr = buffer.sampleRate;
+  const centerSample = Math.floor(timeSeconds * sr);
+  const halfWindow = FFT_SIZE / 2;
+  const start = centerSample - halfWindow;
+  const totalSamples = buffer.length;
+  const nChannels = buffer.numberOfChannels;
+
+  const windowed = new Float32Array(FFT_SIZE);
+  const channelData: Float32Array[] = [];
+  for (let ch = 0; ch < nChannels; ch++) {
+    channelData.push(buffer.getChannelData(ch));
+  }
+
+  for (let i = 0; i < FFT_SIZE; i++) {
+    const sampleIdx = start + i;
+    if (sampleIdx < 0 || sampleIdx >= totalSamples) continue;
+    let sum = 0;
+    for (let ch = 0; ch < nChannels; ch++) {
+      sum += channelData[ch][sampleIdx];
+    }
+    windowed[i] = (sum / nChannels) * HANN[i];
+  }
+  return windowed;
+}
+
+/**
+ * Compute magnitude spectrum from windowed samples.
+ * Returns values in 0-255 byte range, mimicking AnalyserNode.getByteFrequencyData.
+ */
+function computeSpectrum(samples: Float32Array): Uint8Array {
+  const magnitudes = new Uint8Array(FFT_BINS);
+  const minDB = -100;
+  const rangeDB = 70; // -100 to -30
+
+  for (let k = 0; k < FFT_BINS; k++) {
+    let real = 0, imag = 0;
+    const offset = k * FFT_SIZE;
+    for (let n = 0; n < FFT_SIZE; n++) {
+      real += samples[n] * DFT_COS[offset + n];
+      imag += samples[n] * DFT_SIN[offset + n];
+    }
+    const mag = Math.sqrt(real * real + imag * imag) / FFT_SIZE;
+    const db = mag > 0 ? 20 * Math.log10(mag) : -200;
+    const normalized = (db - minDB) / rangeDB;
+    magnitudes[k] = Math.max(0, Math.min(255, Math.round(normalized * 255)));
+  }
+  return magnitudes;
+}
+
+export interface OfflineAudioFrame {
+  frequencyData: Float32Array;
+  bass: number;
+  mid: number;
+  high: number;
+}
+
+/**
+ * Analyze a single frame of audio offline. Returns frequency bands + energy
+ * values matching the real-time AudioProcessor output format.
+ */
+export function analyzeAudioFrame(
+  buffer: AudioBuffer,
+  timeSeconds: number,
+  bandCount: number,
+): OfflineAudioFrame {
+  const samples = extractWindowedSamples(buffer, timeSeconds);
+  const spectrum = computeSpectrum(samples);
+  const bins = spectrum.length; // 128
+
+  // Resample to requested band count (same logic as AudioProcessor.getFrequencyData)
+  const frequencyData = new Float32Array(bandCount);
+  if (bandCount >= bins) {
+    for (let i = 0; i < bandCount; i++) {
+      const srcIdx = Math.floor((i / bandCount) * bins);
+      frequencyData[i] = spectrum[srcIdx] / 255;
+    }
+  } else {
+    const binsPer = bins / bandCount;
+    for (let i = 0; i < bandCount; i++) {
+      const lo = Math.floor(i * binsPer);
+      const hi = Math.floor((i + 1) * binsPer);
+      let sum = 0;
+      for (let j = lo; j < hi; j++) sum += spectrum[j];
+      frequencyData[i] = sum / ((hi - lo) * 255);
+    }
+  }
+
+  // Energy bands (same ranges as AudioProcessor)
+  const bassEnd = Math.max(1, Math.floor(bins * 0.1));
+  let bassSum = 0;
+  for (let i = 0; i < bassEnd; i++) bassSum += spectrum[i];
+  const bass = bassSum / (bassEnd * 255);
+
+  const midLo = Math.floor(bins * 0.1);
+  const midHi = Math.floor(bins * 0.5);
+  let midSum = 0;
+  for (let i = midLo; i < midHi; i++) midSum += spectrum[i];
+  const mid = midSum / ((midHi - midLo) * 255);
+
+  const highLo = Math.floor(bins * 0.5);
+  let highSum = 0;
+  for (let i = highLo; i < bins; i++) highSum += spectrum[i];
+  const high = highSum / ((bins - highLo) * 255);
+
+  return { frequencyData, bass, mid, high };
 }
