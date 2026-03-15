@@ -159,15 +159,15 @@ function App() {
           <RightSidebar />
         </div>
 
-        {/* Center Canvas — full width */}
-        <div className="flex-1 flex items-center justify-center bg-black overflow-hidden">
+        {/* Center Canvas — full width, z-[45] keeps it above the overlay (z-40) but below drawers (z-50) */}
+        <div className="flex-1 flex items-center justify-center bg-black overflow-hidden relative z-[45]">
           <CanvasRenderer showFPS={showFPS} />
         </div>
 
         {/* Left edge tab */}
         <button
           onClick={() => setLeftPanelVisible(!leftPanelVisible)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-40 w-8 h-24 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-xl font-bold rounded-r-lg shadow-lg shadow-amber-500/40 transition-all flex items-center justify-center"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-[46] w-8 h-24 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-xl font-bold rounded-r-lg shadow-lg shadow-amber-500/40 transition-all flex items-center justify-center"
           title={leftPanelVisible ? 'Hide generators' : 'Show generators'}
         >
           {leftPanelVisible ? '‹' : '›'}
@@ -176,7 +176,7 @@ function App() {
         {/* Right edge tab */}
         <button
           onClick={() => setRightPanelVisible(!rightPanelVisible)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-40 w-8 h-24 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-xl font-bold rounded-l-lg shadow-lg shadow-amber-500/40 transition-all flex items-center justify-center"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-[46] w-8 h-24 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black text-xl font-bold rounded-l-lg shadow-lg shadow-amber-500/40 transition-all flex items-center justify-center"
           title={rightPanelVisible ? 'Hide controls' : 'Show controls'}
         >
           {rightPanelVisible ? '›' : '‹'}
