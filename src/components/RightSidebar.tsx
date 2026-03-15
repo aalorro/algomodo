@@ -1497,6 +1497,21 @@ export const RightSidebar: React.FC = React.memo(() => {
                         />
                       </div>
                       <div>
+                        <label className="flex justify-between text-xs text-gray-600 dark:text-gray-300 mb-1">
+                          <span>Zoom</span>
+                          <span className="text-gray-400 dark:text-gray-500 font-mono">{(overlaySettings.zoom ?? 1).toFixed(2)}×</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={1}
+                          max={3}
+                          step={0.05}
+                          value={overlaySettings.zoom ?? 1}
+                          onChange={(e) => updateOverlaySetting('zoom', parseFloat(e.target.value))}
+                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer"
+                        />
+                      </div>
+                      <div>
                         <label className="text-xs text-gray-600 dark:text-gray-300 block mb-1">Blend Mode</label>
                         <select
                           value={overlaySettings.blendMode}

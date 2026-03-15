@@ -54,6 +54,7 @@ export const useStore = create<AppState>()(
       overlaySettings: {
         opacity: 0.5,
         angle: 0,
+        zoom: 1,
         blendMode: 'source-over' as GlobalCompositeOperation,
       },
 

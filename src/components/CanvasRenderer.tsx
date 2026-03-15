@@ -311,8 +311,8 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
       ctx.rotate((settings.angle * Math.PI) / 180);
     }
 
-    // Cover-fit: scale image to cover the canvas
-    const scale = Math.max(w / img.width, h / img.height);
+    // Cover-fit: scale image to cover the canvas, then apply zoom
+    const scale = Math.max(w / img.width, h / img.height) * (settings.zoom || 1);
     const dw = img.width * scale;
     const dh = img.height * scale;
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
