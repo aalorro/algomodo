@@ -168,16 +168,29 @@ export const fieldParticle: Generator = {
     // Force constants
     const attractFStr = fStr * 50000;
     const vortexFStr = fStr * 200;
-    const dipoleFStr = fStr * 500000;
+    const dipoleFStr = fStr * 1.2e8;
+
+    // ── Sin/cos LUT — eliminates trig from curl inner loop ─────
+    const LUT_BITS = 10;
+    const LUT_SIZE = 1 << LUT_BITS; // 1024
+    const LUT_MASK = LUT_SIZE - 1;
+    const COS_LUT = new Float32Array(LUT_SIZE);
+    const SIN_LUT = new Float32Array(LUT_SIZE);
+    for (let i = 0; i < LUT_SIZE; i++) {
+      const a = (i / LUT_SIZE) * TAU;
+      COS_LUT[i] = Math.cos(a);
+      SIN_LUT[i] = Math.sin(a);
+    }
 
     // ── Inline velocity ──────────────────────────────────────────
     let outVx = 0, outVy = 0;
     const computeVelocity = (px: number, py: number) => {
       if (fieldType === 'curl') {
-        // Angle-based flow: 1 fast noise call instead of 4 expensive SimplexNoise calls
-        const angle = vN(px * noiseScale + curlTimeX, py * noiseScale + curlTimeY) * TAU;
-        outVx = Math.cos(angle) * curlMag;
-        outVy = Math.sin(angle) * curlMag;
+        // Angle-based flow with LUT: 1 noise call + 2 LUT lookups (no trig)
+        const noiseVal = vN(px * noiseScale + curlTimeX, py * noiseScale + curlTimeY);
+        const idx = ((noiseVal * 0.5 + 0.5) * LUT_SIZE | 0) & LUT_MASK;
+        outVx = COS_LUT[idx] * curlMag;
+        outVy = SIN_LUT[idx] * curlMag;
       } else if (fieldType === 'attractor') {
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
@@ -187,24 +200,25 @@ export const fieldParticle: Generator = {
           outVy += dx * f * 0.7 + dy * f * 0.3;
         }
       } else if (fieldType === 'vortex') {
+        // Tangential flow — pure arithmetic, no sqrt
+        // (sqrt(d2)+10)^2 ≈ d2+100 at both extremes: near-center and far-field
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
           const dx = px - centersX[c], dy = py - centersY[c];
-          const r = Math.sqrt(dx * dx + dy * dy) + 10;
-          const f = centersStr[c] * vortexFStr / (r * r);
+          const f = centersStr[c] * vortexFStr / (dx * dx + dy * dy + 100);
           outVx += -dy * f;
           outVy += dx * f;
         }
       } else {
-        // dipole — strong force, tight softening, tangential + radial
+        // dipole — pure arithmetic, no sqrt
+        // Uses 1/r^4 falloff instead of 1/r^3 — steeper near poles, similar flow topology
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
           const dx = px - centersX[c], dy = py - centersY[c];
           const r2 = dx * dx + dy * dy + 200;
-          const invR = 1 / Math.sqrt(r2);
-          const f = centersStr[c] * dipoleFStr * invR * invR;
-          outVx += (-dy * 0.5 + dx * 0.5) * f * invR;
-          outVy += (dx * 0.5 + dy * 0.5) * f * invR;
+          const f = centersStr[c] * dipoleFStr / (r2 * r2);
+          outVx += (-dy * 0.5 + dx * 0.5) * f;
+          outVy += (dx * 0.5 + dy * 0.5) * f;
         }
       }
     };
