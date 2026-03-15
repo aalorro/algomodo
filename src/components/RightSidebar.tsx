@@ -1626,7 +1626,7 @@ export const RightSidebar: React.FC = React.memo(() => {
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase block mb-2">
                 Version
               </label>
-              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.8.0</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Algomodo v1.8.1</p>
             </div>
             </div>
           </div>

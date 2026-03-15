@@ -20,6 +20,34 @@ export const ChangelogModal: React.FC = () => {
 
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300 font-mono">
+          {/* Version 1.8.1 */}
+          <div>
+            <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">
+              [1.8.1] - 2026-03-15
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Added</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>MP4 with audio</strong> — MP4 exports now include the audio track (AAC) when an audio file is loaded, with configurable start/stop times (max 60s). Audio-reactive generators respond to the audio during offscreen export</li>
+                  <li><strong>Overlay zoom</strong> — new zoom slider (1&times;&ndash;3&times;) in Image Overlay settings to crop out corner gaps when rotating</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Improved</h4>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li><strong>Field + Particle performance</strong> — optimized curl, vortex, and dipole field types with LUTs and sqrt elimination; batched thick-line rendering via Path2D reduces stroke calls from ~12K to ~10</li>
+                  <li><strong>PostFX in animation</strong> — grain, vignette, dither, and posterize now apply during animation and WebM recording</li>
+                  <li><strong>Elementary CA fix</strong> — blend modes, mutation rate, and Rule B now work correctly during animation</li>
+                  <li><strong>Mobile layout</strong> — canvas stays visible when sidebars are opened on mobile</li>
+                  <li><strong>Generator label</strong> — white border and larger text for better canvas visibility</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* Version 1.8.0 */}
           <div>
             <h3 className="font-bold text-base text-gray-900 dark:text-white mb-2">

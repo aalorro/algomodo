@@ -21,7 +21,7 @@ export const RoadmapModal: React.FC = () => {
         {/* Content */}
         <div className="p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Planned enhancements for Algomodo, organized by priority. Current version: <strong>1.8.0</strong>
+            Planned enhancements for Algomodo, organized by priority. Current version: <strong>1.8.1</strong>
           </p>
 
           {/* Near-Term */}
