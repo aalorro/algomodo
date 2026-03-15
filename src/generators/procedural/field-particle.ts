@@ -168,16 +168,29 @@ export const fieldParticle: Generator = {
     // Force constants
     const attractFStr = fStr * 50000;
     const vortexFStr = fStr * 200;
-    const dipoleFStr = fStr * 500000;
+    const dipoleFStr = fStr * 1.2e8;
+
+    // ── Sin/cos LUT — eliminates trig from curl inner loop ─────
+    const LUT_BITS = 10;
+    const LUT_SIZE = 1 << LUT_BITS; // 1024
+    const LUT_MASK = LUT_SIZE - 1;
+    const COS_LUT = new Float32Array(LUT_SIZE);
+    const SIN_LUT = new Float32Array(LUT_SIZE);
+    for (let i = 0; i < LUT_SIZE; i++) {
+      const a = (i / LUT_SIZE) * TAU;
+      COS_LUT[i] = Math.cos(a);
+      SIN_LUT[i] = Math.sin(a);
+    }
 
     // ── Inline velocity ──────────────────────────────────────────
     let outVx = 0, outVy = 0;
     const computeVelocity = (px: number, py: number) => {
       if (fieldType === 'curl') {
-        // Angle-based flow: 1 fast noise call instead of 4 expensive SimplexNoise calls
-        const angle = vN(px * noiseScale + curlTimeX, py * noiseScale + curlTimeY) * TAU;
-        outVx = Math.cos(angle) * curlMag;
-        outVy = Math.sin(angle) * curlMag;
+        // Angle-based flow with LUT: 1 noise call + 2 LUT lookups (no trig)
+        const noiseVal = vN(px * noiseScale + curlTimeX, py * noiseScale + curlTimeY);
+        const idx = ((noiseVal * 0.5 + 0.5) * LUT_SIZE | 0) & LUT_MASK;
+        outVx = COS_LUT[idx] * curlMag;
+        outVy = SIN_LUT[idx] * curlMag;
       } else if (fieldType === 'attractor') {
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
@@ -187,24 +200,25 @@ export const fieldParticle: Generator = {
           outVy += dx * f * 0.7 + dy * f * 0.3;
         }
       } else if (fieldType === 'vortex') {
+        // Tangential flow — pure arithmetic, no sqrt
+        // (sqrt(d2)+10)^2 ≈ d2+100 at both extremes: near-center and far-field
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
           const dx = px - centersX[c], dy = py - centersY[c];
-          const r = Math.sqrt(dx * dx + dy * dy) + 10;
-          const f = centersStr[c] * vortexFStr / (r * r);
+          const f = centersStr[c] * vortexFStr / (dx * dx + dy * dy + 100);
           outVx += -dy * f;
           outVy += dx * f;
         }
       } else {
-        // dipole — strong force, tight softening, tangential + radial
+        // dipole — pure arithmetic, no sqrt
+        // Uses 1/r^4 falloff instead of 1/r^3 — steeper near poles, similar flow topology
         outVx = 0; outVy = 0;
         for (let c = 0; c < nCenters; c++) {
           const dx = px - centersX[c], dy = py - centersY[c];
           const r2 = dx * dx + dy * dy + 200;
-          const invR = 1 / Math.sqrt(r2);
-          const f = centersStr[c] * dipoleFStr * invR * invR;
-          outVx += (-dy * 0.5 + dx * 0.5) * f * invR;
-          outVy += (dx * 0.5 + dy * 0.5) * f * invR;
+          const f = centersStr[c] * dipoleFStr / (r2 * r2);
+          outVx += (-dy * 0.5 + dx * 0.5) * f;
+          outVy += (dx * 0.5 + dy * 0.5) * f;
         }
       }
     };
@@ -245,11 +259,19 @@ export const fieldParticle: Generator = {
 
     // ── Trail integration + drawing ──────────────────────────────
     ctx.lineWidth = lw;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'bevel';
     const dt = 0.5;
     const phaseOffset = t * 0.5;
     const baseAlpha = 0.7 + audioHigh * 0.3;
+
+    // For thick lines (lw > 1) Canvas2D leaves the hairline fast path and
+    // constructs full stroke geometry — ~10-20× slower per segment.  Compensate
+    // by (a) skipping trail points (thick stroke fills gaps) and (b) batching
+    // all same-colour particles into shared Path2D objects so stroke() is called
+    // nColors×bands times (~10) instead of particles×bands (~12 000).
+    const thickLine = lw > 1;
+    const drawSkip = thickLine ? Math.max(2, Math.ceil(lw * 2)) : 1;
 
     const trailX = new Float32Array(trailLen + 1);
     const trailY = new Float32Array(trailLen + 1);
@@ -259,8 +281,24 @@ export const fieldParticle: Generator = {
 
     const maxVisibleSeg = Math.min(trailLen, Math.ceil(baseAlpha / 0.02 * trailLen)) | 0;
 
+    // ── Batched Path2D approach for palette mode ────────────────
+    // Accumulate geometry for all particles into per-colour, per-band Path2D
+    // objects, then stroke each once.  This slashes stroke() call count from
+    // actualCount × bands  →  nC × bands.
+    const bands = thickLine ? 2 : 4;
+    const segsPerBand = Math.ceil(maxVisibleSeg / bands);
+    const useBatched = colorMode === 'palette';
+    let pathGrid: Path2D[][] | null = null;
+    if (useBatched) {
+      pathGrid = [];
+      for (let ci = 0; ci < nC; ci++) {
+        pathGrid[ci] = [];
+        for (let b = 0; b < bands; b++) pathGrid[ci][b] = new Path2D();
+      }
+    }
+
     for (let i = 0; i < actualCount; i++) {
-      // Initial position with noise-based drift (1 cheap noise call instead of 2 SimplexNoise)
+      // Initial position with noise-based drift
       const driftAngle = vN(startX[i] * 0.001 + phaseOffset, startY[i] * 0.001) * TAU;
       const driftMag = minDim * 0.1;
       let px = startX[i] + Math.cos(driftAngle) * driftMag;
@@ -273,12 +311,10 @@ export const fieldParticle: Generator = {
       for (let s = 0; s < trailLen; s++) {
         computeVelocity(px, py);
 
-        // Cache unclamped speed for velocity color mode
         if (trailSpeed) {
           trailSpeed[s] = Math.sqrt(outVx * outVx + outVy * outVy);
         }
 
-        // Clamp velocity magnitude
         const magSq = outVx * outVx + outVy * outVy;
         if (magSq > maxVelSq) {
           const scale = maxVel / Math.sqrt(magSq);
@@ -303,43 +339,45 @@ export const fieldParticle: Generator = {
         trailY[s + 1] = py;
       }
 
-      // ── Draw trail ─────────────────────────────────────────────
-      if (colorMode === 'palette') {
-        const [r, g, b] = colors[pColorIdx[i]];
-        const bands = 4;
-        const segsPerBand = Math.ceil(maxVisibleSeg / bands);
+      // ── Accumulate / draw trail ──────────────────────────────
+      if (useBatched && pathGrid) {
+        // Palette mode: accumulate into batched Path2D objects
+        const ci = pColorIdx[i];
         for (let band = 0; band < bands; band++) {
           const sStart = band * segsPerBand;
           const sEnd = Math.min((band + 1) * segsPerBand, maxVisibleSeg);
           if (sStart >= trailLen) break;
-          const midAge = ((sStart + sEnd) / 2) / trailLen;
-          const alpha = (1 - midAge) * baseAlpha;
-          if (alpha < 0.02) break;
-          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
-          ctx.beginPath();
-          ctx.moveTo(trailX[sStart], trailY[sStart]);
-          for (let s = sStart; s < sEnd && s < trailLen; s++) {
-            if (trailWrap[s]) {
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.moveTo(trailX[s + 1], trailY[s + 1]);
+          const path = pathGrid[ci][band];
+          path.moveTo(trailX[sStart], trailY[sStart]);
+          for (let s = sStart; s < sEnd && s < trailLen; s += drawSkip) {
+            const sNext = Math.min(s + drawSkip, trailLen, sEnd);
+            let wrapped = false;
+            for (let k = s; k < sNext; k++) {
+              if (trailWrap[k]) { wrapped = true; break; }
+            }
+            if (wrapped) {
+              path.moveTo(trailX[sNext], trailY[sNext]);
             } else {
-              ctx.lineTo(trailX[s + 1], trailY[s + 1]);
+              path.lineTo(trailX[sNext], trailY[sNext]);
             }
           }
-          ctx.stroke();
         }
-      } else {
-        // Variable color per segment — batch consecutive same-color segments
+      } else if (!useBatched) {
+        // Variable color per segment — draw immediately with drawSkip
         let prevR = -1, prevG = -1, prevB = -1, prevAlphaQ = -1;
         let pathOpen = false;
 
-        for (let s = 0; s < maxVisibleSeg && s < trailLen; s++) {
+        for (let s = 0; s < maxVisibleSeg && s < trailLen; s += drawSkip) {
+          const sNext = Math.min(s + drawSkip, trailLen);
           const age = s / trailLen;
           const alpha = (1 - age) * baseAlpha;
           if (alpha < 0.02) break;
 
-          if (trailWrap[s]) {
+          let wrapped = false;
+          for (let k = s; k < sNext; k++) {
+            if (trailWrap[k]) { wrapped = true; break; }
+          }
+          if (wrapped) {
             if (pathOpen) { ctx.stroke(); pathOpen = false; }
             prevR = -1;
             continue;
@@ -353,8 +391,8 @@ export const fieldParticle: Generator = {
             const ci = Math.min(nC - 1, (Math.min(1, speed * 0.3) * (nC - 1)) | 0);
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
           } else if (colorMode === 'direction') {
-            const ddx = trailX[s + 1] - trailX[s];
-            const ddy = trailY[s + 1] - trailY[s];
+            const ddx = trailX[sNext] - trailX[s];
+            const ddy = trailY[sNext] - trailY[s];
             const ang = (Math.atan2(ddy, ddx) + Math.PI) / TAU;
             const ci = Math.max(0, Math.min(nC - 1, (ang * (nC - 1)) | 0));
             r = colors[ci][0]; g = colors[ci][1]; b = colors[ci][2];
@@ -372,9 +410,25 @@ export const fieldParticle: Generator = {
             prevR = r; prevG = g; prevB = b; prevAlphaQ = alphaQ;
             pathOpen = true;
           }
-          ctx.lineTo(trailX[s + 1], trailY[s + 1]);
+          ctx.lineTo(trailX[sNext], trailY[sNext]);
         }
         if (pathOpen) ctx.stroke();
+      }
+    }
+
+    // ── Flush batched palette paths ────────────────────────────
+    if (useBatched && pathGrid) {
+      for (let ci = 0; ci < nC; ci++) {
+        const [r, g, b] = colors[ci];
+        for (let band = 0; band < bands; band++) {
+          const sStart = band * segsPerBand;
+          const sEnd = Math.min((band + 1) * segsPerBand, maxVisibleSeg);
+          const midAge = ((sStart + sEnd) / 2) / trailLen;
+          const alpha = (1 - midAge) * baseAlpha;
+          if (alpha < 0.02) continue;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+          ctx.stroke(pathGrid[ci][band]);
+        }
       }
     }
   },

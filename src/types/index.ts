@@ -120,6 +120,7 @@ export interface SVGPath {
 export interface OverlaySettings {
   opacity: number;
   angle: number;
+  zoom: number;
   blendMode: GlobalCompositeOperation;
 }
 
