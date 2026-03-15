@@ -466,6 +466,21 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
           }
           generator.renderCanvas2D(ctx, finalParams, rd.seed, rd.palette, rd.quality, animTime);
 
+          // Apply PostFX during animation
+          const pf = rd.postFX;
+          const hasPostFX =
+            pf.grain > 0 || pf.vignette > 0 ||
+            pf.dither >= 2 || pf.posterize >= 1;
+          if (hasPostFX) {
+            const fw = ctx.canvas.width, fh = ctx.canvas.height;
+            let imageData = ctx.getImageData(0, 0, fw, fh);
+            if (pf.grain > 0) imageData = applyGrain(ctx, imageData, pf.grain);
+            if (pf.vignette > 0) imageData = applyVignette(ctx, imageData, fw, fh, pf.vignette);
+            if (pf.dither >= 2) imageData = applyDither(ctx, imageData, pf.dither);
+            if (pf.posterize >= 1) imageData = applyPosterize(imageData, pf.posterize);
+            ctx.putImageData(imageData, 0, 0);
+          }
+
           // Apply overlay image during animation
           if (rd.loadedOverlayImage) {
             drawOverlay(ctx, rd.loadedOverlayImage, rd.overlaySettings, generator.family);
@@ -722,6 +737,18 @@ export const CanvasRenderer: React.FC<CanvasRendererProps> = ({ showFPS = false 
         lastFrame = ts - (elapsed % fpsInterval);
         if (generator.renderCanvas2D) {
           generator.renderCanvas2D(offCtx, finalParams, seed, palette, quality, ts / 1000);
+        }
+        // Apply PostFX to recording
+        const hasRecPostFX =
+          postFX.grain > 0 || postFX.vignette > 0 ||
+          postFX.dither >= 2 || postFX.posterize >= 1;
+        if (hasRecPostFX) {
+          let imageData = offCtx.getImageData(0, 0, exportSize, exportSize);
+          if (postFX.grain > 0) imageData = applyGrain(offCtx, imageData, postFX.grain);
+          if (postFX.vignette > 0) imageData = applyVignette(offCtx, imageData, exportSize, exportSize, postFX.vignette);
+          if (postFX.dither >= 2) imageData = applyDither(offCtx, imageData, postFX.dither);
+          if (postFX.posterize >= 1) imageData = applyPosterize(imageData, postFX.posterize);
+          offCtx.putImageData(imageData, 0, 0);
         }
         // Apply overlay image to recording
         if (loadedOverlayImage) {
