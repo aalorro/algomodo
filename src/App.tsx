@@ -30,6 +30,7 @@ function App() {
   const undo = useStore(s => s.undo);
   const redo = useStore(s => s.redo);
   const selectGenerator = useStore(s => s.selectGenerator);
+  const canvasAspect = useStore(s => s.canvasSettings.aspect);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -118,7 +119,11 @@ function App() {
         </div>
 
         {/* Center Canvas */}
-        <div className="flex-shrink-0 h-full aspect-square flex items-center justify-center py-6 px-6">
+        <div className={`flex-shrink-0 h-full flex items-center justify-center py-6 px-6 ${
+          canvasAspect === '4:3' ? 'aspect-[4/3]' :
+          canvasAspect === '3:4' ? 'aspect-[3/4]' :
+          'aspect-square'
+        }`}>
           <CanvasRenderer showFPS={showFPS} />
         </div>
 
