@@ -331,7 +331,7 @@ export async function exportMp4(options: Mp4ExportOptions): Promise<Blob> {
             numberOfFrames,
             numberOfChannels: nCh,
             timestamp: audioTimestamp,
-            data,
+            data: data.buffer as ArrayBuffer,
           });
 
           audioEncoder.encode(audioData);
